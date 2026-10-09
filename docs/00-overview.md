@@ -29,7 +29,6 @@ The candidates come from Alek. These are the factors to check each one against, 
 
 - Which game. Alek has candidates in mind; check each against the factors above and [02-existing-recomps.md](02-existing-recomps.md).
 
-
 ## Next steps
 
 1. Finish the two research tracks and fill in 01–02.
