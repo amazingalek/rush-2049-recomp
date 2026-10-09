@@ -8,7 +8,7 @@ toolchain (N64Recomp → C, N64ModernRuntime for libultra, RT64 for graphics).
 | Track | Doc | Status |
 |---|---|---|
 | Toolchain internals and repo anatomy | [01-toolchain.md](01-toolchain.md) | done |
-| Existing recomps and native ports | [02-existing-recomps.md](02-existing-recomps.md) | in progress |
+| Existing recomps and native ports | [02-existing-recomps.md](02-existing-recomps.md) | done: Rush 2049 has none, JFG already has one |
 | Local build environment | [03-local-env.md](03-local-env.md) | installed and smoke-tested |
 
 ## What makes a game hard or easy to recomp
