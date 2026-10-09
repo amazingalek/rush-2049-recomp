@@ -46,6 +46,7 @@
 #include "rush2049_game.h"
 #include "crash_handler.h"
 #include "debug_probe.h"
+#include "musyx_hle.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -268,26 +269,11 @@ bool reset_audio(uint32_t output_freq) {
     return true;
 }
 
-// The game's audio runs on MusyX v1's RSP microcode ("N64 RSP mixer V1.1"), recompiled by RSPRecomp from musyx.toml
-// into rsp/musyx.cpp (not in git: it is generated from the ROM).
-RspExitReason musyx_mixer(uint8_t* rdram, uint32_t ucode_addr);
-
-static RspExitReason musyx_mixer_checked(uint8_t* rdram, uint32_t ucode_addr) {
-    RspExitReason reason = musyx_mixer(rdram, ucode_addr);
-    if (reason != RspExitReason::Broke) {
-        static bool logged = false;
-        if (!logged) {
-            logged = true;
-            fprintf(stderr, "[rsp] MusyX microcode exited with reason %d instead of break\n", (int)reason);
-        }
-    }
-    return reason;
-}
-
+// The game's audio runs on MusyX v1's RSP microcode ("N64 RSP mixer V1.1"); see musyx_hle.cpp.
 RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
     switch (task->t.type) {
     case M_AUDTASK:
-        return musyx_mixer_checked;
+        return rush2049::get_musyx_ucode();
 
     default:
         fprintf(stderr, "Unknown task: %" PRIu32 "\n", task->t.type);
@@ -369,6 +355,18 @@ int main(int argc, char** argv) {
         }
         if (strcmp(argv[i], "--dump-audio") == 0 && i + 1 < argc) {
             rush2049::start_audio_dump(argv[++i]);
+        }
+        if (strcmp(argv[i], "--musyx") == 0 && i + 1 < argc) {
+            i++;
+            if (strcmp(argv[i], "lle") == 0) {
+                rush2049::set_musyx_mode(rush2049::MusyxMode::Lle);
+            }
+            else if (strcmp(argv[i], "compare") == 0) {
+                rush2049::set_musyx_mode(rush2049::MusyxMode::Compare);
+            }
+            else {
+                rush2049::set_musyx_mode(rush2049::MusyxMode::Hle);
+            }
         }
     }
 

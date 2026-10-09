@@ -32,3 +32,4 @@
 /rush2049/recomp.log
 /rush2049/*.bak
 /rush2049/rsp/
+__pycache__/
