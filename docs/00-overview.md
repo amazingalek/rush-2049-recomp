@@ -25,13 +25,21 @@ The candidates come from Alek. These are the factors to check each one against, 
 5. **Code layout.** Overlays, compressed code, self-modifying code, TLB use.
 6. **Demand.** Whether players want it.
 
+## Games
+
+| Game | Doc | Status (2026-10-10) |
+|---|---|---|
+| San Francisco Rush 2049 | [games/rush2049.md](games/rush2049.md) | Playable: boots, menus, races (3+ minutes driven without a crash), MusyX audio at real-time speed, Controller Pak saves that survive a restart |
+| Jet Force Gemini | [games/jet-force-gemini.md](games/jet-force-gemini.md) | On hold: a recomp was released on 2026-10-09 (TK22-26/JetForceGemini-Recomp v1.1.0) |
+
 ## Open decisions
 
-- Which game. Alek has candidates in mind; check each against the factors above and [02-existing-recomps.md](02-existing-recomps.md).
+- Whether to keep going with Jet Force Gemini now that a recomp of it exists.
 
-## Next steps
+## Next steps (Rush 2049)
 
-1. Finish the two research tracks and fill in 01–02.
-2. Check Alek's candidates against the factors above; pick one.
-3. Build N64Recomp and RSPRecomp from source to prove the toolchain end to end.
-4. Bring up the chosen game: config TOML, first recompile, boot to the first frame.
+1. Play through more of the game: other tracks and modes (stunt, circuit, ghost race, multiplayer).
+2. Find a scene where the announcer speaks, to exercise the speech decoder (`src/gsm_decoder.cpp`).
+3. Compare full-scale sample counts against hardware or another emulator; the recomp clips more often than
+   Project64 did.
+4. Launcher and config polish: controller defaults for driving, a choice between Controller Pak and Rumble Pak.
