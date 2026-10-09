@@ -38,5 +38,5 @@ The candidates come from Alek. These are the factors to check each one against, 
 
 ## Next steps (Rush 2049)
 
-1. Play through more of the game: the other tracks, a saved ghost, and multiplayer (needs a second gamepad).
+1. Play through more of the game: the unlockable tracks, a saved ghost, and multiplayer (needs a second gamepad).
 2. Launcher and config polish: controller defaults for driving, a choice between Controller Pak and Rumble Pak.
