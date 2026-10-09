@@ -37,6 +37,13 @@ gcc 2.7.2 and clang-mips output; modern gcc output can confuse it.
   (functions and relocs) plus `data_dump.toml`. This is how the `*RecompSyms` repos are made
   from a decomp ELF.
 
+**Entrypoint detection** (verified 2026-10-09 in `src/elf.cpp`): in ELF mode, the entrypoint is
+found by **ROM address 0x1000**, which is where it sits in a real ROM. The check by vram is
+marked `// TODO this never fires, the check is broken due to signedness`. ROM addresses are the
+sections' load addresses (LMA) relative to the lowest one. An ELF whose entry function isn't at
+LMA base + 0x1000 fails with "Could not find entrypoint function", even when `entrypoint`
+matches its vram. Decomp ELFs already have this layout.
+
 ### Config keys (from [src/config.cpp](https://github.com/N64Recomp/N64Recomp/blob/main/src/config.cpp))
 
 `[input]`:

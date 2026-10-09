@@ -65,9 +65,15 @@ because the machine PATH comes before the user PATH, so always use `py -3`.
    `ld.lld --emit-relocs` produces an `ELF32 big-endian MIPS R3000, o32, mips2` binary.
    `$MIPS_OBJDUMP` disassembles it correctly.
 
+3. **N64Recomp from source.** [N64Recomp](https://github.com/N64Recomp/N64Recomp) at `ffb39cd`
+   (2026-05-27) builds cleanly with CMake + Ninja + clang-cl 22.1.8: N64Recomp, RSPRecomp,
+   RecompModTool, OfflineModRecomp, RecompModMerger and LiveRecompTest.
+4. **MIPS ELF → C, end to end.** A small C file built with the patches toolchain recompiled to C
+   (`funcs_0.c`, `lookup.cpp`, `recomp_overlays.inl`, 5 functions). The ELF needs a ROM-like
+   layout; see the entrypoint note in [01-toolchain.md](01-toolchain.md).
+
 ## Still to check
 
-- An end-to-end build of a real recomp, e.g. BanjoRecomp or Zelda64Recomp, needs a ROM. Without
-  one, building N64Recomp and RSPRecomp from source is the next proof.
+- An end-to-end build of a real recomp (BanjoRecomp, Zelda64Recomp, or our game) needs a ROM.
 - RT64's minimum Windows build: D3D12 is available on 17763, but RT64's needs are unconfirmed.
   Vulkan is the fallback.
