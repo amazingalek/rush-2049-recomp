@@ -72,6 +72,8 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/libultra_extra.cpp
     ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/controller_pak.cpp
+    ${CMAKE_SOURCE_DIR}/src/debug_probe.cpp
+    ${CMAKE_SOURCE_DIR}/rsp/musyx.cpp
 )
 
 target_include_directories(Rush2049Recompiled PRIVATE

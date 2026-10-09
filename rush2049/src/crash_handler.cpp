@@ -4,6 +4,7 @@
 // of host frames points straight at the game code that crashed.
 
 #include "crash_handler.h"
+#include "debug_probe.h"
 
 #ifdef _WIN32
 
@@ -16,12 +17,30 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
+#include <map>
+#include <string>
+
+#include "ultramodern/ultra64.h"
 
 #pragma comment(lib, "Dbghelp.lib")
 
 namespace {
 
 std::mutex crash_mutex;
+
+// Native thread id -> game thread, recorded by game_thread_name (ultramodern calls it on each new game thread).
+std::mutex game_threads_mutex;
+std::map<DWORD, const OSThread*> game_threads;
+
+const char* state_name(uint16_t state) {
+    switch (state) {
+        case 0: return "stopped";
+        case 1: return "queued";
+        case 2: return "running";
+        case 3: return "blocked";
+        default: return "?";
+    }
+}
 
 bool sym_initialized = false;
 
@@ -66,7 +85,7 @@ void print_trace(CONTEXT* context, HANDLE thread = GetCurrentThread(), bool only
         const char* name = SymFromAddr(process, pc, &displacement, symbol) ? symbol->Name : "?";
 
         if (only_game) {
-            if (strncmp(name, "func_", 5) == 0 || strstr(name, "_func_") != nullptr || strstr(name, "_recomp") != nullptr ||
+            if (strncmp(name, "func_", 5) == 0 || strstr(name, "_func_") != nullptr || strstr(name, "_recomp") != nullptr || strstr(name, "musyx") != nullptr ||
                 (name[0] == '_' && name[1] == '_' && name[2] == 'o' && name[3] == 's')) {
                 fprintf(stderr, " %s", name);
             }
@@ -121,6 +140,15 @@ void dump_all_stacks() {
             ctx.ContextFlags = CONTEXT_FULL;
             if (GetThreadContext(t, &ctx)) {
                 fprintf(stderr, "  %5lu:", te.th32ThreadID);
+                {
+                    std::lock_guard threads_lock{ game_threads_mutex };
+                    auto it = game_threads.find(te.th32ThreadID);
+                    if (it != game_threads.end()) {
+                        const OSThread* gt = it->second;
+                        fprintf(stderr, " [id %d pri %d %s%s]", gt->id, gt->priority, state_name(gt->state),
+                                gt->queue == (PTR(PTR(OSThread)))-1 ? " in run queue" : "");
+                    }
+                }
                 print_trace(&ctx, t, true);
                 fprintf(stderr, "\n");
             }
@@ -129,20 +157,35 @@ void dump_all_stacks() {
         CloseHandle(t);
     }
     CloseHandle(snap);
+    rush2049::print_probes();
     fflush(stderr);
 }
 
 } // namespace
 
+std::string rush2049::game_thread_name(const OSThread* t) {
+    {
+        std::lock_guard lock{ game_threads_mutex };
+        game_threads[GetCurrentThreadId()] = t;
+    }
+    return "Game Thread " + std::to_string(t->id);
+}
+
 void rush2049::install_crash_handler() {
     SetUnhandledExceptionFilter(crash_filter);
 }
 
-void rush2049::start_stack_sampler(int interval_seconds) {
-    std::thread([interval_seconds]() {
+void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
+    std::thread([interval_seconds, stacks]() {
         while (true) {
             std::this_thread::sleep_for(std::chrono::seconds(interval_seconds));
-            dump_all_stacks();
+            if (stacks) {
+                dump_all_stacks();
+            }
+            else {
+                rush2049::print_probes();
+                fflush(stderr);
+            }
         }
     }).detach();
 }
@@ -150,6 +193,7 @@ void rush2049::start_stack_sampler(int interval_seconds) {
 #else
 
 void rush2049::install_crash_handler() {}
-void rush2049::start_stack_sampler(int) {}
+std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
+void rush2049::start_stack_sampler(int, bool) {}
 
 #endif

@@ -14,6 +14,10 @@ void rush2049_inflate_end(uint8_t* rdram, recomp_context* ctx);
 /* ultramodern (scheduling.cpp): let queued game threads run, waking after at most 1 ms. For spin loops. */
 void yield_self_1ms(uint8_t* rdram);
 
+/* Debug tracing for bring-up: prints "<ms> <tag> <value>" to stderr. */
+void rush2049_trace(const char* tag, uint32_t value);
+void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg);
+
 #ifdef __cplusplus
 }
 #endif

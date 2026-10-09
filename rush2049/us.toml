@@ -54,3 +54,17 @@ value = 0x00000000
 func = "func_800FD464"
 before_vram = 0x800FD500
 text = "    if (ctx->r24 != 0) yield_self_1ms(rdram);"
+
+# Audio thread (func_8008AA40) spin-waits for the scheduler's current task (sc+0x274) to change from the one at
+# 0x8002AFA0 before running its audio frame. The scheduler only advances on an RDP-done message, which ultramodern
+# delivers inside OS calls, so the spin would hang the game at boot when it catches a graphics task in flight.
+[[patches.hook]]
+func = "func_8008AA40"
+before_vram = 0x8008AB44
+text = "    if (MEM_W(0x274, ctx->r16) == ctx->r2) yield_self_1ms(rdram);"
+
+# DEBUG: count scheduler messages (0x29A retrace, 0x29B RSP done, 0x29C RDP done, 0x29E audio task queued).
+[[patches.hook]]
+func = "func_8000063C"
+before_vram = 0x80000664
+text = "    rush2049_probe_sched_msg(rdram, MEM_W(0x24, ctx->r29));"

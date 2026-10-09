@@ -249,18 +249,26 @@ bool reset_audio(uint32_t output_freq) {
     return true;
 }
 
-// The game's audio runs on MusyX's RSP microcode ("N64 RSP mixer V1.1"), which isn't handled yet. Until it is,
-// audio tasks complete immediately and produce silence.
-static RspExitReason silent_audio_ucode(uint8_t* rdram, uint32_t ucode_addr) {
-    (void)rdram;
-    (void)ucode_addr;
-    return RspExitReason::Broke;
+// The game's audio runs on MusyX v1's RSP microcode ("N64 RSP mixer V1.1"), recompiled by RSPRecomp from musyx.toml
+// into rsp/musyx.cpp (not in git: it is generated from the ROM).
+RspExitReason musyx_mixer(uint8_t* rdram, uint32_t ucode_addr);
+
+static RspExitReason musyx_mixer_checked(uint8_t* rdram, uint32_t ucode_addr) {
+    RspExitReason reason = musyx_mixer(rdram, ucode_addr);
+    if (reason != RspExitReason::Broke) {
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            fprintf(stderr, "[rsp] MusyX microcode exited with reason %d instead of break\n", (int)reason);
+        }
+    }
+    return reason;
 }
 
 RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
     switch (task->t.type) {
     case M_AUDTASK:
-        return silent_audio_ucode;
+        return musyx_mixer_checked;
 
     default:
         fprintf(stderr, "Unknown task: %" PRIu32 "\n", task->t.type);
@@ -334,7 +342,10 @@ int main(int argc, char** argv) {
             autoboot = true;
         }
         if (strcmp(argv[i], "--stacks") == 0) {
-            rush2049::start_stack_sampler(5);
+            rush2049::start_stack_sampler(5, true);
+        }
+        if (strcmp(argv[i], "--probes") == 0) {
+            rush2049::start_stack_sampler(5, false);
         }
     }
 
@@ -443,7 +454,7 @@ int main(int argc, char** argv) {
         gfx_callbacks,
         thread_callbacks,
         error_handling_callbacks,
-        {}
+        ultramodern::threads::callbacks_t{ .get_game_thread_name = rush2049::game_thread_name }
     );
 
     NFD_Quit();

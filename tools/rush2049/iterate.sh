@@ -12,6 +12,8 @@ if [ "${2:-}" != "--no-recomp" ]; then
         "$LOCALAPPDATA/Programs/n64-toolchain/n64recomp/N64Recomp.exe" us.toml > recomp.log 2>&1) ||
         { tail -5 rush2049/recomp.log; exit 1; }
 fi
+[ -f rush2049/rsp/musyx.cpp ] || (cd rush2049 && mkdir -p rsp &&
+    "$LOCALAPPDATA/Programs/n64-toolchain/n64recomp/RSPRecomp.exe" musyx.toml) || exit 1
 ninja -C rush2049/build Rush2049Recompiled > rush2049/build/build.log 2>&1 ||
     { grep -E " error|FAILED|undefined" rush2049/build/build.log | head -20; exit 1; }
 cd rush2049
