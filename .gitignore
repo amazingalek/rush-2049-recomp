@@ -1,0 +1,18 @@
+# ROMs and ROM-derived data never go in git
+*.z64
+*.n64
+*.v64
+*.rom
+*.bin
+*.elf
+/baserom*
+/roms/
+/extracted/
+
+# Build output
+/build/
+/out/
+/RecompiledFuncs/
+/rsp/*.cpp
+.vs/
+*.user
