@@ -19,6 +19,8 @@ constexpr uint32_t sched_addr = 0x8002E8E8;
 
 } // namespace
 
+std::atomic<uint32_t> rush2049::probe_input_reads{ 0 };
+
 extern "C" void rush2049_trace(const char* tag, uint32_t value) {
     static const auto start = std::chrono::steady_clock::now();
     long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
@@ -35,6 +37,7 @@ extern "C" void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg) {
 void rush2049::print_probes() {
     fprintf(stderr, "  sched msgs: retrace %u rsp %u rdp %u nmi %u audio %u\n", sched_counts[0].load(),
             sched_counts[1].load(), sched_counts[2].load(), sched_counts[3].load(), sched_counts[4].load());
+    fprintf(stderr, "  input reads: %u\n", probe_input_reads.load());
     uint8_t* rdram = probe_rdram.load();
     if (rdram == nullptr) {
         return;

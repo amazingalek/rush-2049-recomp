@@ -45,6 +45,7 @@
 
 #include "rush2049_game.h"
 #include "crash_handler.h"
+#include "debug_probe.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -76,6 +77,22 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 
     fprintf(stdout, "SDL Video Driver: %s\n", SDL_GetCurrentVideoDriver());
     return {};
+}
+
+// --probes: log each change of player 1's buttons as the game reads them.
+static bool log_input = false;
+
+static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float* x_out, float* y_out) {
+    bool ret = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
+    if (log_input && player_index == 0) {
+        rush2049::probe_input_reads++;
+        static uint16_t last_buttons = 0;
+        if (*buttons_out != last_buttons) {
+            last_buttons = *buttons_out;
+            fprintf(stderr, "[input] p1 buttons %04X\n", last_buttons);
+        }
+    }
+    return ret;
 }
 
 ultramodern::input::connected_device_info_t get_connected_device_info(int controller_num) {
@@ -346,6 +363,7 @@ int main(int argc, char** argv) {
         }
         if (strcmp(argv[i], "--probes") == 0) {
             rush2049::start_stack_sampler(5, false);
+            log_input = true;
         }
     }
 
@@ -430,7 +448,7 @@ int main(int argc, char** argv) {
 
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recompinput::poll_inputs,
-        .get_input = recompinput::profiles::get_n64_input,
+        .get_input = get_n64_input_logged,
         .set_rumble = recompinput::set_rumble,
         .get_connected_device_info = get_connected_device_info,
     };
