@@ -1,0 +1,160 @@
+diff --git a/ultramodern/include/ultramodern/ultramodern.hpp b/ultramodern/include/ultramodern/ultramodern.hpp
+index 3b28af3..2813bdf 100644
+--- a/ultramodern/include/ultramodern/ultramodern.hpp
++++ b/ultramodern/include/ultramodern/ultramodern.hpp
+@@ -99,6 +99,9 @@ void init_audio();
+ void set_audio_frequency(uint32_t freq);
+ void queue_audio_buffer(RDRAM_ARG PTR(s16) audio_data, uint32_t byte_count);
+ uint32_t get_remaining_audio_bytes();
++uint32_t get_audio_frequency();
++// Size of the most recent buffer passed to osAiSetNextBuffer (0 before the first one).
++uint32_t get_last_audio_buffer_bytes();
+ 
+ struct audio_callbacks_t {
+     using queue_samples_t = void(int16_t*, size_t);
+diff --git a/ultramodern/src/audio.cpp b/ultramodern/src/audio.cpp
+index 3198be0..87ade88 100644
+--- a/ultramodern/src/audio.cpp
++++ b/ultramodern/src/audio.cpp
+@@ -1,5 +1,6 @@
+ #include "ultramodern/ultra64.h"
+ #include "ultramodern/ultramodern.hpp"
++#include <atomic>
+ #include <cassert>
+ 
+ static uint32_t sample_rate = 48000;
+@@ -22,9 +23,20 @@ void ultramodern::set_audio_frequency(uint32_t freq) {
+     sample_rate = freq;
+ }
+ 
++static std::atomic<uint32_t> last_buffer_bytes{ 0 };
++
++uint32_t ultramodern::get_audio_frequency() {
++    return sample_rate;
++}
++
++uint32_t ultramodern::get_last_audio_buffer_bytes() {
++    return last_buffer_bytes.load();
++}
++
+ void ultramodern::queue_audio_buffer(RDRAM_ARG PTR(int16_t) audio_data_, uint32_t byte_count) {
+     // Ensure that the byte count is an integer multiple of samples.
+     assert((byte_count & 1) == 0);
++    last_buffer_bytes.store(byte_count);
+ 
+     // Calculate the number of samples from the number of bytes.
+     uint32_t sample_count = byte_count / sizeof(int16_t);
+diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
+index 090cc42..fd9b27f 100644
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -244,8 +244,30 @@ void vi_thread_func() {
+                 remaining_retraces = cur_state->retrace_count;
+             }
+             if (events_context.ai.mq != NULLPTR) {
+-                // Send a message to the VI queue, and do not set it to be requeued if the queue was full for the same reason as the VI message above.
+-                ultramodern::enqueue_external_message(events_context.ai.mq, events_context.ai.msg, false, false);
++                // The AI interrupt fires each time the AI starts playing a queued buffer, so send one AI event per
++                // buffer's worth of audio played during this VI. A game that queues one buffer per frame gets about
++                // one event per VI; one that keeps a ring of short buffers gets several. Until the game has queued
++                // a buffer, send one per VI. Skip events while the host has plenty of audio queued, so that a
++                // host audio clock slower than this thread's doesn't build up latency without bound.
++                static double ai_bytes_played = 0.0;
++                uint32_t buffer_bytes = ultramodern::get_last_audio_buffer_bytes();
++                int events = 1;
++                if (buffer_bytes != 0) {
++                    double bytes_per_vi = ultramodern::get_audio_frequency() * 4.0 / (60 * ultramodern::get_speed_multiplier());
++                    ai_bytes_played += bytes_per_vi;
++                    events = 0;
++                    while (ai_bytes_played >= buffer_bytes) {
++                        ai_bytes_played -= buffer_bytes;
++                        events++;
++                    }
++                    if (ultramodern::get_remaining_audio_bytes() > 8 * bytes_per_vi) {
++                        events = 0;
++                    }
++                }
++                for (int i = 0; i < events; i++) {
++                    // Do not requeue if the queue was full, for the same reason as the VI message above.
++                    ultramodern::enqueue_external_message(events_context.ai.mq, events_context.ai.msg, false, false);
++                }
+             }
+         }
+ 
+diff --git a/ultramodern/src/threadqueue.cpp b/ultramodern/src/threadqueue.cpp
+index f9c0fa1..2e376eb 100644
+--- a/ultramodern/src/threadqueue.cpp
++++ b/ultramodern/src/threadqueue.cpp
+@@ -43,14 +43,15 @@ PTR(OSThread) ultramodern::thread_queue_pop(RDRAM_ARG PTR(PTR(OSThread)) queue_)
+ bool ultramodern::thread_queue_remove(RDRAM_ARG PTR(PTR(OSThread)) queue_, PTR(OSThread) t_) {
+     debug_printf("[Thread Queue] Removing thread %d from queue 0x%08X\n", TO_PTR(OSThread, t_)->id, (uintptr_t)queue_);
+ 
+-    PTR(PTR(OSThread)) cur = queue_;
+-    while (cur != NULLPTR) {
+-        PTR(OSThread)* cur_ptr = queue_to_ptr(PASS_RDRAM queue_);
+-        if (*cur_ptr == t_) {
+-            *cur_ptr = TO_PTR(OSThread, *cur_ptr)->next;
++    PTR(OSThread)* cur = queue_to_ptr(PASS_RDRAM queue_);
++    while (*cur != NULLPTR) {
++        OSThread* cur_thread = TO_PTR(OSThread, *cur);
++        if (*cur == t_) {
++            *cur = cur_thread->next;
++            cur_thread->next = NULLPTR;
+             return true;
+         }
+-        cur = TO_PTR(OSThread, *cur_ptr)->next;
++        cur = &cur_thread->next;
+     }
+ 
+     return false;
+diff --git a/ultramodern/src/threads.cpp b/ultramodern/src/threads.cpp
+index 812c556..e4f3bed 100644
+--- a/ultramodern/src/threads.cpp
++++ b/ultramodern/src/threads.cpp
+@@ -233,7 +233,22 @@ extern "C" void osStartThread(RDRAM_ARG PTR(OSThread) t_) {
+ 
+     // If this is a game thread, insert the new thread into the running queue and then check the running queue.
+     if (thread_self) {
+-        ultramodern::schedule_running_thread(PASS_RDRAM t_);
++        // Only a stopped thread can be started (libultra ignores the call otherwise).
++        if (t->state != OSThreadState::STOPPED) {
++            return;
++        }
++        // A thread stopped by another thread while it was blocked on a message queue goes back on that queue,
++        // and the queue's first waiter is made runnable so that it rechecks the queue, like libultra does.
++        // Messages that arrived while the thread was stopped are picked up that way.
++        if (t->queue != NULLPTR && t->queue != ultramodern::running_queue) {
++            PTR(PTR(OSThread)) waiting_queue = t->queue;
++            ultramodern::thread_queue_insert(PASS_RDRAM waiting_queue, t_);
++            t->state = OSThreadState::BLOCKED;
++            ultramodern::schedule_running_thread(PASS_RDRAM ultramodern::thread_queue_pop(PASS_RDRAM waiting_queue));
++        }
++        else {
++            ultramodern::schedule_running_thread(PASS_RDRAM t_);
++        }
+         ultramodern::check_running_queue(PASS_RDRAM1);
+     }
+     // Otherwise, immediately start the thread and terminate this one.
+@@ -274,8 +289,21 @@ extern "C" void osStopThread(RDRAM_ARG PTR(OSThread) t_) {
+     if (t_ == thread_self) {
+         ultramodern::run_next_thread_and_wait(PASS_RDRAM1);
+     }
++    // Stopping another thread: it is either waiting in the running queue or blocked on a message queue (only one
++    // game thread runs at a time). Take it off that queue so nothing schedules it until osStartThread, but keep
++    // t->queue so that osStartThread can put a blocked thread back where it was waiting.
+     else {
+-        assert(false);
++        OSThread* t = TO_PTR(OSThread, t_);
++        if (t->state == OSThreadState::STOPPED) {
++            return;
++        }
++        if (t->queue != NULLPTR) {
++            ultramodern::thread_queue_remove(PASS_RDRAM t->queue, t_);
++        }
++        if (t->queue == ultramodern::running_queue) {
++            t->queue = NULLPTR;
++        }
++        t->state = OSThreadState::STOPPED;
+     }
+ }
+ 

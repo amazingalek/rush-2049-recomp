@@ -159,6 +159,7 @@ static uint32_t discarded_output_frames;
 constexpr uint32_t bytes_per_frame = input_channels * sizeof(float);
 
 void queue_samples(int16_t* audio_data, size_t sample_count) {
+    rush2049::probe_audio(audio_data, sample_count);
     static std::vector<float> swap_buffer;
     static std::array<float, duplicated_input_frames * input_channels> duplicated_sample_buffer;
 
@@ -236,6 +237,7 @@ void update_audio_converter() {
 }
 
 void set_frequency(uint32_t freq) {
+    rush2049::probe_audio_frequency(freq);
     sample_rate = freq;
     update_audio_converter();
 }
@@ -364,6 +366,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--probes") == 0) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
+        }
+        if (strcmp(argv[i], "--dump-audio") == 0 && i + 1 < argc) {
+            rush2049::start_audio_dump(argv[++i]);
         }
     }
 

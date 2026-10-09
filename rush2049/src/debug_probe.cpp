@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <mutex>
 
 #include "recomp.h"
 #include "rush2049_hooks.h"
@@ -34,7 +35,72 @@ extern "C" void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg) {
     }
 }
 
+namespace {
+std::atomic<uint32_t> audio_buffers{ 0 };
+std::atomic<uint64_t> audio_samples{ 0 };
+std::atomic<int> audio_peak{ 0 };
+std::atomic<uint32_t> audio_frequency{ 0 };
+
+std::mutex dump_mutex;
+FILE* dump_file = nullptr;
+uint32_t dump_bytes = 0;
+
+// 44-byte PCM WAV header for 16-bit stereo; rewritten with the final sizes after each buffer.
+void write_wav_header(FILE* f, uint32_t rate, uint32_t data_bytes) {
+    auto u32 = [f](uint32_t v) { fwrite(&v, 4, 1, f); };
+    auto u16 = [f](uint16_t v) { fwrite(&v, 2, 1, f); };
+    fseek(f, 0, SEEK_SET);
+    fwrite("RIFF", 1, 4, f); u32(36 + data_bytes);
+    fwrite("WAVEfmt ", 1, 8, f); u32(16); u16(1); u16(2); u32(rate); u32(rate * 4); u16(4); u16(16);
+    fwrite("data", 1, 4, f); u32(data_bytes);
+    fseek(f, 0, SEEK_END);
+}
+} // namespace
+
+void rush2049::start_audio_dump(const char* path) {
+    std::lock_guard lock{ dump_mutex };
+    dump_file = fopen(path, "wb");
+    if (dump_file != nullptr) {
+        write_wav_header(dump_file, 0, 0);
+    }
+}
+
+void rush2049::probe_audio_frequency(uint32_t freq) {
+    if (audio_frequency.exchange(freq) != freq) {
+        fprintf(stderr, "[audio] frequency %u Hz\n", freq);
+    }
+}
+
+void rush2049::probe_audio(const int16_t* samples, size_t count) {
+    {
+        std::lock_guard lock{ dump_mutex };
+        if (dump_file != nullptr) {
+            // Each stereo pair arrives as (right, left), the order queue_samples swaps; write left, right.
+            for (size_t i = 0; i + 1 < count; i += 2) {
+                int16_t frame[2] = { samples[i + 1], samples[i] };
+                fwrite(frame, sizeof(frame), 1, dump_file);
+            }
+            dump_bytes += (uint32_t)(count / 2 * 4);
+            write_wav_header(dump_file, audio_frequency.load(), dump_bytes);
+            fflush(dump_file);
+        }
+    }
+    audio_buffers++;
+    audio_samples += count;
+    int peak = audio_peak.load();
+    for (size_t i = 0; i < count; i++) {
+        int v = samples[i] < 0 ? -samples[i] : samples[i];
+        if (v > peak) {
+            peak = v;
+        }
+    }
+    audio_peak.store(peak);
+}
+
 void rush2049::print_probes() {
+    // Peak is since the previous print.
+    fprintf(stderr, "  audio: %u buffers, %llu samples, peak %d\n", audio_buffers.load(),
+            (unsigned long long)audio_samples.load(), audio_peak.exchange(0));
     fprintf(stderr, "  sched msgs: retrace %u rsp %u rdp %u nmi %u audio %u\n", sched_counts[0].load(),
             sched_counts[1].load(), sched_counts[2].load(), sched_counts[3].load(), sched_counts[4].load());
     fprintf(stderr, "  input reads: %u\n", probe_input_reads.load());
