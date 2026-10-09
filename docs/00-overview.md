@@ -7,9 +7,9 @@ toolchain (N64Recomp → C, N64ModernRuntime for libultra, RT64 for graphics).
 
 | Track | Doc | Status |
 |---|---|---|
-| Toolchain internals and repo anatomy | [01-toolchain.md](01-toolchain.md) | in progress |
+| Toolchain internals and repo anatomy | [01-toolchain.md](01-toolchain.md) | done |
 | Existing recomps and native ports | [02-existing-recomps.md](02-existing-recomps.md) | in progress |
-| Local build environment | [03-local-env.md](03-local-env.md) | done: CMake, Ninja, LLVM missing |
+| Local build environment | [03-local-env.md](03-local-env.md) | installed and smoke-tested |
 
 ## What makes a game hard or easy to recomp
 
@@ -28,11 +28,11 @@ The candidates come from Alek. These are the factors to check each one against, 
 ## Open decisions
 
 - Which game. Alek has candidates in mind; check each against the factors above and [02-existing-recomps.md](02-existing-recomps.md).
-- Whether to install the missing tools through the VS Installer or standalone.
+
 
 ## Next steps
 
 1. Finish the two research tracks and fill in 01–02.
 2. Check Alek's candidates against the factors above; pick one.
-3. Install the toolchain; build an existing recomp from source to prove the setup works.
+3. Build N64Recomp and RSPRecomp from source to prove the toolchain end to end.
 4. Bring up the chosen game: config TOML, first recompile, boot to the first frame.

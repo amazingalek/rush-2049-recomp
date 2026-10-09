@@ -12,7 +12,7 @@ Status: **research / prep**. No game is chosen yet.
 | [docs/00-overview.md](docs/00-overview.md) | Where the research stands, open decisions, next steps |
 | [docs/01-toolchain.md](docs/01-toolchain.md) | How N64Recomp, N64ModernRuntime and RT64 work, and the anatomy of a recomp repo |
 | [docs/02-existing-recomps.md](docs/02-existing-recomps.md) | Games that already have a recomp or a native port, so we don't duplicate one |
-| [docs/03-local-env.md](docs/03-local-env.md) | What this machine has and what it still needs to build a recomp |
+| [docs/03-local-env.md](docs/03-local-env.md) | The installed toolchain and how to use it (`tools/env.sh`, `tools/env.ps1`) |
 
 ## Ground rules
 
