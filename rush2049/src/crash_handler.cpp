@@ -190,10 +190,32 @@ void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
     }).detach();
 }
 
+void rush2049::start_byte_watch(uint32_t vram) {
+    std::thread([vram]() {
+        uint8_t* rdram;
+        while ((rdram = rush2049::probe_get_rdram()) == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        volatile uint8_t* byte = rdram + ((vram & 0x7FFFFFFF) ^ 3);
+        uint8_t last = *byte;
+        int reports = 0;
+        while (reports < 6) {
+            uint8_t now = *byte;
+            if (now != last) {
+                fprintf(stderr, "[watch] %08X: %02X -> %02X\n", vram, last, now);
+                dump_all_stacks();
+                last = now;
+                reports++;
+            }
+        }
+    }).detach();
+}
+
 #else
 
 void rush2049::install_crash_handler() {}
 std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
 void rush2049::start_stack_sampler(int, bool) {}
+void rush2049::start_byte_watch(uint32_t) {}
 
 #endif

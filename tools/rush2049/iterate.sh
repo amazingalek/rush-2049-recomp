@@ -17,5 +17,19 @@ fi
 ninja -C rush2049/build Rush2049Recompiled > rush2049/build/build.log 2>&1 ||
     { grep -E " error|FAILED|undefined" rush2049/build/build.log | head -20; exit 1; }
 cd rush2049
-timeout "$secs" ./build/Rush2049Recompiled.exe --boot --stacks > run.log 2>&1
+# `timeout` can't stop a native Windows process from MSYS bash, so stop this one by its Windows PID.
+./build/Rush2049Recompiled.exe --boot --stacks > run.log 2>&1 &
+pid=$!
+# Right after the fork /proc/$pid/winpid can still name the forking shell, so give the exec a moment.
+sleep 1
+winpid=$(cat "/proc/$pid/winpid")
+for _ in $(seq "$secs"); do
+    kill -0 "$pid" 2> /dev/null || break
+    sleep 1
+done
+if kill -0 "$pid" 2> /dev/null; then
+    taskkill //PID "$winpid" //F > /dev/null 2>&1
+    echo "stopped after ${secs}s" >> run.log
+fi
+wait "$pid"
 echo "exit $?" >> run.log

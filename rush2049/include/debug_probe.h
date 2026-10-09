@@ -17,6 +17,9 @@ namespace rush2049 {
 
     // Prints the bring-up probe counters (src/debug_probe.cpp) to stderr.
     void print_probes();
+
+    // RDRAM, once the scheduler has run; nullptr before that.
+    uint8_t* probe_get_rdram();
 }
 
 #endif

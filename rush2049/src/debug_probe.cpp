@@ -97,6 +97,10 @@ void rush2049::probe_audio(const int16_t* samples, size_t count) {
     audio_peak.store(peak);
 }
 
+uint8_t* rush2049::probe_get_rdram() {
+    return probe_rdram.load();
+}
+
 void rush2049::print_probes() {
     // Peak is since the previous print.
     fprintf(stderr, "  audio: %u buffers, %llu samples, peak %d\n", audio_buffers.load(),
@@ -115,4 +119,12 @@ void rush2049::print_probes() {
     }
     fprintf(stderr, "\n  sc queues (valid/count): +40 %d/%d +78 %d/%d\n", (int)MEM_W(0x48, sc), (int)MEM_W(0x50, sc),
             (int)MEM_W(0x80, sc), (int)MEM_W(0x88, sc));
+    // Controller Pak bookkeeping: enable byte, query status of port 1, per-port pak flags.
+    gpr pak = (gpr)(int32_t)0x80144030;
+    fprintf(stderr, "  pak: enable %d status %02X flags", (int)MEM_B(0, (gpr)(int32_t)0x8011EAE0),
+            (unsigned)(uint8_t)MEM_B(2, (gpr)(int32_t)0x80149440));
+    for (int off = 0; off < 0xC; off++) {
+        fprintf(stderr, " %d", (int)MEM_B(off, pak));
+    }
+    fprintf(stderr, " +74 %d\n", (int)MEM_W(0x74, pak));
 }
