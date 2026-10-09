@@ -12,6 +12,7 @@
 //   +0x188  which LARpp set is current, s16 (0: +0x168, else +0x178)
 
 #include <cstdint>
+#include <cstdio>
 
 #include "recomp.h"
 
@@ -55,6 +56,11 @@ int32_t larp_to_rp(int32_t larp) {
 // APCM inverse quantization and RPE grid positioning. a0 = xmaxc, a1 = Mc, a2 = xMc[13] (s16, replaced by the
 // dequantized xMp), a3 = erp[40] (s16 out).
 extern "C" void func_800277D0(uint8_t* rdram, recomp_context* ctx) {
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        fprintf(stderr, "[gsm] first speech frame\n");
+    }
     int32_t xmaxc = (int32_t)ctx->r4;
     int32_t mc = (int32_t)ctx->r5;
     uint32_t xmc = (uint32_t)ctx->r6;
