@@ -97,7 +97,12 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
 }
 
 ultramodern::input::connected_device_info_t get_connected_device_info(int controller_num) {
-    if (recompinput::players::is_single_player_mode() || recompinput::players::get_player_is_assigned(controller_num)) {
+    // Every port with a controller has a Controller Pak (src/controller_pak.cpp). The game calls osPfsInitPak
+    // before osMotorInit, so the pak wins over rumble, as with one accessory slot on hardware. In single-player
+    // mode only port 1 has a controller.
+    bool connected = recompinput::players::is_single_player_mode() ? controller_num == 0
+                                                                   : recompinput::players::get_player_is_assigned(controller_num);
+    if (connected) {
         return ultramodern::input::connected_device_info_t{
             .connected_device = ultramodern::input::Device::Controller,
             .connected_pak = ultramodern::input::Pak::RumblePak,
@@ -352,6 +357,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--probes") == 0) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
+        }
+        if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
+            rush2049::start_byte_watch((uint32_t)strtoul(argv[++i], nullptr, 16));
         }
         if (strcmp(argv[i], "--dump-audio") == 0 && i + 1 < argc) {
             rush2049::start_audio_dump(argv[++i]);

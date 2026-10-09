@@ -76,7 +76,7 @@ void update_inode_checksum(Pak& pak) {
     std::memcpy(&pak.data[inode_backup_offset], &pak.data[inode_offset], page_size);
 }
 
-void format(Pak& pak) {
+void format(Pak& pak, int port) {
     pak.data.fill(0);
 
     // Page 0, block 0: 0x81 then 0x01..0x1F, as freshly formatted paks have it.
@@ -89,7 +89,8 @@ void format(Pak& pak) {
     // inverted checksum. The checksum is the sum of the first 14 halfwords.
     std::array<uint8_t, 32> id{};
     write32(&id[0x00], 0xFFFFFFFF);
-    write32(&id[0x04], 0x2049F00D);
+    // The game tells paks apart by this block, so each port's pak gets its own serial.
+    write32(&id[0x04], 0x2049F00D + (uint32_t)port);
     write32(&id[0x18], 0x00010100); // deviceid 0x0001, banks 1, version 0
     uint16_t sum = 0;
     for (int i = 0; i < 28; i += 2) {
@@ -115,7 +116,7 @@ Pak& get_pak(int port) {
             file.read(reinterpret_cast<char*>(pak.data.data()), pak.data.size());
         }
         if (!file.good() || file.gcount() != (std::streamsize)pak.data.size()) {
-            format(pak);
+            format(pak, port);
         }
         pak.loaded = true;
     }
@@ -203,13 +204,16 @@ extern "C" void osPfsInitPak_recomp(uint8_t* rdram, recomp_context* ctx) {
     std::lock_guard lock{ pak_mutex };
     gpr pfs = ctx->r5;
     int channel = (int)ctx->r6;
-    get_pak(channel);
+    Pak& pak = get_pak(channel);
 
-    // OSPfs fields as libultra fills them for a one-bank pak.
+    // OSPfs fields as libultra fills them for a one-bank pak. The game compares id across ports to notice a pak
+    // moving between controllers, so it has to be the pak's own ID block.
     MEM_W(0x00, pfs) = PFS_INITIALIZED;   // status
     MEM_W(0x04, pfs) = (int32_t)ctx->r4; // queue
     MEM_W(0x08, pfs) = channel;           // channel
-    MEM_W(0x4C, pfs) = 0;                 // version
+    write_guest(rdram, pfs + 0x0C, &pak.data[0x20], 32); // id
+    write_guest(rdram, pfs + 0x2C, &pak.data[0x00], 32); // label
+    MEM_W(0x4C, pfs) = pak.data[0x20 + 0x1B]; // version
     MEM_W(0x50, pfs) = num_notes;         // dir_size
     MEM_W(0x54, pfs) = 8;                 // inode_table (in 32-byte blocks)
     MEM_W(0x58, pfs) = 16;                // minode_table
