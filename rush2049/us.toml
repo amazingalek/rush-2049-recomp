@@ -1,0 +1,18 @@
+# N64Recomp config for San Francisco Rush 2049 (USA, NRUE).
+# Run tools/rush2049/extract.py and tools/rush2049/gen_syms.py first.
+
+[input]
+entrypoint = 0x80000400
+# Paths are relative to this file.
+output_func_path = "RecompiledFuncs"
+symbols_file_path = "../syms/rush2049/rush2049.us.syms.toml"
+rom_file_path = "../roms/rush2049.us.recomp.z64"
+
+[patches]
+stubs = [
+    # cache 0x0D loop over a buffer; caches don't exist on PC.
+    "dcache_create_dirty_8002C5E0",
+    # Hand-written DSP asm island (gen_syms.py ASM_ISLANDS); TODO reimplement in C.
+    "func_800277D0", "func_800278C4", "func_80027B44",
+]
+ignored = []

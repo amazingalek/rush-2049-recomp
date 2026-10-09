@@ -16,3 +16,9 @@
 /rsp/*.cpp
 .vs/
 *.user
+
+# Reference repos cloned for study
+/ref/
+/.venv/
+/rush2049/RecompiledFuncs/
+/rush2049/build/
