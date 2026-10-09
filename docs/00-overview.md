@@ -39,7 +39,6 @@ The candidates come from Alek. These are the factors to check each one against, 
 ## Next steps (Rush 2049)
 
 1. Play through more of the game: other tracks and modes (stunt, circuit, ghost race, multiplayer).
-2. Find a scene where the announcer speaks, to exercise the speech decoder (`src/gsm_decoder.cpp`).
-3. Compare full-scale sample counts against hardware or another emulator; the recomp clips more often than
+2. Compare full-scale sample counts against hardware or another emulator; the recomp clips more often than
    Project64 did.
-4. Launcher and config polish: controller defaults for driving, a choice between Controller Pak and Rumble Pak.
+3. Launcher and config polish: controller defaults for driving, a choice between Controller Pak and Rumble Pak.
