@@ -70,6 +70,7 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/register_overlays.cpp
     ${CMAKE_SOURCE_DIR}/src/code_loading.cpp
     ${CMAKE_SOURCE_DIR}/src/libultra_extra.cpp
+    ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
 )
 
 target_include_directories(Rush2049Recompiled PRIVATE

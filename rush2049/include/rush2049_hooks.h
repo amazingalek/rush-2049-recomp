@@ -11,6 +11,9 @@ extern "C" {
 void rush2049_inflate_begin(uint8_t* rdram, recomp_context* ctx);
 void rush2049_inflate_end(uint8_t* rdram, recomp_context* ctx);
 
+/* ultramodern (scheduling.cpp): let queued game threads run, waking after at most 1 ms. For spin loops. */
+void yield_self_1ms(uint8_t* rdram);
+
 #ifdef __cplusplus
 }
 #endif

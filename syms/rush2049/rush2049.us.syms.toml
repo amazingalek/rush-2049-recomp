@@ -120,7 +120,7 @@ functions = [
     { name = "osInvalICache", vram = 0x80008460, size = 0x80 },
     { name = "osInvalDCache", vram = 0x800084E0, size = 0xB0 },
     { name = "_bzero", vram = 0x80008590, size = 0xA0 },
-    { name = "osEPiStartDma", vram = 0x80008630, size = 0xC0 },
+    { name = "osPiStartDma", vram = 0x80008630, size = 0xC0 },
     { name = "func_800086F0", vram = 0x800086F0, size = 0x1C },
     { name = "func_8000870C", vram = 0x8000870C, size = 0x24 },
     { name = "__sinf", vram = 0x80008730, size = 0x1C0 },

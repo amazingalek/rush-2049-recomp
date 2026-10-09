@@ -51,7 +51,7 @@ MANUAL_NAMES = {
     0x800077D0: "osViGetNextFramebuffer",  # follows osViGetCurrentFramebuffer, reads __osViNext
     0x80007840: "_VirtualToPhysicalTask",  # osSpTaskLoad helper: bcopy + 7x osVirtualToPhysical
     0x80008128: "__createSpeedParam",      # PI_BSD_DOM1/2 registers 0xA4600014-0xA4600030
-    0x80008630: "osEPiStartDma",           # (handle, mb, direction), types 0xB/0xC, __osPiDevMgr check
+    0x80008630: "osPiStartDma",            # (mb, pri, direction, devAddr, vAddr, nbytes, mq), types 0xB/0xC
     0x80009450: "osContInit",
     0x80009854: "osContGetReadData",
     0x800098E0: "__osPackReadData",

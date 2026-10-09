@@ -46,3 +46,11 @@ value = 0x00000000
 func = "func_800020F0"
 vram = 0x80002124
 value = 0x00000000
+
+# The render loop waits for the outstanding graphics-task counter (s16 at 0x8002EB70) to reach zero with a bare
+# spin loop (bnel to itself). ultramodern runs one game thread at a time, so the thread that decrements the
+# counter never runs. Yield inside the loop.
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD500
+text = "    if (ctx->r24 != 0) yield_self_1ms(rdram);"

@@ -44,6 +44,7 @@
 #include "librecomp/rsp.hpp"
 
 #include "rush2049_game.h"
+#include "crash_handler.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -287,6 +288,25 @@ std::vector<recomp::GameEntry> supported_games = {
     },
 };
 
+// --boot (development): start the game on the launcher's first frame, as its "Start Game" option does, so
+// bring-up runs don't need someone at the window. Needs the ROM already stored (see docs/games/rush2049.md).
+static bool autoboot = false;
+
+void on_launcher_update(recompui::LauncherMenu*) {
+    static bool done = false;
+    if (!autoboot || done) {
+        return;
+    }
+    done = true;
+    std::u8string game_id = supported_games[0].game_id;
+    if (!recomp::is_rom_valid(game_id)) {
+        fprintf(stderr, "--boot: no valid stored ROM, staying in the launcher\n");
+        return;
+    }
+    recomp::start_game(game_id, "");
+    recompui::hide_all_contexts();
+}
+
 void on_launcher_init(recompui::LauncherMenu* menu) {
     auto game_options_menu = menu->init_game_options_menu(
         supported_games[0].game_id,
@@ -298,6 +318,8 @@ void on_launcher_init(recompui::LauncherMenu* menu) {
 }
 
 int main(int argc, char** argv) {
+    rush2049::install_crash_handler();
+
     recomp::Version project_version{};
     if (!recomp::Version::from_string(version_string, project_version)) {
         ultramodern::error_handling::message_box(("Invalid version string: " + version_string).c_str());
@@ -306,6 +328,15 @@ int main(int argc, char** argv) {
 
 #ifdef _WIN32
     timeBeginPeriod(1);
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--boot") == 0) {
+            autoboot = true;
+        }
+        if (strcmp(argv[i], "--stacks") == 0) {
+            rush2049::start_stack_sampler(5);
+        }
+    }
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--show-console") == 0) {
@@ -324,8 +355,11 @@ int main(int argc, char** argv) {
     // wasapi; directsound has had sample queueing issues.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
 #else
-    (void)argc;
-    (void)argv;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--boot") == 0) {
+            autoboot = true;
+        }
+    }
 #endif
 
     NFD_Init();
@@ -358,6 +392,7 @@ int main(int argc, char** argv) {
     rush2049::init_config();
 
     recompui::register_launcher_init_callback(on_launcher_init);
+    recompui::register_launcher_update_callback(on_launcher_update);
 
     recomp::rsp::callbacks_t rsp_callbacks{
         .get_rsp_microcode = get_rsp_microcode,
