@@ -1,0 +1,9 @@
+[submodule "rush2049/lib/N64ModernRuntime"]
+	path = rush2049/lib/N64ModernRuntime
+	url = https://github.com/N64Recomp/N64ModernRuntime
+[submodule "rush2049/lib/rt64"]
+	path = rush2049/lib/rt64
+	url = https://github.com/rt64/rt64
+[submodule "rush2049/lib/RecompFrontend"]
+	path = rush2049/lib/RecompFrontend
+	url = https://github.com/N64Recomp/RecompFrontend

@@ -7,6 +7,7 @@ entrypoint = 0x80000400
 output_func_path = "RecompiledFuncs"
 symbols_file_path = "../syms/rush2049/rush2049.us.syms.toml"
 rom_file_path = "../roms/rush2049.us.recomp.z64"
+recomp_include = "#include \"recomp.h\"\n#include \"rush2049_hooks.h\""
 
 [patches]
 stubs = [
@@ -14,5 +15,34 @@ stubs = [
     "dcache_create_dirty_8002C5E0",
     # Hand-written DSP asm island (gen_syms.py ASM_ISLANDS); TODO reimplement in C.
     "func_800277D0", "func_800278C4", "func_80027B44",
+    # Only called by osMotorInit, which the runtime reimplements; calls __osContAddressCrc, which it doesn't.
+    "__osMakeMotorData",
 ]
 ignored = []
+
+# The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
+# and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
+# (src/code_loading.cpp maps the original ROM address to the extracted section).
+[[patches.hook]]
+func = "func_80006814"
+before_vram = 0x80006814
+text = "    rush2049_inflate_begin(rdram, ctx);"
+
+# After osInvalICache over the output; dst is still in the caller's arg slot at 0x4C($sp).
+[[patches.hook]]
+func = "func_80006814"
+before_vram = 0x80006954
+text = "    rush2049_inflate_end(rdram, ctx);"
+
+# lw $zero, 0x0($t8) (from 0x8002EB94): a load with no effect that N64Recomp emits as "0 = MEM_W(...)".
+[[patches.instruction]]
+func = "func_800CADA4"
+vram = 0x800CB408
+value = 0x00000000
+
+# Boot main reads 16 words from cart address 0xFFB000 (past the end of the 12 MiB ROM) into a stack buffer it
+# never uses. Skip the read.
+[[patches.instruction]]
+func = "func_800020F0"
+vram = 0x80002124
+value = 0x00000000
