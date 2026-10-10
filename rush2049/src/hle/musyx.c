@@ -128,13 +128,16 @@ enum {
  * interpolator's images, so bus 0 holds those voices and everything carried over from the original mix, and is
  * low-passed just under 11 kHz. Voices above 1x do have content up there (it is what the original mix aliases),
  * so bus 1 holds them and is only delayed to match: a voice whose pitch crosses 1x moves bus without moving in
- * time. */
+ * time. Above 2x one output step skips samples, so the kernel is stretched by the step (up to HIRES_STRETCH_MAX)
+ * and cuts the voice at the output's Nyquist frequency instead of its own, the way decimation does. */
 enum { HIRES_SIZE = 2 * SUBFRAME_SIZE };
 enum { HIRES_PHASES = 256 };
 enum { HIRES_TAPS = 16 };
 enum { HIRES_BEHIND = HIRES_TAPS / 2 - 2 }; /* taps before the original's read position, which is RESAMPLE_LUT's first */
 enum { HIRES_EXTRA = 32 };  /* samples the side mix loads past the game's, one ADPCM frame */
-enum { HIRES_SPAN = 16 * SUBFRAME_SIZE + HIRES_TAPS }; /* samples a voice can reach in a subframe, at the top pitch */
+enum { HIRES_STRETCH_MAX = 4 }; /* HIRES_EXTRA samples reach a kernel stretched up to this */
+enum { HIRES_WIDE_TAPS = HIRES_STRETCH_MAX * HIRES_TAPS };
+enum { HIRES_SPAN = 16 * SUBFRAME_SIZE + HIRES_WIDE_TAPS }; /* samples a voice can reach in a subframe, at the top pitch */
 enum { HIRES_LPF_TAPS = 97 };
 enum { HIRES_DELAY = (HIRES_LPF_TAPS - 1) / 2 };
 
@@ -170,6 +173,7 @@ typedef struct {
 /* the RSP task thread is the only caller */
 static musyx_hires_t hires_state;
 static float hires_kernel[HIRES_PHASES + 1][HIRES_TAPS];
+static float hires_proto[HIRES_TAPS / 2 * HIRES_PHASES + 1];
 static float hires_sfx_half[4];
 static float hires_lpf[HIRES_LPF_TAPS];
 
@@ -1132,6 +1136,7 @@ static double sinc(double x)
  * window with beta 5 keeps the passband flat to 0.4 of the sample rate (-0.0 dB, against -2.3 dB for the 4 taps
  * the game's samples allow and -6.5 dB for RESAMPLE_LUT; -1.2 dB at 0.45) and rejects the images from 0.6 on by
  * 53 dB (the 4 taps: 12 dB at 0.6, 34 dB from 0.75).
+ * hires_proto is the same kernel as a function of distance, at HIRES_PHASES points per sample, for stretching it.
  * hires_sfx_half weighs the delay effect's last 4 samples for the point halfway between the middle two, with the
  * 4-tap window.
  * hires_lpf is bus 0's low-pass, relative to the doubled rate: flat to 10 kHz, -3 dB at 10.5 kHz, -74 dB from 12 kHz
@@ -1156,6 +1161,12 @@ static void init_hires_kernel(void)
 
         for (k = 0; k < HIRES_TAPS; ++k)
             hires_kernel[p][k] = (float)(c[k] / sum);
+    }
+
+    for (k = 0; k <= HIRES_TAPS / 2 * HIRES_PHASES; ++k) {
+        double t = (double)k / HIRES_PHASES;
+
+        hires_proto[k] = (float)(sinc(t) * kaiser(t / (HIRES_TAPS / 2), 5.0));
     }
 
     sum = 0.0;
@@ -1195,6 +1206,33 @@ static float hires_interpolate(const int16_t *x, uint32_t frac)
     }
 
     return va + (vb - va) * (float)(frac & 0xff) * (1.0f / 256.0f);
+}
+
+/* The kernel stretched by stretch/0x10000 (> 1): its cutoff drops by as much and it is as many times longer, so the
+ * transition band keeps its width at the output rate. x holds 2 * half samples, the point frac of the way from
+ * x[half - 1] to x[half]. */
+static float hires_interpolate_wide(const int16_t *x, int half, uint32_t frac, uint32_t stretch)
+{
+    const float scale = (float)HIRES_PHASES * 65536.0f / (float)stretch; /* hires_proto points per sample */
+    const float limit = (float)(HIRES_TAPS / 2 * HIRES_PHASES);
+    float d = (float)(half - 1) + (float)frac * (1.0f / 65536.0f); /* from x[0] to the point */
+    float v = 0.0f, sum = 0.0f;
+    int k;
+
+    for (k = 0; k < 2 * half; ++k, d -= 1.0f) {
+        float u = fabsf(d) * scale;
+        float w;
+        int j;
+
+        if (u >= limit)
+            continue;
+        j = (int)u;
+        w = hires_proto[j] + (hires_proto[j + 1] - hires_proto[j]) * (u - (float)j);
+        v += w * x[k];
+        sum += w;
+    }
+
+    return v / sum;
 }
 
 static void hires_begin_task(musyx_hires_t *hires, const int16_t *cc0)
@@ -1374,16 +1412,20 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
 {
     const uint32_t half_step = pitch_step >> 1; /* pitch_step is a multiple of 16, so this is exact */
     const int bus = (pitch_step > 0x10000) ? 1 : 0;
-    const int n = min_int((int)((pitch_accu + (uint64_t)half_step * (HIRES_SIZE - 1)) >> 16) + HIRES_TAPS,
+    /* above 2x, the kernel stretched by the step, so it cuts at the output's Nyquist frequency */
+    const uint32_t stretch = (half_step > 0x10000) ? (uint32_t)min_int((int)half_step, HIRES_STRETCH_MAX << 16)
+                                                   : 0x10000;
+    const int half = (int)((HIRES_TAPS / 2 * stretch + 0xffff) >> 16); /* taps on either side of the point */
+    const int n = min_int((int)((pitch_accu + (uint64_t)half_step * (HIRES_SIZE - 1)) >> 16) + 2 * half,
                           HIRES_SPAN);
     int16_t x[HIRES_SPAN];
     float *dst[4];
     bool restart = false;
     int i, k, pos;
 
-    /* the samples the voice plays, in order, from HIRES_BEHIND before its read position on, through the
-     * end/restart points the way the original handles them */
-    pos = start - HIRES_BEHIND;
+    /* the samples the voice plays, in order, from HIRES_BEHIND (more for a stretched kernel) before its read
+     * position on, through the end/restart points the way the original handles them */
+    pos = start - HIRES_BEHIND - (half - HIRES_TAPS / 2);
     for (i = 0; i < n; ++i) {
         if (!restart && pos >= end_point) {
             pos = (restart_point & 0x7fff) + (pos - end_point);
@@ -1401,9 +1443,10 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
         uint32_t frac = pitch_accu & 0xffff;
         float v;
 
-        pos = min_int(pos + (int)(pitch_accu >> 16), n - HIRES_TAPS);
+        pos = min_int(pos + (int)(pitch_accu >> 16), n - 2 * half);
         pitch_accu = frac + half_step;
-        v = hires_interpolate(x + pos, frac);
+        v = (stretch == 0x10000) ? hires_interpolate(x + pos, frac)
+                                 : hires_interpolate_wide(x + pos, half, frac, stretch);
 
         for (k = 0; k < 4; ++k) {
             /* the envelope at time i/2: env + env_step * i / 2, then >> 16 as envmix does */
