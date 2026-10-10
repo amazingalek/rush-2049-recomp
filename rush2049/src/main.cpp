@@ -164,7 +164,8 @@ void update_gfx(void*) {
 }
 
 // Audio output: the game's samples (s16 stereo, channels swapped by the runtime's address xor) are converted to
-// float and resampled to the device rate with SDL.
+// float and resampled to the device rate with SDL. With the high-quality MusyX mix on, each buffer is first
+// swapped for the same audio rendered at twice the game's rate.
 
 static SDL_AudioCVT audio_convert;
 static SDL_AudioDeviceID audio_device = 0;
@@ -176,7 +177,18 @@ constexpr uint32_t duplicated_input_frames = 4;
 static uint32_t discarded_output_frames;
 constexpr uint32_t bytes_per_frame = input_channels * sizeof(float);
 
+// The rate the samples reach the converter at.
+static uint32_t input_sample_rate() {
+    return rush2049::musyx_hires_enabled() ? 2 * sample_rate : sample_rate;
+}
+
 void queue_samples(int16_t* audio_data, size_t sample_count) {
+    static std::vector<int16_t> hires_buffer;
+    if (rush2049::musyx_hires_enabled()) {
+        rush2049::musyx_hires_buffer(audio_data, sample_count, hires_buffer);
+        audio_data = hires_buffer.data();
+        sample_count = hires_buffer.size();
+    }
     rush2049::probe_audio(audio_data, sample_count);
     static std::vector<float> swap_buffer;
     static std::array<float, duplicated_input_frames * input_channels> duplicated_sample_buffer;
@@ -249,16 +261,16 @@ size_t get_frames_remaining() {
 }
 
 void update_audio_converter() {
-    if (SDL_BuildAudioCVT(&audio_convert, AUDIO_F32, input_channels, sample_rate, AUDIO_F32, output_channels, output_sample_rate) < 0) {
+    if (SDL_BuildAudioCVT(&audio_convert, AUDIO_F32, input_channels, input_sample_rate(), AUDIO_F32, output_channels, output_sample_rate) < 0) {
         printf("Error creating SDL audio converter: %s\n", SDL_GetError());
         throw std::runtime_error("Error creating SDL audio converter");
     }
-    discarded_output_frames = duplicated_input_frames * output_sample_rate / sample_rate;
+    discarded_output_frames = duplicated_input_frames * output_sample_rate / input_sample_rate();
 }
 
 void set_frequency(uint32_t freq) {
-    rush2049::probe_audio_frequency(freq);
     sample_rate = freq;
+    rush2049::probe_audio_frequency(input_sample_rate());
     update_audio_converter();
 }
 
@@ -399,6 +411,10 @@ int main(int argc, char** argv) {
             }
             else if (strcmp(argv[i], "compare") == 0) {
                 rush2049::set_musyx_mode(rush2049::MusyxMode::Compare);
+            }
+            else if (strcmp(argv[i], "native") == 0) {
+                rush2049::set_musyx_mode(rush2049::MusyxMode::Hle);
+                rush2049::set_musyx_hires(false);
             }
             else {
                 rush2049::set_musyx_mode(rush2049::MusyxMode::Hle);

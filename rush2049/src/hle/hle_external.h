@@ -22,6 +22,8 @@
 #ifndef HLE_EXTERNAL_H
 #define HLE_EXTERNAL_H
 
+#include <stdint.h>
+
 #if defined(__GNUC__)
 #define ATTR_FMT(fmtpos, attrpos) __attribute__ ((format (printf, fmtpos, attrpos)))
 #else
@@ -41,6 +43,10 @@ void HleProcessAlistList(void* user_defined);
 void HleProcessRdpList(void* user_defined);
 void HleShowCFB(void* user_defined);
 int HleForwardTask(void* user_defined);
+
+/* rush2049: MusyX v1's high-quality side mix. `native` is where the game's 192 interleaved frames of a subframe
+ * were just written; `hires` holds the same subframe at twice the rate (384 frames, same layout). */
+void musyx_hires_store(const uint32_t* native, const uint32_t* hires);
 
 #endif
 
