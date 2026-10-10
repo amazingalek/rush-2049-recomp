@@ -13,6 +13,10 @@ six race tracks race to the results screen, two- and four-player split screen re
 survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
 one pad.
 
+**Plan: the browser.** The long-term goal is to play it in a web browser, with your ROM picked from disk and kept
+in the browser, never uploaded, and to make that web support work for every N64 recomp, not just this one. So far
+the game runs there without graphics, to show the CPU side keeps up; drawing it is the work still to do.
+
 ## Modern enhancements
 
 Every one of these is an option in the recomp's settings menu (General, Graphics and Sound tabs), and every
@@ -222,7 +226,8 @@ cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes bui
 
 - `rush2049/`: the recomp itself: runtime glue and enhancements (`src/`), the patches library mods build against
   (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
-  `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`) and the submodules themselves (`lib/`).
+  `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
+  headless build with no graphics (`headless/`), the first step towards the browser.
 - `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
