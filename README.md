@@ -15,7 +15,8 @@ one pad.
 
 **Plan: the browser.** The long-term goal is to play it in a web browser, with your ROM picked from disk and kept
 in the browser, never uploaded, and to make that web support work for every N64 recomp, not just this one. So far
-the game runs there without graphics, to show the CPU side keeps up; drawing it is the work still to do.
+the game runs there without graphics, to show the CPU side keeps up, and the renderer has a first WebGPU backend
+that draws simple scenes in a browser; drawing the game with it is the work still to do.
 
 ## Modern enhancements
 

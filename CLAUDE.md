@@ -74,6 +74,8 @@ N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI 
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
                        thread names
 N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
+plume-0001             WebGPU backend (plume_webgpu.*, in rt64/src/contrib/plume); WGSL from HLSL with dxc and naga;
+                       the triangle and cube examples build for the browser
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -230,15 +232,44 @@ So wasm costs about 4 times the CPU of native, and a frame still uses a small pa
 keeps up. The host was 14-54% busy with other sessions; at 100% busy both builds fell to 36-54 retraces a second
 with their own CPU use unchanged, so what drops frames there is threads waiting for a core, not the work.
 
-**Still to do, each its own card:** graphics. RT64 and recompui draw through plume, which has D3D12, Vulkan and
-Metal backends only (`rt64/src/contrib/plume/`, `recompui/src/renderer/rt64_render_context.cpp`). WebGPU needs a
-plume backend (Emdawnwebgpu), a redesign of the texture binding (the shaders index a bindless texture array,
-`shaders/TextureSampler.hlsli`, which core WebGPU lacks) and HLSL to WGSL; a WebGL renderer instead would lose the
-rt64 patches. Then the frontend: SDL2 audio and input exist in Emscripten; `_WIN32` branches are only in `main.cpp`,
-`music.cpp`, `rom_finder.cpp` and `crash_handler.cpp`; the ROM comes from a file picker and stays in IndexedDB,
-never hosted. Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
-have to emit and load wasm modules instead. No other N64
-recomp running in a browser was found to learn from.
+**Step 2, started: drawing.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui draw
+through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks). plume's own triangle and cube
+examples (vertex buffer, cube texture upload, sampler, descriptor set, push constants) draw in headless Chrome 154
+with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. To build and look at them:
+
+```sh
+cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
+emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DPLUME_BUILD_EXAMPLES=ON -DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe \
+    -DPLUME_NAGA_EXECUTABLE=<naga.exe>
+cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html
+```
+
+Serve `<dir>/bin` over http on localhost and open it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`;
+headless works with `--headless=new --enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that
+page, never a screen copy. Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) →
+WGSL (naga `--keep-coordinate-space`), and push constants become a uniform buffer at `@group(3) @binding(0)`.
+
+**Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
+every plume call it makes):
+
+- Shaders: 35 of 56 convert; RasterPS/VS need `RDPParams` and `GPUTile` padded (dxc's D3D packing of `float3`
+  breaks WGSL's 16-byte `vec3`), typed `Buffer<T>`s become structured buffers, formatless `RWTexture2D`s get a
+  format, RasterPS's 18 samplers come down to 16, and dual-source blending is optional in WebGPU. No geometry
+  shaders. The Vulkan path specializes SPIR-V at run time (`respv`); WebGPU does it with WGSL overrides.
+- Texture binding: `gTextures[8192]` and `gTMEM[8192]` are one bindless set bound twice, mixing 2D float and 1D
+  `R8_UINT` textures (`rt64_descriptor_sets.h`, `TextureSampler.hlsli`). The common set (bindings 1-67) also exceeds
+  WebGPU's default per-stage limits.
+- plume gaps RT64 hits: blocking READBACK maps (the framebuffer change count, and `renderToRAM`, on by default),
+  texel buffers (formatted views), FillRect's one-rect clears, MSAA sample locations.
+- Threads: about a dozen RT64 threads call plume (workload, idle, present, texture upload, streaming, shader
+  compile, 11 buffer uploaders); every WebGPU call has to come from the thread that owns the device.
+- Then RT64 in the headless build, the title screen on a canvas; then the frontend: recompui (RmlUi on plume), SDL2
+  audio and input (Emscripten has both), the ROM from a file picker kept in IndexedDB, never hosted. `_WIN32`
+  branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp` and `crash_handler.cpp`.
+
+Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
+and load wasm modules instead. No other N64 recomp running in a browser was found to learn from.
 
 ## Ruled out, so don't retry
 
