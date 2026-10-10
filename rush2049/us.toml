@@ -21,6 +21,21 @@ stubs = [
     "__osMakeMotorData",
 ]
 
+# Frame rate. The game swaps a finished frame only when at least 2 retraces have passed since the last swap
+# (sltiu $at, $t3, 2 on the retrace count delta in $t3), once when the RDP finishes (func_80000C54) and again
+# on retrace for a swap left pending (func_80000880). That is the whole 30 fps cap: the frame kick follows the
+# swap, and game logic scales with measured time (a race clock tracks wall time at either rate). At the 60 fps
+# setting the hook turns a delta of 1 into 2, so a frame swaps on the next retrace; a delta of 0 still waits.
+[[patches.hook]]
+func = "func_80000C54"
+before_vram = 0x80000CFC
+text = "    rush2049_frame_pace(ctx);"
+
+[[patches.hook]]
+func = "func_80000880"
+before_vram = 0x800008C8
+text = "    rush2049_frame_pace(ctx);"
+
 # The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
 # and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
 # (src/code_loading.cpp maps the original ROM address to the extracted section).
