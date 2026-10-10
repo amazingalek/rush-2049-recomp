@@ -16,6 +16,10 @@ namespace rush2049 {
     // --dump-ram: write all of RDRAM (big-endian) to <prefix>N.bin at each of the comma-separated times in seconds.
     void start_ram_dump(const char* prefix, const char* times);
 
+    // Hi-res font (src/hires_font.cpp): set up the generated texture pack in the app folder, then turn it on or off.
+    void init_hires_font();
+    void set_hires_font(bool on);
+
     // Music replacement (src/music.cpp): mixes the playing replacement file into `frames` frames of float audio
     // at `rate` Hz with `channels` channels.
     void music_mix(float* out, size_t frames, uint32_t channels, uint32_t rate, float main_volume);
