@@ -47,6 +47,7 @@
 #include "crash_handler.h"
 #include "debug_probe.h"
 #include "musyx_hle.h"
+#include "rom_finder.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -320,7 +321,7 @@ std::vector<recomp::GameEntry> supported_games = {
     {
         // XXH3 of San Francisco Rush 2049 (USA), SHA-1 3f99351d7bb61656614bdb2aa1a90cfe55d1922c.
         .rom_hash = 0x86A0D6C1C9A3DEA1ULL,
-        .internal_name = "RUSH 2049",
+        .internal_name = "Rush 2049", // as in the header at 0x20; the runtime compares it exactly
         .display_name = "San Francisco Rush 2049",
         .game_id = u8"rush2049.n64.us",
         .mod_game_id = "rush2049",
@@ -356,6 +357,12 @@ void on_launcher_update(recompui::LauncherMenu*) {
 }
 
 void on_launcher_init(recompui::LauncherMenu* menu) {
+    // Before the menu reads whether a ROM is stored, so a found one starts on Start Game.
+    recomp::GameEntry& game = supported_games[0];
+    if (!recomp::is_rom_valid(game.game_id) && rush2049::find_rom(game.game_id, game.internal_name)) {
+        recomp::check_all_stored_roms();
+    }
+
     auto game_options_menu = menu->init_game_options_menu(
         supported_games[0].game_id,
         supported_games[0].mod_game_id,
@@ -376,6 +383,7 @@ int main(int argc, char** argv) {
 
 #ifdef _WIN32
     timeBeginPeriod(1);
+#endif
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--boot") == 0) {
@@ -429,6 +437,7 @@ int main(int argc, char** argv) {
         }
     }
 
+#ifdef _WIN32
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--show-console") == 0) {
             if (GetConsoleWindow() == nullptr) {
@@ -445,12 +454,6 @@ int main(int argc, char** argv) {
 
     // wasapi; directsound has had sample queueing issues.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
-#else
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--boot") == 0) {
-            autoboot = true;
-        }
-    }
 #endif
 
     NFD_Init();

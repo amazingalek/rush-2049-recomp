@@ -1,4 +1,4 @@
-// Prints a symbolized stack trace to stderr when the process crashes (Windows only).
+// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail).
 //
 // Recompiled functions are named after their N64 address (func_800A11E4, ovl1_func_8038A634, ...), or by
 // syms/rush2049/names.toml for the few we have worked out (draw_tex_rect, ...), so a trace
@@ -290,6 +290,50 @@ void rush2049::start_hw_watch(uint32_t vram) {
         }
     }).detach();
 }
+
+#elif defined(__linux__)
+
+// Linux: the crash trace only. The executable links with -rdynamic, so backtrace_symbols names the recompiled
+// functions; the --stacks, --watch and --hwwatch dev flags are Windows only and do nothing here.
+
+#include <csignal>
+#include <cstring>
+#include <cstdio>
+#include <execinfo.h>
+#include <unistd.h>
+
+namespace {
+
+void crash_signal(int sig, siginfo_t* info, void*) {
+    fprintf(stderr, "\n[crash] signal %d (%s) at address %p\n", sig, strsignal(sig), info->si_addr);
+    void* frames[64];
+    int depth = backtrace(frames, 64);
+    backtrace_symbols_fd(frames, depth, STDERR_FILENO);
+    rush2049::print_probes();
+    fflush(stderr);
+    // SA_RESETHAND put the default action back, so re-raising ends the process the usual way (core dump included).
+    raise(sig);
+}
+
+} // namespace
+
+void rush2049::install_crash_handler() {
+    // Load libgcc's unwinder now: backtrace() would otherwise dlopen it inside the handler.
+    void* warmup[1];
+    backtrace(warmup, 1);
+    struct sigaction sa{};
+    sa.sa_sigaction = crash_signal;
+    sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    sigemptyset(&sa.sa_mask);
+    for (int sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT }) {
+        sigaction(sig, &sa, nullptr);
+    }
+}
+
+void rush2049::start_hw_watch(uint32_t) {}
+std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
+void rush2049::start_stack_sampler(int, bool) {}
+void rush2049::start_byte_watch(uint32_t) {}
 
 #else
 

@@ -239,6 +239,12 @@ std::vector<std::filesystem::path> music_folders() {
     if (n != 0 && n < MAX_PATH) {
         folders.push_back(std::filesystem::path(exe).parent_path() / "music");
     }
+#elif defined(__linux__)
+    std::error_code ec;
+    std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) {
+        folders.push_back(exe.parent_path() / "music");
+    }
 #endif
     std::filesystem::path app = recompui::file::get_app_folder_path();
     if (!app.empty()) {
