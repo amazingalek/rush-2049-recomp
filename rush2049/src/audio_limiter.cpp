@@ -5,19 +5,18 @@
 
 namespace {
 
-constexpr float threshold = 0.9f;
-constexpr float ceiling = 1.0f;
 constexpr double lookahead_seconds = 0.003;
 constexpr double release_seconds = 0.06;
 
-// The level a peak of `x` (above the threshold) leaves at: the threshold plus a tanh curve that approaches the ceiling.
-float knee(float x) {
-    return threshold + (ceiling - threshold) * std::tanh((x - threshold) / (ceiling - threshold));
-}
-
 } // namespace
 
-rush2049::Limiter rush2049::output_limiter;
+rush2049::Limiter rush2049::output_limiter{ 0.9f, 1.0f };
+rush2049::Limiter rush2049::mix_limiter{ 0.95f, 0.99f };
+
+// The threshold plus a tanh curve that approaches the ceiling.
+float rush2049::Limiter::knee(float x) const {
+    return threshold + (ceiling - threshold) * std::tanh((x - threshold) / (ceiling - threshold));
+}
 
 void rush2049::Limiter::reset(uint32_t rate) {
     uint32_t lookahead = std::max(1u, (uint32_t)std::lround(rate * lookahead_seconds));
