@@ -178,6 +178,10 @@ with the window instead) and about 50k of compute and uploads. No integrated GPU
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
 - Cutting the 240p GPU floor further: it is the cost of starting ~500 draw calls a frame (fewer means RT64 merging
   N64 draws) and a full-window VI pass (one textured triangle and a clear). Only the upload barriers were overhead.
+- A cheaper VI pass. Its ~71k in a 1920x1080 window are ~10k of render-pass start and clear (a driver fast clear;
+  clearing only the bars saves 1-2k), ~50k filling the window once (the same triangle in a flat colour, about 40
+  pixels a clock) and ~10k for its one bilinear tap of the frame (320x240 at 240p). The gamma `pow` measures
+  nothing. Only a smaller window shrinks it.
 - Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
   Rewrite commands in place instead.
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
