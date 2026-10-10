@@ -1,6 +1,6 @@
 # Jet Force Gemini (N64)
 
-Status: **triage done, on hold.** Second target, after Rush 2049.
+Status: **dropped** (Alek, 2026-10-10): this repo is Rush 2049 only. The triage below is kept for reference.
 
 **A recomp already exists.** TK22-26/JetForceGemini-Recomp released v1.1.0 on 2026-10-09, and Dubstroy has
 another one in progress. Before putting work in here, decide whether a second JFG recomp is worth it, or
