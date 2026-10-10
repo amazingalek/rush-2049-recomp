@@ -149,8 +149,38 @@ static void set_keyboard_defaults() {
     recompinput::set_default_mapping_for_keyboard(GameInput::C_RIGHT, { InputField::keyboard(SDL_SCANCODE_H) });
 }
 
+// Gamepad defaults for driving on a modern pad (Xbox, PlayStation, Switch Pro; any pad SDL knows as a game
+// controller). The stock defaults are an N64 layout: gas and brake on the A and X face buttons, the triggers on
+// R (shift up) and Z, and shift down on RB. Here the triggers are gas and brake, the bumpers shift, view moves
+// to Y and Z to B. The face buttons keep gas and brake for menus, and the right stick stays the C buttons.
+// Only defaults: saved bindings and the game's own CONTROLS screen still apply.
+static void set_controller_defaults() {
+    using recompinput::GameInput;
+    using recompinput::InputField;
+    recompinput::set_default_mapping_for_controller(GameInput::A, {
+        InputField::controller_analog(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, true),
+        InputField::controller_digital(recompinput::SDL_CONTROLLER_BUTTON_SOUTH) });
+    recompinput::set_default_mapping_for_controller(GameInput::B, {
+        InputField::controller_analog(SDL_CONTROLLER_AXIS_TRIGGERLEFT, true),
+        InputField::controller_digital(recompinput::SDL_CONTROLLER_BUTTON_WEST) });
+    recompinput::set_default_mapping_for_controller(GameInput::R,
+        { InputField::controller_digital(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) });
+    recompinput::set_default_mapping_for_controller(GameInput::C_DOWN, {
+        InputField::controller_analog(SDL_CONTROLLER_AXIS_RIGHTY, true),
+        InputField::controller_digital(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) });
+    recompinput::set_default_mapping_for_controller(GameInput::L,
+        { InputField::controller_digital(recompinput::SDL_CONTROLLER_BUTTON_NORTH) });
+    recompinput::set_default_mapping_for_controller(GameInput::C_LEFT,
+        { InputField::controller_analog(SDL_CONTROLLER_AXIS_RIGHTX, false) });
+    recompinput::set_default_mapping_for_controller(GameInput::Z,
+        { InputField::controller_digital(recompinput::SDL_CONTROLLER_BUTTON_EAST) });
+    recompinput::set_default_mapping_for_controller(GameInput::C_RIGHT,
+        { InputField::controller_analog(SDL_CONTROLLER_AXIS_RIGHTX, true) });
+}
+
 void rush2049::init_config() {
     set_keyboard_defaults();
+    set_controller_defaults();
 
     std::filesystem::path app_dir = recompui::file::get_app_folder_path();
     if (!app_dir.empty()) {
