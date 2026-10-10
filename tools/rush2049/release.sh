@@ -34,7 +34,7 @@ source tools/env.sh
 build=rush2049/build-release
 cmake -S rush2049 -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
-    -DPATCHES_C_COMPILER="$MIPS_CC" -DPATCHES_LD="$MIPS_LD" > /dev/null
+    -DPATCHES_C_COMPILER="$MIPS_CC" -DPATCHES_LD="$MIPS_LD" > "$build.log" 2>&1 || { tail -20 "$build.log"; exit 1; }
 ninja -C "$build" Rush2049Recompiled > "$build/build.log" 2>&1 ||
     { grep -E " error|FAILED|undefined" "$build/build.log" | head -20; exit 1; }
 
