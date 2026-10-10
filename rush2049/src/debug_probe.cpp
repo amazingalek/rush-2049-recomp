@@ -8,6 +8,7 @@
 #include "recomp.h"
 #include "rush2049_hooks.h"
 #include "debug_probe.h"
+#include "musyx_hle.h"
 
 namespace {
 
@@ -105,6 +106,10 @@ void rush2049::print_probes() {
     // Peak is since the previous print.
     fprintf(stderr, "  audio: %u buffers, %llu samples, peak %d\n", audio_buffers.load(),
             (unsigned long long)audio_samples.load(), audio_peak.exchange(0));
+    uint64_t hires_matched, hires_fallback;
+    musyx_hires_counts(hires_matched, hires_fallback);
+    fprintf(stderr, "  musyx hi-res: %llu frames played, %llu without a match\n", (unsigned long long)hires_matched,
+            (unsigned long long)hires_fallback);
     fprintf(stderr, "  sched msgs: retrace %u rsp %u rdp %u nmi %u audio %u\n", sched_counts[0].load(),
             sched_counts[1].load(), sched_counts[2].load(), sched_counts[3].load(), sched_counts[4].load());
     fprintf(stderr, "  input reads: %u\n", probe_input_reads.load());

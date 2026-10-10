@@ -26,6 +26,9 @@ struct Walker {
     int lines = 0;
 
     uint32_t phys(uint32_t addr) const {
+        if (addr >= 0x81000000 && addr < 0xA0000000) {  // the recomp heap, which RT64 reads in extended RDRAM mode
+            return addr - 0x80000000;
+        }
         uint32_t p = segments[(addr >> 24) & 0xF] + (addr & 0x00FFFFFF);
         return p & 0x007FFFFF;
     }

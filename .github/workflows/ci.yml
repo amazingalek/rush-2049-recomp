@@ -1,0 +1,78 @@
+# Build and checks only; nothing is deployed or released.
+# The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
+# don't exist here: CI builds every library and every object file of the exe except the two that include that output,
+# and stops short of linking.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: No ROM data tracked, TOML parses, Python compiles
+        run: python -I tools/ci/check_repo.py
+      - name: Runtime patches apply to the pinned N64ModernRuntime
+        run: |
+          git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
+          bash tools/rush2049/apply_runtime_patches.sh
+          bash tools/rush2049/apply_runtime_patches.sh | grep -q "already applied"
+
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply runtime patches
+        shell: bash
+        run: bash tools/rush2049/apply_runtime_patches.sh
+      # The dev box uses CMake 3.31 (docs/03-local-env.md): CMake 4 rejects the old submodules' cmake_minimum_required.
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.0"
+          ninjaVersion: "^1.13.0"
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Stand in for the ROM-generated sources
+        shell: bash
+        run: |
+          mkdir -p rush2049/RecompiledFuncs rush2049/rsp
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      - name: Configure
+        run: |
+          clang-cl --version
+          cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build runtime, renderer and frontend libraries
+        run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
+      - name: Compile the game's own sources
+        shell: bash
+        run: |
+          objs=$(ninja -C rush2049/build -t targets all |
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.obj' | grep -vE 'register_overlays|/rsp/')
+          [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
+          echo "$objs"
+          ninja -C rush2049/build $objs
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
