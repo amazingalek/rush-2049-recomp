@@ -106,7 +106,9 @@ bash tools/rush2049/iterate.sh 30
 
 Copying `rush2049/lib/` from another worktree on the same submodule commits is faster than cloning; run the
 submodule update after it anyway. Without `portable.txt` the game reads and writes the user's own settings in
-`%LOCALAPPDATA%\Rush2049Recompiled\`.
+`%LOCALAPPDATA%\Rush2049Recompiled\`. If `git status` then fails with `bad object HEAD` in a nested submodule, a
+fetch hit the path limit; repair it with
+`git -c core.longpaths=true submodule foreach --recursive 'git config core.longpaths true; git cat-file -e $sha1 || git fetch origin $sha1'`.
 
 **Running the game.** `iterate.sh <secs>` boots with `--boot --stacks` into `rush2049/run.log`, and
 `ninja -C rush2049/build Rush2049Recompiled` is enough after a source change. Other sessions run the game on
@@ -140,14 +142,16 @@ no ROM.
 
 GPU readings are wall time and the 2070's clock wanders 630–1620 MHz under light load, so compare in cycles (ms ×
 the clock `nvidia-smi` reports over the same run) and interleave runs. Check the host too: with its CPU busy the
-game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves.
+game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves. Separate
+runs at 240p still differ by ±15% in cycles, so for a change worth less than that, switch it on and off every few
+frames inside one run and time the two halves apart.
 
 Where a frame goes, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of cycles (Auto is
 the 1080p column):
 
 ```
 part                         240p   1080p
-render: draws                 116     754   ~500 calls, ~175 cycles each + 40k
+render: draws                 116     754   ~500 calls; ~90k of it stays with no pixels
         vertex compute         27      31
         uploads                25      35   was ~36 at 240p before rt64-0004
         barriers, resolves     13      21
@@ -157,8 +161,9 @@ present: VI pass               71      95   sized by the window: 37 in 1280x720
          UI                     6       6
 ```
 
-So what doesn't scale with resolution is the draw calls (their count, not their pixels), the VI pass (it scales
-with the window instead) and about 50k of compute and uploads. No integrated GPU has been measured.
+So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: see Ruled out), the
+VI pass (it scales with the window instead) and about 50k of compute and uploads. No integrated GPU has been
+measured.
 
 ## Testing in the game
 
@@ -176,8 +181,11 @@ with the window instead) and about 50k of compute and uploads. No integrated GPU
 - A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
 - A draw-distance unlock: the game draws to just short of its far plane already, and its fog sits beyond it.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
-- Cutting the 240p GPU floor further: it is the cost of starting ~500 draw calls a frame (fewer means RT64 merging
-  N64 draws) and a full-window VI pass (one textured triangle and a clear). Only the upload barriers were overhead.
+- Merging or batching RT64's draws to cut the 240p floor. Only ~5% of draws repeat the one before exactly; merging
+  every run that shares a pipeline (wrong textures, timing only) halves the ~500 calls and the draws part moves
+  less than ±4%. With a 1x1 viewport (no pixels) ~90k cycles stay, and the ubershader, which cuts pipeline binds
+  from 80% of draws to 7%, doesn't lower them; it doubles the draws part with pixels on. Draw calls and pipeline
+  binds are not the cost. Only the upload barriers were overhead.
 - A cheaper VI pass. Its ~71k in a 1920x1080 window are ~10k of render-pass start and clear (a driver fast clear;
   clearing only the bars saves 1-2k), ~50k filling the window once (the same triangle in a flat colour, about 40
   pixels a clock) and ~10k for its one bilinear tap of the frame (320x240 at 240p). The gamma `pow` measures
