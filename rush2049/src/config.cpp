@@ -1,6 +1,7 @@
 // Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
 // and hi-res font on the Graphics tab, and the music replacement options on the Sound tab.
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 
@@ -10,6 +11,7 @@
 #include "recompinput/input_mapping.h"
 #include "recompui/config.h"
 #include "util/file.h"
+#include "ultramodern/ultramodern.hpp"
 
 namespace {
     enum class Accessory {
@@ -26,15 +28,33 @@ namespace {
     enum class GameFrameRate {
         Original,
         Sixty,
+        MatchFramerate,
         OptionCount
     };
     const std::vector<recomp::config::ConfigOptionEnumOption> game_frame_rate_options = {
         {GameFrameRate::Original, "Original", "30 FPS (Original)"},
         {GameFrameRate::Sixty, "60", "60 FPS"},
+        {GameFrameRate::MatchFramerate, "MatchFramerate", "Match Framerate"},
     };
     const std::string game_frame_rate_option = "game_frame_rate";
-    // Read by the scheduler thread on every swap check, so it is cached rather than looked up in the config.
-    std::atomic<bool> sixty_fps{ true };
+    // Read by the scheduler thread on every retrace, so it is cached rather than looked up in the config.
+    std::atomic<GameFrameRate> game_frame_rate_setting{ GameFrameRate::Sixty };
+    // Frames a second the game draws, and the VI rate it was set up for (at least 60, the console's).
+    std::atomic<uint32_t> game_fps{ 60 };
+    uint32_t vi_rate = 60;
+
+    // Match Framerate follows the Framerate option above it: Original is 60, Display the monitor's refresh rate,
+    // Manual its value. Never below 60.
+    uint32_t wanted_fps() {
+        switch (game_frame_rate_setting.load(std::memory_order_relaxed)) {
+            case GameFrameRate::Original:
+                return 30;
+            case GameFrameRate::Sixty:
+                return 60;
+            default:
+                return std::max<uint32_t>(60, ultramodern::get_target_framerate(60));
+        }
+    }
 
     enum class HiresFont {
         Off,
@@ -60,16 +80,52 @@ namespace {
     const std::string music_replacement_volume_option = "music_replacement_volume";
 }
 
+uint32_t rush2049::game_frame_rate() {
+    return game_fps.load(std::memory_order_relaxed);
+}
+
 bool rush2049::rumble_pak_selected() {
     auto value = recompui::config::get_general_config().get_option_value(accessory_option);
     return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
 }
 
-extern "C" void rush2049_frame_pace(recomp_context* ctx) {
-    // $t3 = retraces since the last swap; the game swaps when it is at least 2.
-    if (sixty_fps.load(std::memory_order_relaxed) && ctx->r11 == 1) {
-        ctx->r11 = 2;
+extern "C" gpr rush2049_frame_pace(gpr retraces) {
+    // Retraces since the last swap; the game swaps (and starts the next task with a swap pending) when it is at
+    // least 2. From 60 fps up the VI runs at the frame rate, so one retrace is enough.
+    if (game_fps.load(std::memory_order_relaxed) >= 60 && retraces == 1) {
+        return 2;
     }
+    return retraces;
+}
+
+// On every retrace, before the scheduler sends it on to its clients ($t8 = the first client, $t7 = the scheduler).
+// Above 60 fps the VI runs at the frame rate. The main thread waits for a retrace before each frame, so it gets
+// every one, but the others (controller, audio and music threads) still get 60 a second: the music sequencer counts
+// them, so more would play it faster. The hook sends the retraces itself, the way the VI thread sends interrupts, and
+// empties $t8 so the game's own loop sends none.
+extern "C" void rush2049_retrace_clients(uint8_t* rdram, recomp_context* ctx) {
+    constexpr uint32_t main_thread_queue = 0x8002ECF8;  // the client func_80002238 adds
+    uint32_t fps = wanted_fps();
+    if (fps != game_fps.load(std::memory_order_relaxed)) {
+        game_fps = fps;
+        vi_rate = std::max<uint32_t>(fps, 60);
+        ultramodern::set_vi_rate(vi_rate);
+        fprintf(stderr, "[frame rate] %u fps, VI %u Hz (display %u Hz)\n", fps, vi_rate,
+                ultramodern::get_display_refresh_rate());
+    }
+    if (vi_rate <= 60) {
+        return;
+    }
+    uint64_t n = (uint32_t)MEM_W(0x27C, ctx->r15);
+    bool tick_60hz = n * 60 / vi_rate != (n - 1) * 60 / vi_rate;
+    // Client: +0 next, +4 queue. The message is the scheduler's address, as the game's loop sends.
+    for (gpr client = ctx->r24; client != 0; client = MEM_W(0x0, client)) {
+        uint32_t queue = (uint32_t)MEM_W(0x4, client);
+        if (tick_60hz || queue == main_thread_queue) {
+            ultramodern::enqueue_external_message((int32_t)queue, (int32_t)ctx->r15, false, false);
+        }
+    }
+    ctx->r24 = 0;
 }
 
 // Keyboard defaults for driving. The stock defaults put the C buttons on the arrow keys, where a PC player
@@ -153,16 +209,17 @@ void rush2049::init_config() {
         game_frame_rate_option,
         "Game Frame Rate",
         "How often the game draws a new frame. The original draws on every other screen refresh, 30 times a second. "
-        "Car physics and timers follow real time, so a race runs at the same speed at either rate."
+        "Car physics and timers follow real time, so a race runs at the same speed at any rate."
         "<br/>"
-        "Separate from <recomp-color primary>Framerate</recomp-color> above, which sets how often frames are presented.",
+        "<b>Match Framerate:</b> a new frame for every frame <recomp-color primary>Framerate</recomp-color> above "
+        "presents, so Display draws at the monitor's refresh rate and Manual at its value (60 at least).",
         game_frame_rate_options,
         GameFrameRate::Sixty
     );
     // Called on load too, and while the menu previews a change.
     graphics.add_option_change_callback(game_frame_rate_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
-            sixty_fps = static_cast<GameFrameRate>(std::get<uint32_t>(cur_value)) == GameFrameRate::Sixty;
+            game_frame_rate_setting = static_cast<GameFrameRate>(std::get<uint32_t>(cur_value));
         });
 
     rush2049::init_hires_font();
