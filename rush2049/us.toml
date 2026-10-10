@@ -77,6 +77,13 @@ func = "music_thread_main"
 before_vram = 0x80099390
 text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
 
+# Its tick on each retrace (func_80098FB8, before the stack frame) returns at once while another retrace is already
+# queued for the thread, so a backlog on a busy PC can't run the sound-command pool dry (src/music.cpp).
+[[patches.hook]]
+func = "func_80098FB8"
+before_vram = 0x80098FB8
+text = "    if (rush2049_music_tick_behind(rdram)) return;"
+
 # The scheduler is about to start the task at sctask+0x10 ($sp+0x24 holds sctask): turn on RT64's extended GBI
 # for a graphics task (src/widescreen.cpp), upscale new font textures (src/hires_font.cpp), and write it out for
 # --dump-dl (src/dl_dump.cpp).
