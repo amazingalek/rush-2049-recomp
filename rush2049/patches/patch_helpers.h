@@ -2,7 +2,7 @@
 #define __PATCH_HELPERS_H__
 
 #ifdef MIPS
-#include "ultra64.h"
+#include "types.h"
 #else
 #include "recomp.h"
 #endif

@@ -1,6 +1,7 @@
 // Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail).
 //
-// Recompiled functions are named after their N64 address (func_800A11E4, ovl1_func_8038A634, ...), so a trace
+// Recompiled functions are named after their N64 address (func_800A11E4, ovl1_func_8038A634, ...), or by
+// syms/rush2049/names.toml for the few we have worked out (draw_tex_rect, ...), so a trace
 // of host frames points straight at the game code that crashed.
 
 #include "crash_handler.h"
