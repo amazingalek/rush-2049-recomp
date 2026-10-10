@@ -1,0 +1,302 @@
+diff --git a/include/rt64_extended_gbi.h b/include/rt64_extended_gbi.h
+index d387090..c734df1 100644
+--- a/include/rt64_extended_gbi.h
++++ b/include/rt64_extended_gbi.h
+@@ -284,6 +284,18 @@ typedef union {
+         0 \
+     )
+ 
++// Rush 2049 patch: a viewport whose left and right edges follow different origins, like a rect's or a scissor's. A
++// split-screen view anchored to both edges of its part of the screen widens with the screen, and its projection is
++// widened to match, so the picture keeps its aspect ratio.
++#define gEXSetViewportAlignEdges(cmd, leftOrigin, rightOrigin, xOffset, yOffset) \
++    G_EX_COMMAND2(cmd, \
++        PARAM(RT64_EXTENDED_OPCODE, 8, 24) | PARAM(G_EX_SETVIEWPORTALIGN_V1, 24, 0), \
++        PARAM(leftOrigin, 12, 0) | PARAM(rightOrigin, 12, 12) | PARAM(1, 1, 24), \
++        \
++        PARAM((xOffset), 16, 16) | PARAM((yOffset), 16, 0), \
++        0 \
++    )
++
+ #define gEXSetScissorAlign(cmd, lorigin, rorigin, ulxOffset, ulyOffset, lrxOffset, lryOffset, ulxBound, ulyBound, lrxBound, lryBound) \
+     G_EX_COMMAND3(cmd, \
+         PARAM(RT64_EXTENDED_OPCODE, 8, 24) | PARAM(G_EX_SETSCISSORALIGN_V1, 24, 0), \
+diff --git a/src/gbi/rt64_gbi_extended.cpp b/src/gbi/rt64_gbi_extended.cpp
+index 20c0d4d..0f86aee 100644
+--- a/src/gbi/rt64_gbi_extended.cpp
++++ b/src/gbi/rt64_gbi_extended.cpp
+@@ -57,7 +57,7 @@ namespace RT64 {
+             const uint16_t ori = (*dl)->p1(0, 12);
+             *dl = *dl + 1;
+ 
+-            state->rsp->setViewport((*dl)->w1, ori, 0, 0);
++            state->rsp->setViewport((*dl)->w1, ori, ori, 0, 0);
+         }
+ 
+         void setScissorV1(State *state, DisplayList **dl) {
+@@ -89,11 +89,13 @@ namespace RT64 {
+ 
+         void setViewportAlignV1(State *state, DisplayList **dl) {
+             const uint16_t ori = (*dl)->p1(0, 12);
++            // Rush 2049 patch: the right edge's own origin (gEXSetViewportAlignEdges).
++            const uint16_t rightOri = (*dl)->p1(24, 1) ? (*dl)->p1(12, 12) : ori;
+             *dl = *dl + 1;
+ 
+             const int16_t x = (*dl)->p0(16, 16);
+             const int16_t y = (*dl)->p0(0, 16);
+-            state->rsp->setViewportAlign(ori, x, y);
++            state->rsp->setViewportAlign(ori, rightOri, x, y);
+         }
+         
+         void setScissorAlignV1(State *state, DisplayList **dl) {
+diff --git a/src/hle/rt64_rsp.cpp b/src/hle/rt64_rsp.cpp
+index ee2030b..8ebfb47 100644
+--- a/src/hle/rt64_rsp.cpp
++++ b/src/hle/rt64_rsp.cpp
+@@ -471,6 +471,7 @@ namespace RT64 {
+             drawData.viewProjTransformGroups.emplace_back(extended.curViewProjMatrixIdGroupIndex);
+             drawData.rspViewports.emplace_back(viewportStack[viewportStackSize - 1]);
+             drawData.viewportOrigins.emplace_back(extended.viewportOriginStack[viewportStackSize - 1]);
++            drawData.viewportRightOrigins.emplace_back(extended.viewportRightOriginStack[viewportStackSize - 1]);
+ 
+             for (uint32_t j = 0; j < 4; j++) {
+                 drawData.viewportClipRatios.emplace_back(clipRatios[j]);
+@@ -896,10 +897,10 @@ namespace RT64 {
+     }
+ 
+     void RSP::setViewport(uint32_t address) {
+-        setViewport(address, extended.global.viewportOrigin, extended.global.viewportOffsetX, extended.global.viewportOffsetY);
++        setViewport(address, extended.global.viewportOrigin, extended.global.viewportRightOrigin, extended.global.viewportOffsetX, extended.global.viewportOffsetY);
+     }
+     
+-    void RSP::setViewport(uint32_t address, uint16_t ori, int16_t offx, int16_t offy) {
++    void RSP::setViewport(uint32_t address, uint16_t ori, uint16_t rightOri, int16_t offx, int16_t offy) {
+         const uint32_t rdramAddress = fromSegmentedMasked(address);
+         const Vp_t *vp = reinterpret_cast<const Vp_t *>(state->fromRDRAM(rdramAddress));
+         interop::RSPViewport &viewport = viewportStack[viewportStackSize - 1];
+@@ -910,6 +911,7 @@ namespace RT64 {
+         viewport.translate.y = float(vp->vtrans[0] + offy) / 4.0f;
+         viewport.translate.z = float(vp->vtrans[3]) / DepthRange;
+         extended.viewportOriginStack[viewportStackSize - 1] = ori;
++        extended.viewportRightOriginStack[viewportStackSize - 1] = rightOri;
+         viewportChanged = true;
+     }
+ 
+@@ -917,6 +919,7 @@ namespace RT64 {
+         if (viewportStackSize < RSP_EXTENDED_STACK_SIZE) {
+             viewportStack[viewportStackSize] = viewportStack[viewportStackSize - 1];
+             extended.viewportOriginStack[viewportStackSize] = extended.viewportOriginStack[viewportStackSize - 1];
++            extended.viewportRightOriginStack[viewportStackSize] = extended.viewportRightOriginStack[viewportStackSize - 1];
+             viewportStackSize++;
+         }
+     }
+@@ -1166,8 +1169,9 @@ namespace RT64 {
+         drawIndexedTri(a, b, c, false);
+     }
+ 
+-    void RSP::setViewportAlign(uint16_t ori, int16_t offx, int16_t offy) {
++    void RSP::setViewportAlign(uint16_t ori, uint16_t rightOri, int16_t offx, int16_t offy) {
+         extended.global.viewportOrigin = ori;
++        extended.global.viewportRightOrigin = rightOri;
+         extended.global.viewportOffsetX = offx;
+         extended.global.viewportOffsetY = offy;
+     }
+@@ -1269,7 +1273,9 @@ namespace RT64 {
+         extended.drawExtendedType = DrawExtendedType::None;
+         extended.drawExtendedData = {};
+         extended.viewportOriginStack[0] = G_EX_ORIGIN_NONE;
++        extended.viewportRightOriginStack[0] = G_EX_ORIGIN_NONE;
+         extended.global.viewportOrigin = G_EX_ORIGIN_NONE;
++        extended.global.viewportRightOrigin = G_EX_ORIGIN_NONE;
+         extended.global.viewportOffsetX = 0;
+         extended.global.viewportOffsetY = 0;
+         extended.modelMatrixIdStack[0] = TransformGroup();
+diff --git a/src/hle/rt64_rsp.h b/src/hle/rt64_rsp.h
+index 61bb3b1..8f9db10 100644
+--- a/src/hle/rt64_rsp.h
++++ b/src/hle/rt64_rsp.h
+@@ -200,11 +200,13 @@ namespace RT64 {
+             // For stateful methods.
+             struct {
+                 uint16_t viewportOrigin;
++                uint16_t viewportRightOrigin;
+                 int16_t viewportOffsetX;
+                 int16_t viewportOffsetY;
+             } global;
+ 
+             std::array<uint16_t, RSP_EXTENDED_STACK_SIZE> viewportOriginStack;
++            std::array<uint16_t, RSP_EXTENDED_STACK_SIZE> viewportRightOriginStack;
+ 
+             DrawExtendedType drawExtendedType;
+             DrawExtendedData drawExtendedData;
+@@ -268,7 +270,7 @@ namespace RT64 {
+         void modifyGeometryMode(uint32_t offMask, uint32_t onMask);
+         void setObjRenderMode(uint32_t value);
+         void setViewport(uint32_t address);
+-        void setViewport(uint32_t address, uint16_t ori, int16_t offx, int16_t offy);
++        void setViewport(uint32_t address, uint16_t ori, uint16_t rightOri, int16_t offx, int16_t offy);
+         void pushViewport();
+         void popViewport();
+         void setLight(uint8_t index, uint32_t address);
+@@ -293,7 +295,7 @@ namespace RT64 {
+         void setTextureImage(uint8_t fmt, uint8_t siz, uint16_t width, uint32_t segAddress);
+         void drawIndexedTri(uint32_t a, uint32_t b, uint32_t c, bool rawGlobalIndices);
+         void drawIndexedTri(uint32_t a, uint32_t b, uint32_t c);
+-        void setViewportAlign(uint16_t ori, int16_t offx, int16_t offy);
++        void setViewportAlign(uint16_t ori, uint16_t rightOri, int16_t offx, int16_t offy);
+         void vertexTestZ(uint8_t vtxIndex);
+         void endVertexTestZ();
+         void matrixId(uint32_t id, bool push, bool proj, bool decompose, uint8_t pos, uint8_t rot, uint8_t scale, uint8_t skew, uint8_t persp, uint8_t vpos, uint8_t vtc, uint8_t tile, uint8_t lookat, uint8_t order, uint8_t aspect, uint8_t editable, bool idIsAddress, bool editGroup);
+diff --git a/src/hle/rt64_workload.cpp b/src/hle/rt64_workload.cpp
+index b4c85f5..c402b51 100644
+--- a/src/hle/rt64_workload.cpp
++++ b/src/hle/rt64_workload.cpp
+@@ -68,6 +68,7 @@ namespace RT64 {
+         drawData.rspViewports.clear();
+         drawData.viewportClipRatios.clear();
+         drawData.viewportOrigins.clear();
++        drawData.viewportRightOrigins.clear();
+         drawData.rspFog.clear();
+         drawData.rspLights.clear();
+         drawData.rspLookAt.clear();
+@@ -113,6 +114,7 @@ namespace RT64 {
+         drawData.worldTransformPhysicalAddresses.push_back(0);
+         drawData.worldTransformVertexIndices.push_back(0);
+         drawData.viewportOrigins.push_back(0);
++        drawData.viewportRightOrigins.push_back(0);
+     }
+ 
+     void Workload::resetDrawDataRanges() {
+diff --git a/src/hle/rt64_workload.h b/src/hle/rt64_workload.h
+index 8ea27d5..44a461c 100644
+--- a/src/hle/rt64_workload.h
++++ b/src/hle/rt64_workload.h
+@@ -62,6 +62,7 @@ namespace RT64 {
+         std::vector<interop::RSPViewport> rspViewports;
+         std::vector<int16_t> viewportClipRatios;
+         std::vector<uint16_t> viewportOrigins;
++        std::vector<uint16_t> viewportRightOrigins;
+         std::vector<interop::RSPFog> rspFog;
+         std::vector<interop::RSPLight> rspLights;
+         std::vector<interop::RSPLookAt> rspLookAt;
+diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
+index 5a331aa..846c96d 100644
+--- a/src/hle/rt64_workload_queue.cpp
++++ b/src/hle/rt64_workload_queue.cpp
+@@ -314,6 +314,7 @@ namespace RT64 {
+             projParams.curFrameWeight = curFrameWeight;
+             projParams.prevFrameWeight = prevFrameWeight;
+             projParams.aspectRatioScale = workloadConfig.aspectRatioScale;
++            projParams.extOriginPercentage = workloadConfig.extAspectPercentage;
+             projectionProcessor.process(projParams);
+             projectionProcessor.upload(projParams);
+             uploadProjections = true;
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+index 9fae0d4..497150f 100644
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1484,6 +1484,8 @@ namespace RT64 {
+             float projInvRatioScale = 1.0f / aspectRatioScale;
+             const int16_t *viewportClipRatios = &drawData.viewportClipRatios[proj.transformsIndex * 4];
+             const uint16_t viewportOrigin = drawData.viewportOrigins[proj.transformsIndex];
++            const uint16_t viewportRightOrigin = drawData.viewportRightOrigins[proj.transformsIndex];
++            const bool stretchedViewport = interop::RSPViewport::hasStretchedEdges(viewportOrigin, viewportRightOrigin);
+             if (proj.usesViewport()) {
+                 // The call's scissor spans the whole width of the framebuffer pair scissor. Custom origin must not be in use to be able to use the stretched viewport.
+                 const auto &viewport = drawData.rspViewports[proj.transformsIndex];
+@@ -1494,6 +1496,16 @@ namespace RT64 {
+                 if (useWideViewport) {
+                     projInvRatioScale = 1.0f;
+                 }
++                else if (stretchedViewport) {
++                    // Rush 2049 patch: each edge moves with its origin and the triangles stretch to fill the space
++                    // between them. The projection processor widens the projection by as much.
++                    const float stretch = viewport.edgeStretch(viewportOrigin, viewportRightOrigin, p.fbWidth, aspectRatioScale, extOriginPercentage);
++                    const float pixelScale = stretch / aspectRatioScale;
++                    const float wideLeft = (viewport.translate.x - std::abs(viewport.scale.x)) * p.resolutionScale.x;
++                    const float stretchedLeft = viewport.stretchedLeft(viewportOrigin, p.fbWidth, aspectRatioScale, extOriginPercentage) * p.resolutionScale.y;
++                    triangles.screenScale.x = pixelScale;
++                    triangles.screenOffset.x = halfPixelOffset.x + (pixelScale - 1.0f) + (stretchedLeft - wideLeft * pixelScale) / halfViewportSize.x;
++                }
+                 else {
+                     triangles.screenScale.x = originalWidth / wideWidth;
+ 
+@@ -1503,7 +1515,7 @@ namespace RT64 {
+                     }
+                 }
+ 
+-                viewportClip = convertViewportRect(viewport.rect(viewportClipRatios), p.resolutionScale, p.fbWidth, projInvRatioScale, extOriginPercentage, 0.0f, viewportOrigin, viewportOrigin);
++                viewportClip = convertViewportRect(viewport.rect(viewportClipRatios), p.resolutionScale, p.fbWidth, projInvRatioScale, extOriginPercentage, 0.0f, viewportOrigin, stretchedViewport ? viewportRightOrigin : viewportOrigin);
+             }
+ 
+             for (uint32_t d = 0; (d < proj.gameCallCount) && (globalCallIndex < p.maxGameCall); d++) {
+diff --git a/src/render/rt64_projection_processor.cpp b/src/render/rt64_projection_processor.cpp
+index e842dcc..3213018 100644
+--- a/src/render/rt64_projection_processor.cpp
++++ b/src/render/rt64_projection_processor.cpp
+@@ -58,6 +58,7 @@ namespace RT64 {
+             const FramebufferPair &fbPair = workload.fbPairs[sceneProj.fbPairIndex];
+             const Projection &proj = fbPair.projections[sceneProj.projectionIndex];
+             const uint16_t viewportOrigin = drawData.viewportOrigins[proj.transformsIndex];
++            const uint16_t viewportRightOrigin = drawData.viewportRightOrigins[proj.transformsIndex];
+             assert(proj.transformsIndex > 0);
+ 
+             // Skip projections that didn't actually draw anything.
+@@ -99,6 +100,11 @@ namespace RT64 {
+             }
+  
+             float projRatioScale = adjustAspectRatio ? (1.0f / p.aspectRatioScale) : 1.0f;
++            // Rush 2049 patch: a viewport whose edges follow different origins is drawn wider by this much.
++            if ((curProjGroup.aspectMode == G_EX_ASPECT_AUTO) && proj.usesViewport() && interop::RSPViewport::hasStretchedEdges(viewportOrigin, viewportRightOrigin)) {
++                const interop::RSPViewport &viewport = drawData.rspViewports[proj.transformsIndex];
++                projRatioScale = 1.0f / viewport.edgeStretch(viewportOrigin, viewportRightOrigin, fbPair.colorImage.width, p.aspectRatioScale, p.extOriginPercentage);
++            }
+             interop::float4x4 &viewMatrix = drawData.modViewTransforms[proj.transformsIndex];
+             interop::float4x4 &projMatrix = drawData.modProjTransforms[proj.transformsIndex];
+             interop::float4x4 &viewProjMatrix = drawData.modViewProjTransforms[proj.transformsIndex];
+diff --git a/src/render/rt64_projection_processor.h b/src/render/rt64_projection_processor.h
+index 5bc3a2a..8492ab0 100644
+--- a/src/render/rt64_projection_processor.h
++++ b/src/render/rt64_projection_processor.h
+@@ -21,6 +21,7 @@ namespace RT64 {
+             float curFrameWeight = 1.0f;
+             float prevFrameWeight = 0.0f;
+             float aspectRatioScale = 1.0f;
++            float extOriginPercentage = 1.0f;
+         };
+ 
+         ProjectionProcessor();
+diff --git a/src/shared/rt64_rsp_viewport.h b/src/shared/rt64_rsp_viewport.h
+index 36fe3b8..94135a7 100644
+--- a/src/shared/rt64_rsp_viewport.h
++++ b/src/shared/rt64_rsp_viewport.h
+@@ -31,6 +31,29 @@ namespace interop {
+             return RT64::FixedRect(std::min(x1, x2), std::min(y1, y2), std::max(x1, x2), std::max(y1, y2));
+         }
+ 
++        // Rush 2049 patch: a viewport whose left and right edges follow different origins (gEXSetViewportAlignEdges).
++        // Where an origin sits on a framebuffer fbWidth wide, as RT64 places rects and scissors.
++        static float originX(uint16_t origin, int32_t fbWidth, float extOriginPercentage) {
++            return (float(fbWidth) * origin / 0x400) * extOriginPercentage + (float(fbWidth) / 2.0f) * (1.0f - extOriginPercentage);
++        }
++
++        static bool hasStretchedEdges(uint16_t leftOrigin, uint16_t rightOrigin) {
++            return (leftOrigin < 0x800) && (rightOrigin < 0x800) && (leftOrigin != rightOrigin);
++        }
++
++        // The left edge in native pixels, on a framebuffer aspectRatioScale times wider than fbWidth.
++        float stretchedLeft(uint16_t leftOrigin, int32_t fbWidth, float aspectRatioScale, float extOriginPercentage) const {
++            const float origin = originX(leftOrigin, fbWidth, extOriginPercentage);
++            return origin * aspectRatioScale + (translate.x - std::abs(scale.x)) - origin;
++        }
++
++        // How many times wider than the game set it the viewport is drawn, with each edge moved with its origin.
++        float edgeStretch(uint16_t leftOrigin, uint16_t rightOrigin, int32_t fbWidth, float aspectRatioScale, float extOriginPercentage) const {
++            const float width = 2.0f * std::abs(scale.x);
++            const float moved = originX(rightOrigin, fbWidth, extOriginPercentage) - originX(leftOrigin, fbWidth, extOriginPercentage);
++            return (width > 0.0f) ? (1.0f + moved * (aspectRatioScale - 1.0f) / width) : 1.0f;
++        }
++
+         float minDepth() const {
+             return translate.z - scale.z;
+         }
