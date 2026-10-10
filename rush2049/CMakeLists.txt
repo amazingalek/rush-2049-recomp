@@ -1,5 +1,5 @@
 # San Francisco Rush 2049: Recompiled.
-# Based on BanjoRecomp's CMakeLists.txt (GPL-3.0). Windows is the only tested platform so far.
+# Based on BanjoRecomp's CMakeLists.txt (GPL-3.0). Builds on Windows (clang-cl) and Linux (clang); only Windows has been run.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -71,6 +71,7 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/code_loading.cpp
     ${CMAKE_SOURCE_DIR}/src/libultra_extra.cpp
     ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
+    ${CMAKE_SOURCE_DIR}/src/rom_finder.cpp
     ${CMAKE_SOURCE_DIR}/src/controller_pak.cpp
     ${CMAKE_SOURCE_DIR}/src/debug_probe.cpp
     ${CMAKE_SOURCE_DIR}/src/dl_dump.cpp
@@ -146,6 +147,8 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     set(THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package(Threads REQUIRED)
     target_link_libraries(Rush2049Recompiled PRIVATE ${FREETYPE_LIBRARIES} SDL2::SDL2 "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
+    # Export the recompiled functions' names, so the crash handler's backtrace can print them.
+    target_link_options(Rush2049Recompiled PRIVATE -rdynamic)
 endif()
 
 # DXC settings RT64 expects from the parent project.

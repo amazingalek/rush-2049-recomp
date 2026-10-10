@@ -76,3 +76,48 @@ jobs:
       - name: sccache stats
         if: always()
         run: sccache --show-stats
+
+  # Same build as above, on Linux with clang (what a Steam Deck build would be).
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Apply runtime patches
+        run: bash tools/rush2049/apply_runtime_patches.sh
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld libsdl2-dev libgtk-3-dev libfreetype-dev
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.0"
+          ninjaVersion: "^1.13.0"
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Stand in for the ROM-generated sources
+        run: |
+          mkdir -p rush2049/RecompiledFuncs rush2049/rsp
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      - name: Configure
+        run: |
+          clang --version
+          cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build runtime, renderer and frontend libraries
+        run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
+      - name: Compile the game's own sources
+        run: |
+          objs=$(ninja -C rush2049/build -t targets all |
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|/rsp/')
+          [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
+          echo "$objs"
+          ninja -C rush2049/build $objs
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
