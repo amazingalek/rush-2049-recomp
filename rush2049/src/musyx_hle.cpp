@@ -43,7 +43,7 @@ RspExitReason musyx_mixer(uint8_t* rdram, uint32_t ucode_addr);
 namespace {
 
 rush2049::MusyxMode mode = rush2049::MusyxMode::Hle;
-bool hires_wanted = true;
+std::atomic<bool> hires_wanted{ true };
 
 // The high-quality mix (src/hle/musyx.c, musyx_hires_t): the latest subframe the HLE rendered at twice the game's
 // rate for each output buffer, beside a copy of the game's own subframe and where it sits in RDRAM. The audio output
@@ -52,7 +52,7 @@ constexpr size_t subframe_frames = 192;
 struct HiresSubframe {
     const uint32_t* native_at = nullptr;
     uint32_t native[subframe_frames];
-    uint32_t hires[2 * subframe_frames];
+    float hires[2 * 2 * subframe_frames];  // left, right
 };
 // One per output buffer: the game cycles through 8, 0x300 bytes apart.
 std::array<HiresSubframe, 32> hires_subframes;
@@ -139,7 +139,7 @@ RspExitReason run_hle_task(uint8_t* rdram, uint32_t) {
 
 } // namespace
 
-extern "C" void musyx_hires_store(const uint32_t* native, const uint32_t* hires) {
+extern "C" void musyx_hires_store(const uint32_t* native, const float* hires) {
     std::lock_guard lock{ hires_mutex };
     // A buffer the mix writes again replaces its entry, so a lookup never finds a stale one.
     HiresSubframe* entry = nullptr;
@@ -171,11 +171,11 @@ bool rush2049::musyx_hires_enabled() {
     return hires_wanted && mode == MusyxMode::Hle;
 }
 
-void rush2049::musyx_hires_buffer(const int16_t* samples, size_t sample_count, std::vector<int16_t>& out) {
+void rush2049::musyx_hires_buffer(const int16_t* samples, size_t sample_count, std::vector<float>& out) {
     const uint32_t* frames = reinterpret_cast<const uint32_t*>(samples);
     size_t frame_count = sample_count / 2;
     out.resize(frame_count * 4);
-    uint32_t* dst = reinterpret_cast<uint32_t*>(out.data());
+    float* dst = out.data();
     uint64_t matched = 0;
 
     std::lock_guard lock{ hires_mutex };
@@ -194,19 +194,18 @@ void rush2049::musyx_hires_buffer(const int16_t* samples, size_t sample_count, s
         }
         size_t index = entry != nullptr ? size_t(at - entry->native_at) : 0;
         if (entry != nullptr && entry->native[index] == *at) {
-            dst[2 * f] = entry->hires[2 * index];
-            dst[2 * f + 1] = entry->hires[2 * index + 1];
+            memcpy(dst + 4 * f, entry->hires + 4 * index, 4 * sizeof(float));
             matched++;
             continue;
         }
-        // Not from the HLE (or overwritten since): the frame, then halfway to the next one.
+        // Not from the HLE (or overwritten since): the frame, then halfway to the next one. Each pair is (right, left).
         const int16_t* cur = samples + 2 * f;
         const int16_t* next = f + 1 < frame_count ? cur + 2 : cur;
-        int16_t* d = out.data() + 4 * f;
-        d[0] = cur[0];
-        d[1] = cur[1];
-        d[2] = int16_t((cur[0] + next[0]) / 2);
-        d[3] = int16_t((cur[1] + next[1]) / 2);
+        float* d = dst + 4 * f;
+        d[0] = cur[1];
+        d[1] = cur[0];
+        d[2] = 0.5f * (cur[1] + next[1]);
+        d[3] = 0.5f * (cur[0] + next[0]);
     }
     hires_matched += matched;
     hires_fallback += frame_count - matched;
@@ -224,6 +223,7 @@ RspUcodeFunc* rush2049::get_musyx_ucode() {
     case MusyxMode::Compare:
         return run_compare;
     case MusyxMode::Hle:
+    case MusyxMode::Native:
     default:
         return run_hle_task;
     }
