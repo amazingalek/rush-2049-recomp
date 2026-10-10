@@ -4,8 +4,9 @@
 // G_TEXRECT + G_RDPHALF_1 + G_RDPHALF_2 triple at the display list pointer in 0x80149438. When the rectangle belongs
 // to the left or right HUD block, a hook at the function's exit rewrites that triple in place as RT64's extended
 // texture rectangle (the same 24 bytes) with a left or right origin, so it anchors to that edge of the window. RT64's
-// HUD Placement option (Graphics tab) decides how far it moves. Nothing is inserted: callers keep their own copies
-// of the display list pointer across the call, so extra commands would be overwritten.
+// HUD Placement option (Graphics tab) decides how far it moves, and at Original none of this runs, so the game's
+// display lists reach RT64 as the game wrote them. Nothing is inserted: callers keep their own copies of the display
+// list pointer across the call, so extra commands would be overwritten.
 //
 // Menus use the same function and stay 4:3, so this only applies during a race, which is when the race timer is
 // drawn (func_8010761C). Split screen stays 4:3 too: its views don't span the screen, so RT64 doesn't widen them,
@@ -17,6 +18,7 @@
 
 #include "recomp.h"
 #include "rush2049_hooks.h"
+#include "ultramodern/config.hpp"
 
 #define F3DEX_GBI_2
 #include "../lib/rt64/include/rt64_extended_gbi.h"
@@ -53,6 +55,10 @@ void write_word(uint8_t* rdram, uint32_t addr, uint32_t value) {
     MEM_W(0, (gpr)(int32_t)addr) = (int32_t)value;
 }
 
+bool hud_moves() {
+    return ultramodern::renderer::get_graphics_config().hr_option != ultramodern::renderer::HUDRatioMode::Original;
+}
+
 bool single_player_race(uint8_t* rdram) {
     return race_timer_seen && retrace_count(rdram) - race_timer_retrace <= 8 && !split_screen_last_frame;
 }
@@ -66,7 +72,7 @@ extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
 
 extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     rect_origin = G_EX_ORIGIN_NONE;
-    if (!single_player_race(rdram)) {
+    if (!hud_moves() || !single_player_race(rdram)) {
         return;
     }
     int x0 = (int)ctx->r4;
@@ -112,7 +118,7 @@ extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
 
 extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr) {
     gpr task = (gpr)(int32_t)task_addr;
-    if (MEM_W(0x00, task) != 1) {  // M_GFXTASK
+    if (!hud_moves() || MEM_W(0x00, task) != 1) {  // M_GFXTASK
         return;
     }
     uint32_t dl = (uint32_t)MEM_W(0x30, task) | 0x80000000;
