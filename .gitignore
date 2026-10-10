@@ -32,4 +32,6 @@
 /rush2049/recomp.log
 /rush2049/*.bak
 /rush2049/rsp/
+# Generated at runtime from the ROM by the hi-res font (src/hires_font.cpp)
+/rush2049/hires_font/
 __pycache__/
