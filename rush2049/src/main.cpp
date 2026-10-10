@@ -97,13 +97,22 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
     return ret;
 }
 
+static void set_rumble_logged(int controller_num, bool rumble) {
+    static bool logged = false;
+    if (rumble && !logged) {
+        logged = true;
+        fprintf(stderr, "[rumble] first motor start on port %d\n", controller_num + 1);
+    }
+    recompinput::set_rumble(controller_num, rumble);
+}
+
 ultramodern::input::connected_device_info_t get_connected_device_info(int controller_num) {
-    // Every port with a controller has a Controller Pak (src/controller_pak.cpp). The game calls osPfsInitPak
-    // before osMotorInit, so the pak wins over rumble, as with one accessory slot on hardware. In single-player
-    // mode only port 1 has a controller.
+    // Every port with a controller has the accessory picked in the config: a Controller Pak (src/controller_pak.cpp)
+    // or a Rumble Pak. osPfsInitPak fails for a Rumble Pak, and the runtime's osMotorInit always succeeds, so
+    // reporting RumblePak here for both is harmless. In single-player mode only port 1 has a controller.
     bool connected = recompinput::players::is_single_player_mode() ? controller_num == 0
                                                                    : recompinput::players::get_player_is_assigned(controller_num);
-    // --players N: report ports 1..N as connected, so split screen can be tested with one pad (the others idle).
+    // --players N: report ports 1..N as connected, so split screen can be tested with one pad (the extra ports get port 1's input).
     connected = connected || controller_num < fake_players;
     if (connected) {
         return ultramodern::input::connected_device_info_t{
@@ -466,7 +475,7 @@ int main(int argc, char** argv) {
     ultramodern::input::callbacks_t input_callbacks{
         .poll_input = recompinput::poll_inputs,
         .get_input = get_n64_input_logged,
-        .set_rumble = recompinput::set_rumble,
+        .set_rumble = set_rumble_logged,
         .get_connected_device_info = get_connected_device_info,
     };
 

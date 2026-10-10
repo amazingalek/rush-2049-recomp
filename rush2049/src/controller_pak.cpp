@@ -22,6 +22,7 @@
 
 #include "recomp.h"
 #include "librecomp/game.hpp"
+#include "rush2049_game.h"
 
 namespace {
 
@@ -29,6 +30,7 @@ constexpr int PFS_ERR_INVALID = 5;
 constexpr int PFS_DATA_FULL = 7;
 constexpr int PFS_DIR_FULL = 8;
 constexpr int PFS_ERR_EXIST = 9;
+constexpr int PFS_ERR_DEVICE = 11;
 constexpr int PFS_INITIALIZED = 1;
 
 constexpr size_t page_size = 256;
@@ -201,6 +203,17 @@ int find_note(uint8_t* rdram, Pak& pak, uint16_t company, uint32_t game_code, gp
 
 // s32 osPfsInitPak(OSMesgQueue* mq, OSPfs* pfs, int channel)
 extern "C" void osPfsInitPak_recomp(uint8_t* rdram, recomp_context* ctx) {
+    // With a Rumble Pak in the slot, libultra's ID check can't select a bank on it and fails with PFS_ERR_DEVICE.
+    // The game then tries osMotorInit. libultra fills in queue and channel before that check, and the game reads
+    // queue back: still zero means the call never reached a pak, which it treats as no pak at all.
+    if (rush2049::rumble_pak_selected()) {
+        MEM_W(0x00, ctx->r5) = 0;              // status
+        MEM_W(0x04, ctx->r5) = (int32_t)ctx->r4; // queue
+        MEM_W(0x08, ctx->r5) = (int32_t)ctx->r6; // channel
+        ctx->r2 = PFS_ERR_DEVICE;
+        return;
+    }
+
     std::lock_guard lock{ pak_mutex };
     gpr pfs = ctx->r5;
     int channel = (int)ctx->r6;

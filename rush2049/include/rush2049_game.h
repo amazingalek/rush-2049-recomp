@@ -9,6 +9,8 @@ namespace rush2049 {
 
     void register_overlays();
     void init_config();
+    // The accessory in every controller: a Controller Pak (saves) or a Rumble Pak (rumble, no saves).
+    bool rumble_pak_selected();
 }
 
 #endif
