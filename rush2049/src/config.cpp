@@ -1,5 +1,5 @@
 // Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
-// on the Graphics tab.
+// and hi-res font on the Graphics tab.
 
 #include <atomic>
 #include <filesystem>
@@ -35,6 +35,17 @@ namespace {
     const std::string game_frame_rate_option = "game_frame_rate";
     // Read by the scheduler thread on every swap check, so it is cached rather than looked up in the config.
     std::atomic<bool> sixty_fps{ true };
+
+    enum class HiresFont {
+        Off,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> hires_font_options = {
+        {HiresFont::Off, "Off", "Off"},
+        {HiresFont::On, "On", "On"},
+    };
+    const std::string hires_font_option = "hires_font";
 }
 
 bool rush2049::rumble_pak_selected() {
@@ -110,6 +121,22 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(game_frame_rate_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             sixty_fps = static_cast<GameFrameRate>(std::get<uint32_t>(cur_value)) == GameFrameRate::Sixty;
+        });
+
+    rush2049::init_hires_font();
+    graphics.add_enum_option(
+        hires_font_option,
+        "Hi-res Font",
+        "Draws the menu and HUD text from smooth, 4x upscaled copies of the game's fonts instead of the blocky "
+        "originals. The copies are made from your ROM as each font first appears, and kept in the app folder."
+        "<br/>"
+        "Texture packs you enable take priority.",
+        hires_font_options,
+        HiresFont::On
+    );
+    graphics.add_option_change_callback(hires_font_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_hires_font(static_cast<HiresFont>(std::get<uint32_t>(cur_value)) == HiresFont::On);
         });
 
     recompui::config::create_controls_tab();
