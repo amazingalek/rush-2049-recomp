@@ -164,3 +164,4 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
         write_word(rdram, hud_scissor + i * 8 + 4, cmds[i].values.word1);
     }
 }
+this is not C++;
