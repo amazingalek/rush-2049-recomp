@@ -373,6 +373,7 @@ int main(int argc, char** argv) {
 
 #ifdef _WIN32
     timeBeginPeriod(1);
+#endif
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--boot") == 0) {
@@ -426,6 +427,7 @@ int main(int argc, char** argv) {
         }
     }
 
+#ifdef _WIN32
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--show-console") == 0) {
             if (GetConsoleWindow() == nullptr) {
@@ -442,12 +444,6 @@ int main(int argc, char** argv) {
 
     // wasapi; directsound has had sample queueing issues.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
-#else
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--boot") == 0) {
-            autoboot = true;
-        }
-    }
 #endif
 
     NFD_Init();
