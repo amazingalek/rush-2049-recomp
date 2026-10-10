@@ -48,6 +48,11 @@ jobs:
         run: |
           g++ -std=c++20 -O2 -Wall -Irush2049/include rush2049/tests/audio_limiter_test.cpp rush2049/src/audio_limiter.cpp -o limiter_test
           ./limiter_test
+      - name: MusyX side mix tests
+        run: |
+          gcc -O2 -Wall -Irush2049/src/hle rush2049/tests/musyx_hires_test.c rush2049/src/hle/audio.c \
+            rush2049/src/hle/memory.c -lm -o musyx_hires_test
+          ./musyx_hires_test
 
   build:
     runs-on: windows-2025
