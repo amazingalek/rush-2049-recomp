@@ -46,7 +46,8 @@ text = "    ctx->r10 = rush2049_frame_pace(ctx->r10);"
 
 # Above 60 fps (Match Framerate) the VI runs at the frame rate and the swap above happens on every retrace. The
 # retrace handler then sends each retrace to its clients (list at +0x260, loaded into $t8 just before this
-# branch); the hook empties $t8 on the retraces in between, so the clients still get 60 a second.
+# branch). The hook sends them itself and empties $t8: every retrace to the main thread, which starts a frame on
+# one, and 60 a second to the others (src/config.cpp).
 [[patches.hook]]
 func = "func_80000880"
 before_vram = 0x8000090C

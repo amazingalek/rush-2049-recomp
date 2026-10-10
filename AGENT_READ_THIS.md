@@ -127,8 +127,8 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
 2. **Feature: optional higher-quality mixing** (smaller win than replacement): render voices at 44.1 kHz with
    a better interpolator in `src/hle/musyx.c` (`mix_voice_samples`, 4-tap LUT at 22050 Hz). It would mainly
    cut aliasing on voices pitched above 1×. It doesn't add treble the samples don't have.
-3. **Feature: frame rates above 60.** This would need RT64 frame interpolation (matrix groups in display
-   lists) or a faster VI; audio is paced by retrace. See "Frame rate" under Runtime notes in the docs.
+3. **Done: frame rates above 60.** "Match Framerate" on the Game Frame Rate option runs a faster VI. See
+   "Frame rate" under Runtime notes in the docs.
 4. **Feature: move the 3D coin icons in the widescreen HUD.** They are 3D models next to the right-hand
    counters, not texture rects, so they stay at their 4:3 position.
 5. **Bug (unconfirmed): the ghost car in Ghost Race isn't seen.** See the status paragraph in
