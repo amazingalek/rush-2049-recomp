@@ -225,6 +225,9 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     // Skip samples when too much is already queued, so latency doesn't build up.
     uint32_t skip_factor = cur_queued_microseconds / 100000;
+    rush2049::probe_audio_queue(
+        uint32_t(uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / output_sample_rate),
+        skip_factor != 0);
     if (skip_factor != 0) {
         uint32_t skip_ratio = 1 << skip_factor;
         num_bytes_to_queue /= skip_ratio;
