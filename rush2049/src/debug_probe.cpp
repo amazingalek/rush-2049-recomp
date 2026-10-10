@@ -50,13 +50,15 @@ uint32_t dump_bytes = 0;
 FILE* output_dump_file = nullptr;
 uint32_t output_dump_bytes = 0;
 
-// 44-byte PCM WAV header for 16-bit stereo; rewritten with the final sizes after each buffer.
-void write_wav_header(FILE* f, uint32_t rate, uint32_t data_bytes) {
+// 44-byte WAV header for stereo, 16-bit PCM or 32-bit float; rewritten with the final sizes after each buffer.
+void write_wav_header(FILE* f, uint32_t rate, uint32_t data_bytes, bool is_float = false) {
     auto u32 = [f](uint32_t v) { fwrite(&v, 4, 1, f); };
     auto u16 = [f](uint16_t v) { fwrite(&v, 2, 1, f); };
+    uint16_t bits = is_float ? 32 : 16;
     fseek(f, 0, SEEK_SET);
     fwrite("RIFF", 1, 4, f); u32(36 + data_bytes);
-    fwrite("WAVEfmt ", 1, 8, f); u32(16); u16(1); u16(2); u32(rate); u32(rate * 4); u16(4); u16(16);
+    fwrite("WAVEfmt ", 1, 8, f); u32(16); u16(is_float ? 3 : 1); u16(2); u32(rate); u32(rate * bits / 4);
+    u16(bits / 4); u16(bits);
     fwrite("data", 1, 4, f); u32(data_bytes);
     fseek(f, 0, SEEK_END);
 }
@@ -66,7 +68,7 @@ void rush2049::start_audio_dump(const char* path) {
     std::lock_guard lock{ dump_mutex };
     dump_file = fopen(path, "wb");
     if (dump_file != nullptr) {
-        write_wav_header(dump_file, 0, 0);
+        write_wav_header(dump_file, 0, 0, true);
     }
 }
 
@@ -99,25 +101,21 @@ void rush2049::probe_output(const float* samples, size_t frames, uint32_t rate) 
     fflush(output_dump_file);
 }
 
-void rush2049::probe_audio(const int16_t* samples, size_t count) {
+void rush2049::probe_audio(const float* samples, size_t frames) {
     {
         std::lock_guard lock{ dump_mutex };
         if (dump_file != nullptr) {
-            // Each stereo pair arrives as (right, left), the order queue_samples swaps; write left, right.
-            for (size_t i = 0; i + 1 < count; i += 2) {
-                int16_t frame[2] = { samples[i + 1], samples[i] };
-                fwrite(frame, sizeof(frame), 1, dump_file);
-            }
-            dump_bytes += (uint32_t)(count / 2 * 4);
-            write_wav_header(dump_file, audio_frequency.load(), dump_bytes);
+            fwrite(samples, sizeof(float) * 2, frames, dump_file);
+            dump_bytes += (uint32_t)(frames * 8);
+            write_wav_header(dump_file, audio_frequency.load(), dump_bytes, true);
             fflush(dump_file);
         }
     }
     audio_buffers++;
-    audio_samples += count;
+    audio_samples += frames * 2;
     int peak = audio_peak.load();
-    for (size_t i = 0; i < count; i++) {
-        int v = samples[i] < 0 ? -samples[i] : samples[i];
+    for (size_t i = 0; i < frames * 2; i++) {
+        int v = (int)std::lround(std::abs(samples[i]) * 32768.0f);
         if (v > peak) {
             peak = v;
         }

@@ -22,6 +22,7 @@
 #else
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_syswm.h"
+#include "resampler.h"
 #undef None
 #undef Status
 #undef LockMask
@@ -164,18 +165,15 @@ void update_gfx(void*) {
 }
 
 // Audio output: the game's samples (s16 stereo, channels swapped by the runtime's address xor) are converted to
-// float and resampled to the device rate with SDL. With the high-quality MusyX mix on, each buffer is first
-// swapped for the same audio rendered at twice the game's rate.
+// float and resampled to the device rate (rush2049::Resampler). With the high-quality MusyX mix on, each buffer is
+// first swapped for the same audio rendered at twice the game's rate.
 
-static SDL_AudioCVT audio_convert;
+static rush2049::Resampler resampler;
 static SDL_AudioDeviceID audio_device = 0;
 static uint32_t sample_rate = 48000;
 static uint32_t output_sample_rate = 48000;
-constexpr uint32_t input_channels = 2;
 static uint32_t output_channels = 2;
-constexpr uint32_t duplicated_input_frames = 4;
-static uint32_t discarded_output_frames;
-constexpr uint32_t bytes_per_frame = input_channels * sizeof(float);
+constexpr uint32_t bytes_per_frame = 2 * sizeof(float);
 
 // The rate the samples reach the converter at.
 static uint32_t input_sample_rate() {
@@ -183,66 +181,50 @@ static uint32_t input_sample_rate() {
 }
 
 void queue_samples(int16_t* audio_data, size_t sample_count) {
-    static std::vector<int16_t> hires_buffer;
+    // Left, right, with the game's 16-bit full scale at 1.0.
+    static std::vector<float> input;
     if (rush2049::musyx_hires_enabled()) {
-        rush2049::musyx_hires_buffer(audio_data, sample_count, hires_buffer);
-        audio_data = hires_buffer.data();
-        sample_count = hires_buffer.size();
+        rush2049::musyx_hires_buffer(audio_data, sample_count, input);
+        for (float& v : input) {
+            v *= 1.0f / 32768.0f;
+        }
     }
-    rush2049::probe_audio(audio_data, sample_count);
-    static std::vector<float> swap_buffer;
-    static std::array<float, duplicated_input_frames * input_channels> duplicated_sample_buffer;
-
-    size_t resampled_sample_count = sample_count + duplicated_input_frames * input_channels;
-    size_t max_sample_count = std::max(resampled_sample_count, resampled_sample_count * audio_convert.len_mult);
-    if (max_sample_count > swap_buffer.size()) {
-        swap_buffer.resize(max_sample_count);
+    else {
+        input.resize(sample_count);
+        for (size_t i = 0; i < sample_count; i += 2) {
+            input[i + 0] = audio_data[i + 1] * (1.0f / 32768.0f);
+            input[i + 1] = audio_data[i + 0] * (1.0f / 32768.0f);
+        }
     }
+    rush2049::probe_audio(input.data(), input.size() / 2);
 
-    for (size_t i = 0; i < duplicated_input_frames * input_channels; i++) {
-        swap_buffer[i] = duplicated_sample_buffer[i];
-    }
-
+    static std::vector<float> output;
+    output.clear();
+    resampler.process(input.data(), input.size() / 2, output);
+    // Halved, so the game's full scale (and the high-quality mix's peaks above it) doesn't clip on the device.
     float main_volume = static_cast<float>(recompui::config::sound::get_main_volume()) / 100.0f;
-    for (size_t i = 0; i < sample_count; i += input_channels) {
-        swap_buffer[i + 0 + duplicated_input_frames * input_channels] = audio_data[i + 1] * (0.5f / 32768.0f) * main_volume;
-        swap_buffer[i + 1 + duplicated_input_frames * input_channels] = audio_data[i + 0] * (0.5f / 32768.0f) * main_volume;
-    }
-
-    if (sample_count <= duplicated_input_frames * input_channels) {
-        return;
-    }
-
-    for (size_t i = 0; i < duplicated_input_frames * input_channels; i++) {
-        duplicated_sample_buffer[i] = swap_buffer[i + sample_count];
-    }
-
-    audio_convert.buf = reinterpret_cast<Uint8*>(swap_buffer.data());
-    audio_convert.len = (sample_count + duplicated_input_frames * input_channels) * sizeof(swap_buffer[0]);
-
-    if (SDL_ConvertAudio(&audio_convert) < 0) {
-        printf("Error using SDL audio converter: %s\n", SDL_GetError());
-        throw std::runtime_error("Error using SDL audio converter");
+    for (float& v : output) {
+        v *= 0.5f * main_volume;
     }
 
     uint64_t cur_queued_microseconds = uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / sample_rate;
-    uint32_t num_bytes_to_queue = audio_convert.len_cvt - output_channels * discarded_output_frames * sizeof(swap_buffer[0]);
-    float* samples_to_queue = swap_buffer.data() + output_channels * discarded_output_frames / 2;
+    uint32_t num_bytes_to_queue = uint32_t(output.size() * sizeof(float));
+    float* samples_to_queue = output.data();
 
     // Skip samples when too much is already queued, so latency doesn't build up.
     uint32_t skip_factor = cur_queued_microseconds / 100000;
     if (skip_factor != 0) {
         uint32_t skip_ratio = 1 << skip_factor;
         num_bytes_to_queue /= skip_ratio;
-        for (size_t i = 0; i < num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])); i++) {
+        for (size_t i = 0; i < num_bytes_to_queue / bytes_per_frame; i++) {
             samples_to_queue[2 * i + 0] = samples_to_queue[2 * skip_ratio * i + 0];
             samples_to_queue[2 * i + 1] = samples_to_queue[2 * skip_ratio * i + 1];
         }
     }
 
-    rush2049::music_mix(samples_to_queue, num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])), output_channels,
-                        output_sample_rate, main_volume);
-    rush2049::probe_output(samples_to_queue, num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])), output_sample_rate);
+    rush2049::music_mix(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_channels, output_sample_rate,
+                        main_volume);
+    rush2049::probe_output(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_sample_rate);
     SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
 }
 
@@ -262,11 +244,7 @@ size_t get_frames_remaining() {
 }
 
 void update_audio_converter() {
-    if (SDL_BuildAudioCVT(&audio_convert, AUDIO_F32, input_channels, input_sample_rate(), AUDIO_F32, output_channels, output_sample_rate) < 0) {
-        printf("Error creating SDL audio converter: %s\n", SDL_GetError());
-        throw std::runtime_error("Error creating SDL audio converter");
-    }
-    discarded_output_frames = duplicated_input_frames * output_sample_rate / input_sample_rate();
+    resampler.reset(input_sample_rate(), output_sample_rate);
 }
 
 void set_frequency(uint32_t freq) {

@@ -45,8 +45,9 @@ void HleShowCFB(void* user_defined);
 int HleForwardTask(void* user_defined);
 
 /* rush2049: MusyX v1's high-quality side mix. `native` is where the game's 192 interleaved frames of a subframe
- * were just written; `hires` holds the same subframe at twice the rate (384 frames, same layout). */
-void musyx_hires_store(const uint32_t* native, const uint32_t* hires);
+ * were just written; `hires` holds the same subframe at twice the rate: 384 frames of left, right, on the 16-bit
+ * scale but not clamped to it. */
+void musyx_hires_store(const uint32_t* native, const float* hires);
 
 #endif
 

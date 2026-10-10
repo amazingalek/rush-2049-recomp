@@ -1130,14 +1130,6 @@ static float hires_interpolate(const int16_t *x, uint32_t frac)
     return va + (vb - va) * (float)(frac & 0xff) * (1.0f / 256.0f);
 }
 
-static int16_t hires_s16(float x)
-{
-    x = (x < -32768.0f) ? -32768.0f : x;
-    x = (x >  32767.0f) ?  32767.0f : x;
-
-    return (int16_t)lrintf(x);
-}
-
 static void hires_begin_task(musyx_hires_t *hires, const int16_t *cc0)
 {
     static bool kernel_ready = false;
@@ -1278,23 +1270,22 @@ static void hires_join_buses(musyx_hires_t *hires, unsigned channel, const float
     }
 }
 
-/* mirrors interleave_stage_v1, into a host-side buffer */
+/* mirrors interleave_stage_v1, into a host-side buffer. Unlike the game's it is not clamped to 16 bits: the output
+ * halves it before the device, so the peaks where the original mix clips fit. */
 static void interleave_hires_v1(struct hle_t* hle, musyx_t *musyx, uint32_t output_ptr)
 {
     musyx_hires_t *hires = musyx->hires;
     float left[HIRES_SIZE];
     float right[HIRES_SIZE];
-    uint32_t out[HIRES_SIZE];
+    float out[2 * HIRES_SIZE];
     unsigned i;
 
     hires_join_buses(hires, 0, hires->left[0], hires->left[1], clamp_s16(musyx->base_vol[0]), left);
     hires_join_buses(hires, 1, hires->right[0], hires->right[1], clamp_s16(musyx->base_vol[1]), right);
 
     for (i = 0; i < HIRES_SIZE; ++i) {
-        uint16_t l = (uint16_t)hires_s16(left[i]);
-        uint16_t r = (uint16_t)hires_s16(right[i]);
-
-        out[i] = ((uint32_t)l << 16) | r;
+        out[2 * i]     = left[i];
+        out[2 * i + 1] = right[i];
     }
 
     musyx_hires_store(dram_u32(hle, output_ptr), out);
