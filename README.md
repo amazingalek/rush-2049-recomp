@@ -180,8 +180,8 @@ The defaults use about 4% of that card. Every interpolated frame is a full rende
 144 Hz monitor is 2.4 times the work of 60. On a weak GPU lower Resolution first.
 
 Nearly a third of the default frame's cost stays even at Resolution Original: mostly drawing the game's geometry
-(about 500 draws a frame), which costs about the same at any resolution, and drawing the finished frame into the window, which costs more the bigger the window is. So on a weak GPU
-a smaller window helps too.
+(about 500 draws a frame), which costs about the same at any resolution, and drawing the finished frame into the
+window, which costs more the bigger the window is. So on a weak GPU a smaller window helps too.
 
 ## Mods
 
