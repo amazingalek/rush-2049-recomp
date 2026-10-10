@@ -19,6 +19,12 @@ std::atomic<uint8_t*> probe_rdram{ nullptr };
 // Scheduler messages 0x29A..0x29E (retrace, RSP done, RDP done, pre-NMI, audio task queued).
 std::atomic<uint32_t> sched_counts[5]{};
 
+// The music thread's ticks: how many ran, how many were skipped, and the most sound commands in flight as one
+// started (since the previous print).
+std::atomic<uint32_t> music_ticks{ 0 };
+std::atomic<uint32_t> music_ticks_skipped{ 0 };
+std::atomic<uint32_t> music_commands_peak{ 0 };
+
 // The game's scheduler struct (libultra sched.c layout plus Rush 2049's fields).
 constexpr uint32_t sched_addr = 0x8002E8E8;
 
@@ -149,6 +155,17 @@ uint8_t* rush2049::probe_get_rdram() {
     return probe_rdram.load();
 }
 
+void rush2049::probe_music_tick(uint32_t commands_in_flight) {
+    music_ticks++;
+    if (commands_in_flight > music_commands_peak.load()) {
+        music_commands_peak = commands_in_flight;
+    }
+}
+
+void rush2049::probe_music_tick_skipped() {
+    music_ticks_skipped++;
+}
+
 void rush2049::print_probes() {
     // Peak is since the previous print.
     fprintf(stderr, "  audio: %u buffers, %llu samples, peak %d\n", audio_buffers.load(),
@@ -175,6 +192,8 @@ void rush2049::print_probes() {
     fprintf(stderr, "  sched msgs: retrace %u rsp %u rdp %u nmi %u audio %u\n", sched_counts[0].load(),
             sched_counts[1].load(), sched_counts[2].load(), sched_counts[3].load(), sched_counts[4].load());
     fprintf(stderr, "  input reads: %u\n", probe_input_reads.load());
+    fprintf(stderr, "  music ticks: %u, %u skipped behind a queued retrace; most sound commands in flight: %u of 128\n",
+            music_ticks.load(), music_ticks_skipped.load(), music_commands_peak.exchange(0));
     uint8_t* rdram = probe_rdram.load();
     if (rdram == nullptr) {
         return;

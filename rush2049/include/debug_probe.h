@@ -25,6 +25,11 @@ namespace rush2049 {
     void start_output_dump(const char* path);
     void probe_output(const float* samples, size_t frames, uint32_t rate);
 
+    // The music thread's retrace tick (src/music.cpp): sound commands in flight as each one starts, and ticks skipped
+    // because the thread was behind.
+    void probe_music_tick(uint32_t commands_in_flight);
+    void probe_music_tick_skipped();
+
     // Prints the bring-up probe counters (src/debug_probe.cpp) to stderr.
     void print_probes();
 
