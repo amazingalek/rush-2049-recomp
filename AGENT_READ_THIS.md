@@ -6,6 +6,9 @@ You are the agent working in `C:\Users\Alek\Documents\Source\n64-recomp` and com
 straight to `main`. This work is moving onto the board, where it will be split into cards and
 picked up by other sessions. Before that, please hand over:
 
+0. **Stop your loop first.** Delete every cron / scheduled wakeup / `/loop` you have running
+   (`CronList` then `CronDelete` each one; `ScheduleWakeup` with `stop: true`), so nothing
+   wakes you up to carry on after the handover. Say in the confirmation below that you did.
 1. **Stop starting new work.** Finish the sentence you are on, not the feature.
 2. **Check in and push everything as-is**, working or not. A WIP commit is fine. Say in the
    message what is unfinished.
@@ -43,5 +46,7 @@ Do not delete this file. The bot is watching `origin/main` for your confirmation
 
 ## Handover confirmation
 
-<!-- Replace the line below with: READY FOR HANDOVER: yes, at <commit sha>, <Oslo time> -->
+<!-- Replace the line below with: READY FOR HANDOVER: yes, at <commit sha>, <Oslo time>, loop stopped.
+     After that, do nothing more in this repo. -->
+
 READY FOR HANDOVER: not yet
