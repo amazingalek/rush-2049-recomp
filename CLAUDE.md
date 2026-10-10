@@ -69,6 +69,7 @@ The runtime patches, one line each (the why is in the code they touch):
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
 N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
+N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle
 RecompFrontend-0001    built-in texture packs (the hi-res font)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix

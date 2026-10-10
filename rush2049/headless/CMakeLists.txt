@@ -13,6 +13,11 @@ set(BUILD_SHARED_LIBS OFF)
 
 set(GAME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
+# As the game's CMakeLists.txt: the runtime's RSP vector unit needs SSE4.1 on x86-64.
+if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    add_compile_options(-march=nehalem)
+endif()
+
 if (EMSCRIPTEN)
     # Threads are pthreads (SharedArrayBuffer), main() runs on one of them so the browser's thread can wait, and the
     # runtime ends a game thread by throwing.
