@@ -1,6 +1,7 @@
 // Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
 // on the Graphics tab.
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 
@@ -10,6 +11,7 @@
 #include "recompinput/input_mapping.h"
 #include "recompui/config.h"
 #include "util/file.h"
+#include "ultramodern/ultramodern.hpp"
 
 namespace {
     enum class Accessory {
@@ -26,15 +28,37 @@ namespace {
     enum class GameFrameRate {
         Original,
         Sixty,
+        MatchFramerate,
         OptionCount
     };
     const std::vector<recomp::config::ConfigOptionEnumOption> game_frame_rate_options = {
         {GameFrameRate::Original, "Original", "30 FPS (Original)"},
         {GameFrameRate::Sixty, "60", "60 FPS"},
+        {GameFrameRate::MatchFramerate, "MatchFramerate", "Match Framerate"},
     };
     const std::string game_frame_rate_option = "game_frame_rate";
-    // Read by the scheduler thread on every swap check, so it is cached rather than looked up in the config.
-    std::atomic<bool> sixty_fps{ true };
+    // Read by the scheduler thread on every retrace, so it is cached rather than looked up in the config.
+    std::atomic<GameFrameRate> game_frame_rate_setting{ GameFrameRate::Sixty };
+    // Frames a second the game draws, and the VI rate it was set up for (at least 60, the console's).
+    std::atomic<uint32_t> game_fps{ 60 };
+    uint32_t vi_rate = 60;
+
+    // Match Framerate follows the Framerate option above it: Original is 60, Display the monitor's refresh rate,
+    // Manual its value. Never below 60.
+    uint32_t wanted_fps() {
+        switch (game_frame_rate_setting.load(std::memory_order_relaxed)) {
+            case GameFrameRate::Original:
+                return 30;
+            case GameFrameRate::Sixty:
+                return 60;
+            default:
+                return std::max<uint32_t>(60, ultramodern::get_target_framerate(60));
+        }
+    }
+}
+
+uint32_t rush2049::game_frame_rate() {
+    return game_fps.load(std::memory_order_relaxed);
 }
 
 bool rush2049::rumble_pak_selected() {
@@ -43,9 +67,29 @@ bool rush2049::rumble_pak_selected() {
 }
 
 extern "C" void rush2049_frame_pace(recomp_context* ctx) {
-    // $t3 = retraces since the last swap; the game swaps when it is at least 2.
-    if (sixty_fps.load(std::memory_order_relaxed) && ctx->r11 == 1) {
+    // $t3 = retraces since the last swap; the game swaps when it is at least 2. From 60 fps up the VI runs at the
+    // frame rate, so a frame swaps on the next retrace.
+    if (game_fps.load(std::memory_order_relaxed) >= 60 && ctx->r11 == 1) {
         ctx->r11 = 2;
+    }
+}
+
+// On every retrace, before the scheduler sends it on to its clients ($t8 = the first client, $t7 = the scheduler).
+// Above 60 fps the VI runs at the frame rate, but the clients (the main, controller, audio and music threads) still
+// get 60 retraces a second: the music sequencer counts them, so more would play it faster. On the retraces in
+// between, the client list reads as empty.
+extern "C" void rush2049_retrace_clients(uint8_t* rdram, recomp_context* ctx) {
+    uint32_t fps = wanted_fps();
+    if (fps != game_fps.load(std::memory_order_relaxed)) {
+        game_fps = fps;
+        vi_rate = std::max<uint32_t>(fps, 60);
+        ultramodern::set_vi_rate(vi_rate);
+    }
+    if (vi_rate > 60) {
+        uint64_t n = (uint32_t)MEM_W(0x27C, ctx->r15);
+        if (n * 60 / vi_rate == (n - 1) * 60 / vi_rate) {
+            ctx->r24 = 0;
+        }
     }
 }
 
@@ -100,16 +144,17 @@ void rush2049::init_config() {
         game_frame_rate_option,
         "Game Frame Rate",
         "How often the game draws a new frame. The original draws on every other screen refresh, 30 times a second. "
-        "Car physics and timers follow real time, so a race runs at the same speed at either rate."
+        "Car physics and timers follow real time, so a race runs at the same speed at any rate."
         "<br/>"
-        "Separate from <recomp-color primary>Framerate</recomp-color> above, which sets how often frames are presented.",
+        "<b>Match Framerate:</b> a new frame for every frame <recomp-color primary>Framerate</recomp-color> above "
+        "presents, so Display draws at the monitor's refresh rate and Manual at its value (60 at least).",
         game_frame_rate_options,
         GameFrameRate::Sixty
     );
     // Called on load too, and while the menu previews a change.
     graphics.add_option_change_callback(game_frame_rate_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
-            sixty_fps = static_cast<GameFrameRate>(std::get<uint32_t>(cur_value)) == GameFrameRate::Sixty;
+            game_frame_rate_setting = static_cast<GameFrameRate>(std::get<uint32_t>(cur_value));
         });
 
     recompui::config::create_controls_tab();

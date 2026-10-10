@@ -1,0 +1,79 @@
+--- a/ultramodern/include/ultramodern/ultramodern.hpp
++++ b/ultramodern/include/ultramodern/ultramodern.hpp
+@@ -80,6 +80,9 @@
+ void submit_rsp_task(RDRAM_ARG PTR(OSTask) task);
+ void send_si_message();
+ uint32_t get_speed_multiplier();
++// Retraces per second, 60 by default. A game whose logic follows measured time can draw more than 60 frames a
++// second with a faster VI. AI events are paced by audio played rather than by retraces, so audio keeps its speed.
++void set_vi_rate(uint32_t hz);
+ 
+ // Time
+ std::chrono::high_resolution_clock::time_point get_start();
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -172,6 +172,12 @@
+ }
+ 
+ uint64_t total_vis = 0;
++// Retraces per second: 60 like an NTSC console, unless the game asks for a faster VI with set_vi_rate.
++std::atomic_uint32_t vi_rate = 60;
++
++void ultramodern::set_vi_rate(uint32_t hz) {
++    vi_rate = hz;
++}
+ 
+ 
+ extern std::atomic_bool exited;
+@@ -187,10 +193,19 @@
+     using namespace std::chrono_literals;
+ 
+     int remaining_retraces = 1;
++    // total_vis counts retraces at cur_rate since vis_epoch, so a change of rate starts a new count from then.
++    uint32_t cur_rate = 0;
++    std::chrono::high_resolution_clock::duration vis_epoch{};
+ 
+     while (!exited) {
++        uint32_t rate = vi_rate.load() * ultramodern::get_speed_multiplier();
++        if (rate != cur_rate) {
++            vis_epoch = ultramodern::time_since_start();
++            total_vis = 0;
++            cur_rate = rate;
++        }
+         // Determine the next VI time (more accurate than adding 16ms each VI interrupt)
+-        auto next = ultramodern::get_start() + (total_vis * 1000000us) / (60 * ultramodern::get_speed_multiplier());
++        auto next = ultramodern::get_start() + vis_epoch + (total_vis * 1000000us) / rate;
+         //if (next > std::chrono::high_resolution_clock::now()) {
+         //    printf("Sleeping for %" PRIu64 " us to get from %" PRIu64 " us to %" PRIu64 " us \n",
+         //        (next - std::chrono::high_resolution_clock::now()) / 1us,
+@@ -205,9 +220,9 @@
+             next = std::chrono::high_resolution_clock::now();
+         }
+         ultramodern::sleep_until(next);
+-        auto time_now = ultramodern::time_since_start();
++        auto time_now = ultramodern::time_since_start() - vis_epoch;
+         // Calculate how many VIs have passed
+-        uint64_t new_total_vis = (time_now * (60 * ultramodern::get_speed_multiplier()) / 1000ms) + 1;
++        uint64_t new_total_vis = (time_now * rate / 1000ms) + 1;
+         if (new_total_vis > total_vis + 1) {
+             //printf("Skipped % " PRId64 " frames in VI interupt thread!\n", new_total_vis - total_vis - 1);
+         }
+@@ -253,14 +268,16 @@
+                 uint32_t buffer_bytes = ultramodern::get_last_audio_buffer_bytes();
+                 int events = 1;
+                 if (buffer_bytes != 0) {
+-                    double bytes_per_vi = ultramodern::get_audio_frequency() * 4.0 / (60 * ultramodern::get_speed_multiplier());
++                    double bytes_per_vi = ultramodern::get_audio_frequency() * 4.0 / rate;
++                    // Eight retraces' worth at 60 Hz, whatever the VI rate.
++                    double max_queued_bytes = ultramodern::get_audio_frequency() * 4.0 * 8 / (60 * ultramodern::get_speed_multiplier());
+                     ai_bytes_played += bytes_per_vi;
+                     events = 0;
+                     while (ai_bytes_played >= buffer_bytes) {
+                         ai_bytes_played -= buffer_bytes;
+                         events++;
+                     }
+-                    if (ultramodern::get_remaining_audio_bytes() > 8 * bytes_per_vi) {
++                    if (ultramodern::get_remaining_audio_bytes() > max_queued_bytes) {
+                         events = 0;
+                     }
+                 }

@@ -16,6 +16,7 @@
 #include <cstdint>
 
 #include "recomp.h"
+#include "rush2049_game.h"
 #include "rush2049_hooks.h"
 
 #define F3DEX_GBI_2
@@ -130,6 +131,7 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     // rectangles to the 4:3 area. That scissor follows a pipe sync (nothing to RT64), so the pair makes room for an
     // extended scissor from the window's left edge to its right edge. The list is walked at its top level only.
     uint32_t hud_scissor = 0;
+    uint32_t first_pipe_sync = 0;
     bool split_screen = false;
     uint32_t p = dl + 8;
     for (int n = 0; n < 20000; n++, p += 8) {
@@ -152,6 +154,19 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
             read_word(rdram, p + 12) == 0x00500370) {
             hud_scissor = p;
         }
+        if (w0 == 0xE7000000 && w1 == 0 && first_pipe_sync == 0 && (read_word(rdram, p + 8) >> 24) != 0xED) {
+            first_pipe_sync = p;
+        }
+    }
+    // RT64 works out the game's frame rate from how often the framebuffer changes, counting retraces at 60 Hz. Above
+    // 60 fps the VI is faster than that, so the list says the rate instead, in the place of a pipe sync. Otherwise
+    // RT64 would take it for 60 fps and, when its Framerate is above 60, interpolate frames it doesn't need.
+    uint32_t fps = rush2049::game_frame_rate();
+    if (fps > 60 && first_pipe_sync != 0) {
+        GfxCommand rate{};
+        gEXSetRefreshRate(&rate, fps);
+        write_word(rdram, first_pipe_sync, rate.values.word0);
+        write_word(rdram, first_pipe_sync + 4, rate.values.word1);
     }
     split_screen_last_frame = split_screen;
     if (!in_race || split_screen || hud_scissor == 0) {

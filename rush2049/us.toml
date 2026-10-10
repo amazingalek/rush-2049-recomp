@@ -36,6 +36,14 @@ func = "func_80000880"
 before_vram = 0x800008C8
 text = "    rush2049_frame_pace(ctx);"
 
+# Above 60 fps (Match Framerate) the VI runs at the frame rate and the swap above happens on every retrace. The
+# retrace handler then sends each retrace to its clients (list at +0x260, loaded into $t8 just before this
+# branch); the hook empties $t8 on the retraces in between, so the clients still get 60 a second.
+[[patches.hook]]
+func = "func_80000880"
+before_vram = 0x8000090C
+text = "    rush2049_retrace_clients(rdram, ctx);"
+
 # Widescreen race HUD (src/widescreen.cpp): func_80087110(x0, y0, x1, y1, ...) draws every texture rectangle and
 # returns through 0x800877FC; func_8010761C draws the race timer, so it marks a race in progress.
 [[patches.hook]]
