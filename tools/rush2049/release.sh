@@ -3,7 +3,7 @@
 # this PC), so it can't link the exe; releases are cut here instead.
 # Usage: tools/rush2049/release.sh [--dry-run]
 #   The tag is v<version_string> from rush2049/src/main.cpp, so bump that first. Needs a clean tree at origin/main, the
-#   setup from docs/games/rush2049.md "Building and running" (submodules, runtime patches, extract.py's roms/, the
+#   setup from the README's build steps and CLAUDE.md (submodules, runtime patches, extract.py's roms/, the
 #   .venv, the toolchain) and gh signed in. --dry-run builds and zips but publishes nothing and skips the two checks.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"

@@ -3,6 +3,10 @@
 // These are C translations of that assembly, not of the GSM specification: they keep its 32-bit arithmetic,
 // which skips some of the specification's saturation, so the output matches the console's.
 //
+// The decoder is dead code in this ROM: every path into it starts at a function nothing references (by jal, by a
+// lui/addiu pair or as a pointer in ROM data). It is a linked-in speech library the game never uses; the translation
+// keeps the island from needing a stub, and logs "[gsm] first speech frame" if a path turns up after all.
+//
 // Decoder state (the a0 argument of the long-term and short-term stages), byte offsets:
 //   +0x000  drp history, 160 s16; drp[0..39] (the newest samples) start at +0x0F0
 //   +0x140  short-term filter v[0..7], 32-bit words
