@@ -44,6 +44,10 @@ jobs:
           g++ -std=c++20 -O2 -Wall -Irush2049/include rush2049/tests/audio_resampler_test.cpp \
             rush2049/src/audio_resampler.cpp -o resampler_test
           ./resampler_test
+      - name: Audio limiter tests
+        run: |
+          g++ -std=c++20 -O2 -Wall -Irush2049/include rush2049/tests/audio_limiter_test.cpp rush2049/src/audio_limiter.cpp -o limiter_test
+          ./limiter_test
 
   build:
     runs-on: windows-2025
