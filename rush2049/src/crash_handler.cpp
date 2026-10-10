@@ -218,12 +218,19 @@ namespace {
 uintptr_t hw_watch_addr = 0;
 std::mutex hw_watch_mutex;
 std::map<DWORD64, int> hw_watch_hits;
+thread_local bool in_hw_watch_filter = false;
 
 LONG WINAPI hw_watch_filter(EXCEPTION_POINTERS* info) {
     if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || (info->ContextRecord->Dr6 & 1) == 0) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
     info->ContextRecord->Dr6 = 0;
+    // The breakpoint stays armed while this runs, so reading the byte below traps again on this thread. Without
+    // this the nested call relocks hw_watch_mutex, which throws out of the handler and kills the process silently.
+    if (in_hw_watch_filter) {
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    in_hw_watch_filter = true;
     std::lock_guard lock{ hw_watch_mutex };
     DWORD64 rip = info->ContextRecord->Rip;
     if (hw_watch_hits[rip]++ == 0 && hw_watch_hits.size() < 64) {
@@ -234,6 +241,7 @@ LONG WINAPI hw_watch_filter(EXCEPTION_POINTERS* info) {
         fprintf(stderr, "\n");
         fflush(stderr);
     }
+    in_hw_watch_filter = false;
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
