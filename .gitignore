@@ -22,6 +22,7 @@
 /.venv/
 /rush2049/RecompiledFuncs/
 /rush2049/build/
+/rush2049/build-release/
 
 # Portable run directory files (rush2049/portable.txt makes the app keep its data here)
 /rush2049/portable.txt

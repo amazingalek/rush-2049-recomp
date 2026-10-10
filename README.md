@@ -45,7 +45,9 @@ The full table, with each option's config key, default and Original value, is in
 
 ## Getting it running
 
-There is no prebuilt download: you build it from source, and you need your own copy of the game.
+You need your own copy of the game either way. A release on the repo's Releases page, once one is cut, is a zip of
+the game without the ROM: unzip it and run `Rush2049Recompiled.exe` from that folder (step 3). Otherwise build it
+from source.
 
 1. **The ROM.** *San Francisco Rush 2049 (U)*, the US release, as a `.z64` with SHA-1
    `3f99351d7bb61656614bdb2aa1a90cfe55d1922c`. The build and the launcher both check its hash. Other regions and
@@ -104,7 +106,7 @@ but no real mod has been played with yet, so expect rough edges. How to write on
   (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
   `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`) and the submodules themselves (`lib/`).
 - `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
-- `tools/`: ROM extraction, symbol generation, the build-and-boot loop, and the CI checks.
+- `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `docs/`: everything we know, see above.
 
 ## Ground rules
