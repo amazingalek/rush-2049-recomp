@@ -25,6 +25,10 @@ void rush2049_hud_race_mark(uint8_t* rdram);
 void rush2049_music_command(uint8_t* rdram, uint32_t command);
 void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr);
 
+/* Before the scheduler starts a task (us.toml): upscale any font texture the display list draws that the hi-res
+   font pack doesn't have yet (src/hires_font.cpp). */
+void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr);
+
 /* Before the scheduler starts a task (us.toml); writes it out when --dump-dl is due. */
 void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 

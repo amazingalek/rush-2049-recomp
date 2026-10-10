@@ -78,11 +78,12 @@ before_vram = 0x80099390
 text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
 
 # The scheduler is about to start the task at sctask+0x10 ($sp+0x24 holds sctask): turn on RT64's extended GBI
-# for a graphics task (src/widescreen.cpp), and write it out for --dump-dl (src/dl_dump.cpp).
+# for a graphics task (src/widescreen.cpp), upscale new font textures (src/hires_font.cpp), and write it out for
+# --dump-dl (src/dl_dump.cpp).
 [[patches.hook]]
 func = "func_80000E20"
 before_vram = 0x80000EE0
-text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_dump_task(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10);"
+text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_hires_font_scan(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_dump_task(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10);"
 
 # The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
 # and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
