@@ -14,7 +14,7 @@ namespace rush2049 {
     void probe_audio_frequency(uint32_t freq);
 
     // The audio device's queue as each buffer is added (real time at the device rate), and whether that buffer was
-    // shortened to drain it.
+    // shortened to drain it. An empty queue means the device ran dry (an underrun) before the buffer arrived.
     void probe_audio_queue(uint32_t queued_us, bool draining);
 
     // --dump-audio <file.wav>: also write that audio, before resampling and volume, to a 32-bit float WAV file.

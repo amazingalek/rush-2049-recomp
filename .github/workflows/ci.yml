@@ -39,6 +39,11 @@ jobs:
           git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
           bash tools/rush2049/apply_runtime_patches.sh
           bash tools/rush2049/apply_runtime_patches.sh | grep -q "already applied"
+      - name: Audio resampler tests
+        run: |
+          g++ -std=c++20 -O2 -Wall -Irush2049/include rush2049/tests/audio_resampler_test.cpp \
+            rush2049/src/audio_resampler.cpp -o resampler_test
+          ./resampler_test
 
   build:
     runs-on: windows-2025

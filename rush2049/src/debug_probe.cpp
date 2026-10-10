@@ -45,6 +45,7 @@ std::atomic<int> audio_peak{ 0 };
 std::atomic<uint32_t> audio_frequency{ 0 };
 std::atomic<uint32_t> queue_buffers{ 0 };
 std::atomic<uint32_t> queue_draining{ 0 };
+std::atomic<uint32_t> queue_empty{ 0 };
 std::atomic<uint32_t> queue_interval_buffers{ 0 };
 std::atomic<uint64_t> queue_interval_us{ 0 };
 std::atomic<uint32_t> queue_max_us{ 0 };
@@ -133,6 +134,9 @@ void rush2049::probe_audio_queue(uint32_t queued_us, bool draining) {
     if (draining) {
         queue_draining++;
     }
+    if (queued_us == 0) {
+        queue_empty++;
+    }
     queue_interval_buffers++;
     queue_interval_us += queued_us;
     uint32_t max = queue_max_us.load();
@@ -151,9 +155,9 @@ void rush2049::print_probes() {
     // Mean and max are since the previous print.
     uint32_t interval_buffers = queue_interval_buffers.exchange(0);
     uint64_t interval_us = queue_interval_us.exchange(0);
-    fprintf(stderr, "  audio queue: mean %.1f ms, max %.1f ms; %u of %u buffers drained\n",
+    fprintf(stderr, "  audio queue: mean %.1f ms, max %.1f ms; of %u buffers, %u drained, %u found it empty\n",
             interval_buffers ? interval_us / 1000.0 / interval_buffers : 0.0, queue_max_us.exchange(0) / 1000.0,
-            queue_draining.load(), queue_buffers.load());
+            queue_buffers.load(), queue_draining.load(), queue_empty.load());
     uint64_t hires_matched, hires_fallback;
     musyx_hires_counts(hires_matched, hires_fallback);
     fprintf(stderr, "  musyx hi-res: %llu frames played, %llu without a match\n", (unsigned long long)hires_matched,
