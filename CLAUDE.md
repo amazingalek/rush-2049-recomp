@@ -115,6 +115,12 @@ fetch hit the path limit; repair it with
 this machine too: stop only the PID you started (`taskkill //PID <pid> //F`), never by image name, and check
 `gpu.mjs` before you measure anything.
 
+**Screenshots.** Capture the game window by your own PID with `PrintWindow(hwnd, hdc, 3)` (client area, full
+content) from a DPI-aware process (`SetProcessDPIAware()` first, or a 1280x960 window comes back as 731x548). Never
+copy the screen (`CopyFromScreen`, BitBlt of the desktop, a screenshot tool): this is someone's shared desktop, the
+game is often not on top, and an image you Read is posted to the card. A screen copy posted another app's window
+there once.
+
 ## Releases
 
 Cut here, never in CI (no ROM, so no link). Bump `version_string` in `rush2049/src/main.cpp`, merge, then from a
