@@ -1,10 +1,13 @@
 // MusyX v1 audio tasks: mupen64plus-rsp-hle's high-level implementation (src/hle/), the game's own microcode
 // recompiled by RSPRecomp (rsp/musyx.cpp), or both side by side for comparison.
 
+#include <array>
+#include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 
 #include "librecomp/rsp.hpp"
 #include "musyx_hle.h"
@@ -40,6 +43,23 @@ RspExitReason musyx_mixer(uint8_t* rdram, uint32_t ucode_addr);
 namespace {
 
 rush2049::MusyxMode mode = rush2049::MusyxMode::Hle;
+bool hires_wanted = true;
+
+// The high-quality mix (src/hle/musyx.c, musyx_hires_t): each subframe the HLE rendered at twice the game's rate,
+// beside a copy of the game's own subframe and where it sits in RDRAM. The audio output looks up each buffer the
+// game queues here; the copy tells a live subframe from a stale one that happens to sit at the same address.
+constexpr size_t subframe_frames = 192;
+struct HiresSubframe {
+    const uint32_t* native_at = nullptr;
+    uint32_t native[subframe_frames];
+    uint32_t hires[2 * subframe_frames];
+};
+// ~1.1 s of audio. The game queues a subframe a few VIs after mixing it.
+std::array<HiresSubframe, 128> hires_subframes;
+size_t hires_next = 0;
+std::mutex hires_mutex;
+std::atomic<uint64_t> hires_matched{ 0 };
+std::atomic<uint64_t> hires_fallback{ 0 };
 
 // The RSP task thread is the only caller, so one static state is enough.
 hle_t hle_state{};
@@ -119,8 +139,72 @@ RspExitReason run_hle_task(uint8_t* rdram, uint32_t) {
 
 } // namespace
 
+extern "C" void musyx_hires_store(const uint32_t* native, const uint32_t* hires) {
+    std::lock_guard lock{ hires_mutex };
+    HiresSubframe& entry = hires_subframes[hires_next];
+    hires_next = (hires_next + 1) % hires_subframes.size();
+    entry.native_at = native;
+    memcpy(entry.native, native, sizeof(entry.native));
+    memcpy(entry.hires, hires, sizeof(entry.hires));
+}
+
 void rush2049::set_musyx_mode(MusyxMode new_mode) {
     mode = new_mode;
+}
+
+void rush2049::set_musyx_hires(bool enabled) {
+    hires_wanted = enabled;
+}
+
+bool rush2049::musyx_hires_enabled() {
+    // Only the HLE renders it; compare mode runs the HLE on a copy of RDRAM.
+    return hires_wanted && mode == MusyxMode::Hle;
+}
+
+void rush2049::musyx_hires_buffer(const int16_t* samples, size_t sample_count, std::vector<int16_t>& out) {
+    const uint32_t* frames = reinterpret_cast<const uint32_t*>(samples);
+    size_t frame_count = sample_count / 2;
+    out.resize(frame_count * 4);
+    uint32_t* dst = reinterpret_cast<uint32_t*>(out.data());
+    uint64_t matched = 0;
+
+    std::lock_guard lock{ hires_mutex };
+    const HiresSubframe* entry = nullptr;
+    for (size_t f = 0; f < frame_count; f++) {
+        const uint32_t* at = frames + f;
+        if (entry == nullptr || at < entry->native_at || at >= entry->native_at + subframe_frames) {
+            entry = nullptr;
+            for (const HiresSubframe& candidate : hires_subframes) {
+                if (candidate.native_at != nullptr && at >= candidate.native_at &&
+                    at < candidate.native_at + subframe_frames) {
+                    entry = &candidate;
+                    break;
+                }
+            }
+        }
+        size_t index = entry != nullptr ? size_t(at - entry->native_at) : 0;
+        if (entry != nullptr && entry->native[index] == *at) {
+            dst[2 * f] = entry->hires[2 * index];
+            dst[2 * f + 1] = entry->hires[2 * index + 1];
+            matched++;
+            continue;
+        }
+        // Not from the HLE (or overwritten since): the frame, then halfway to the next one.
+        const int16_t* cur = samples + 2 * f;
+        const int16_t* next = f + 1 < frame_count ? cur + 2 : cur;
+        int16_t* d = out.data() + 4 * f;
+        d[0] = cur[0];
+        d[1] = cur[1];
+        d[2] = int16_t((cur[0] + next[0]) / 2);
+        d[3] = int16_t((cur[1] + next[1]) / 2);
+    }
+    hires_matched += matched;
+    hires_fallback += frame_count - matched;
+}
+
+void rush2049::musyx_hires_counts(uint64_t& matched, uint64_t& fallback) {
+    matched = hires_matched.load();
+    fallback = hires_fallback.load();
 }
 
 RspUcodeFunc* rush2049::get_musyx_ucode() {
