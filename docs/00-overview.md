@@ -39,4 +39,4 @@ The candidates come from Alek. These are the factors to check each one against, 
 ## Next steps (Rush 2049)
 
 1. Play through more of the game: a ghost saved to the Controller Pak, and multiplayer with real second pads.
-2. Launcher and config polish: controller defaults for driving. (Controller Pak or Rumble Pak is now a General-tab option.)
+2. Done: keyboard defaults for driving, and a Controller Pak or Rumble Pak option on the General tab.
