@@ -4,7 +4,7 @@ Workspace for building a new N64 static recompilation (N64Recomp + N64ModernRunt
 of a game that doesn't have one yet.
 
 Status: **San Francisco Rush 2049 is playable** (`rush2049/`; build steps, findings and status in
-[docs/games/rush2049.md](docs/games/rush2049.md)). Jet Force Gemini is on hold because a recomp of it already
+[docs/games/rush2049.md](docs/games/rush2049.md)). Jet Force Gemini is dropped (2026-10-10) because a recomp of it already
 exists ([docs/games/jet-force-gemini.md](docs/games/jet-force-gemini.md)).
 
 ## Docs

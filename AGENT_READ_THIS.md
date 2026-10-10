@@ -32,7 +32,7 @@ Do not delete this file. The bot is watching `origin/main` for your confirmation
 
 The repo holds a static recompilation of **San Francisco Rush 2049 (N64, USA)** in `rush2049/`, built
 on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs/games/jet-force-gemini.md`) is
-**on hold**, because a JFG recomp was released on 2026-10-09; Alek decides whether to continue it. Start with `README.md`
+**dropped** (Alek, 2026-10-10), because a JFG recomp was released on 2026-10-09. Start with `README.md`
 (ground rules: **no ROM or ROM-derived data in git**, no code copied from unlicensed repos) and
 `docs/games/rush2049.md`, which is the main reference: memory map, function naming, runtime notes, developer flags.
 
@@ -133,7 +133,7 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
    counters, not texture rects, so they stay at their 4:3 position.
 5. **Bug (unconfirmed): the ghost car in Ghost Race isn't seen.** See the status paragraph in
    `docs/games/rush2049.md`.
-6. **Decision for Alek:** whether to continue Jet Force Gemini.
+6. ~~Decision for Alek: whether to continue Jet Force Gemini.~~ Dropped, 2026-10-10.
 
 ## Known problems and gotchas
 
