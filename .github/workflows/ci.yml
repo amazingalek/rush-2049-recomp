@@ -2,6 +2,12 @@
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.
+#
+# The submodules and the build directory are cached together, keyed on the runner image, the submodule commits and the
+# runtime patches. On an exact hit nothing is cloned and ninja finds the libraries up to date (the cache keeps mtimes,
+# so every submodule source is older than what was built from it); only the game's own sources compile, and sccache
+# serves the ones the PR didn't touch. Otherwise the newest cache for the OS is restored, the submodules are updated in
+# place and ninja rebuilds what changed.
 name: CI
 
 on:
@@ -21,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -40,7 +48,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          persist-credentials: false
+      - name: Cache key
+        id: key
+        shell: bash
+        run: |
+          prefix="build-v1-$ImageOS-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            .git/modules
+            rush2049/lib/N64ModernRuntime
+            rush2049/lib/RecompFrontend
+            rush2049/lib/rt64
+            rush2049/build
+          key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
+      # In parallel: actions/checkout's submodules option clones the ~30 nested repos one at a time (~90 s).
+      - name: Submodules
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8
       - name: Apply runtime patches
         shell: bash
         run: bash tools/rush2049/apply_runtime_patches.sh
@@ -86,13 +117,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          persist-credentials: false
+      - name: Cache key
+        id: key
+        run: |
+          prefix="build-v1-$ImageOS-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            .git/modules
+            rush2049/lib/N64ModernRuntime
+            rush2049/lib/RecompFrontend
+            rush2049/lib/rt64
+            rush2049/build
+          key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
+      - name: Submodules
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8
       - name: Apply runtime patches
         run: bash tools/rush2049/apply_runtime_patches.sh
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld libsdl2-dev libgtk-3-dev libfreetype-dev
+          sudo apt-get install -y --no-install-recommends clang lld libsdl2-dev libgtk-3-dev libfreetype-dev
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: "~3.31.0"
