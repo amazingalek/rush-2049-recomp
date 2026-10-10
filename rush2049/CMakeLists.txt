@@ -73,6 +73,8 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/controller_pak.cpp
     ${CMAKE_SOURCE_DIR}/src/debug_probe.cpp
+    ${CMAKE_SOURCE_DIR}/src/dl_dump.cpp
+    ${CMAKE_SOURCE_DIR}/src/widescreen.cpp
     ${CMAKE_SOURCE_DIR}/src/musyx_hle.cpp
     ${CMAKE_SOURCE_DIR}/src/gsm_decoder.cpp
     ${CMAKE_SOURCE_DIR}/src/hle/musyx.c

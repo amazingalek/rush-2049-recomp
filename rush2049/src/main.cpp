@@ -376,6 +376,10 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
             rush2049::start_byte_watch((uint32_t)strtoul(argv[++i], nullptr, 16));
         }
+        if (strcmp(argv[i], "--dump-dl") == 0 && i + 2 < argc) {
+            const char* path = argv[++i];
+            rush2049::start_dl_dump(path, atof(argv[++i]));
+        }
         if (strcmp(argv[i], "--dump-audio") == 0 && i + 1 < argc) {
             rush2049::start_audio_dump(argv[++i]);
         }

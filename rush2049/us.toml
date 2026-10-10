@@ -36,6 +36,30 @@ func = "func_80000880"
 before_vram = 0x800008C8
 text = "    rush2049_frame_pace(ctx);"
 
+# Widescreen race HUD (src/widescreen.cpp): func_80087110(x0, y0, x1, y1, ...) draws every texture rectangle and
+# returns through 0x800877FC; func_8010761C draws the race timer, so it marks a race in progress.
+[[patches.hook]]
+func = "func_80087110"
+before_vram = 0x80087110
+text = "    rush2049_hud_rect_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_80087110"
+before_vram = 0x800877FC
+text = "    rush2049_hud_rect_end(rdram);"
+
+[[patches.hook]]
+func = "func_8010761C"
+before_vram = 0x8010761C
+text = "    rush2049_hud_race_mark(rdram);"
+
+# The scheduler is about to start the task at sctask+0x10 ($sp+0x24 holds sctask): turn on RT64's extended GBI
+# for a graphics task (src/widescreen.cpp), and write it out for --dump-dl (src/dl_dump.cpp).
+[[patches.hook]]
+func = "func_80000E20"
+before_vram = 0x80000EE0
+text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_dump_task(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10);"
+
 # The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
 # and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
 # (src/code_loading.cpp maps the original ROM address to the extracted section).
