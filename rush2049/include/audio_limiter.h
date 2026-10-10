@@ -7,11 +7,12 @@
 #include <vector>
 
 namespace rush2049 {
-    // Stereo-linked look-ahead peak limiter for the device output (1.0 = device full scale). Everything below 0.9 passes
-    // untouched; a peak above it is bent softly toward 1.0, which it never reaches, so the high-quality MusyX mix's
-    // loudest hits don't clip on the device. The gain eases down over the 3 ms before a peak and recovers over ~60 ms.
+    // Stereo-linked look-ahead peak limiter (1.0 = device full scale). Everything below the threshold passes untouched;
+    // a peak above it is bent softly toward the ceiling, which it never reaches. The gain eases down over the 3 ms
+    // before a peak and recovers over ~60 ms.
     class Limiter {
     public:
+        Limiter(float threshold, float ceiling) : threshold(threshold), ceiling(ceiling) {}
         void reset(uint32_t rate);
         // Limits `frames` interleaved stereo frames in place. The output lags the input by the 3 ms look-ahead.
         void process(float* samples, size_t frames);
@@ -24,6 +25,11 @@ namespace rush2049 {
         std::atomic<uint32_t> min_gain_ppm{ 1000000 };
 
     private:
+        // The level a peak of `x` (above the threshold) leaves at.
+        float knee(float x) const;
+
+        const float threshold;
+        const float ceiling;
         uint32_t window = 0;       // look-ahead frames + 1
         float release = 0.0f;      // per-frame step of the gain's recovery toward 1
         std::vector<float> delay;  // the last window - 1 input frames, interleaved
@@ -38,8 +44,12 @@ namespace rush2049 {
         bool limiting = false;
     };
 
-    // The one on the audio device's output (main.cpp's queue_samples); --probes prints its counters.
+    // The two in main.cpp's queue_samples; --probes prints their counters. output_limiter keeps the game's own mix
+    // (0.9 to 1.0) from clipping: the high-quality MusyX mix's loudest hits reach twice full scale. mix_limiter (0.95 to
+    // 0.99) runs on the sum once the replacement music is added, so a loud hit over a loud bar of music doesn't clip
+    // either; set higher, it leaves the music alone the rest of the time.
     extern Limiter output_limiter;
+    extern Limiter mix_limiter;
 }
 
 #endif

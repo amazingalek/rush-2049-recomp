@@ -174,6 +174,7 @@ void update_gfx(void*) {
 // float and resampled to the device rate (rush2049::Resampler). With the high-quality MusyX mix on, each buffer is
 // first swapped for the same audio rendered at twice the game's rate. At the device rate it is halved and then limited
 // (rush2049::Limiter), since that mix isn't clamped to 16 bits and its peaks reach about twice the game's full scale.
+// The replacement music is added after that, and the sum goes through a second, higher limiter.
 
 static rush2049::Resampler resampler;
 static uint32_t resampler_input_rate = 0;
@@ -240,6 +241,8 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     rush2049::music_mix(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_channels, output_sample_rate,
                         main_volume);
+    // A loud hit over a loud bar of music still sums past 1.0.
+    rush2049::mix_limiter.process(samples_to_queue, num_bytes_to_queue / bytes_per_frame);
     rush2049::probe_output(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_sample_rate);
     SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
 }
@@ -293,6 +296,7 @@ bool reset_audio(uint32_t output_freq) {
     SDL_PauseAudioDevice(audio_device, 0);
     output_sample_rate = output_freq;
     rush2049::output_limiter.reset(output_sample_rate);
+    rush2049::mix_limiter.reset(output_sample_rate);
     update_audio_converter();
     return true;
 }
