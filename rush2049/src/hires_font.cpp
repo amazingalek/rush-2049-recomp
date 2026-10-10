@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "recomp.h"
+#include "librecomp/addresses.hpp"
 #include "rush2049_game.h"
 #include "rush2049_hooks.h"
 #include "recompui/renderer.h"
@@ -44,6 +45,7 @@ constexpr int scale = 4;
 constexpr float contrast = 2.5f;
 
 constexpr uint32_t tmem_bytes = 4096;
+constexpr uint32_t rdram_bytes = (uint32_t)recomp::mem_size;
 constexpr uint32_t fmt_rgba = 0, fmt_i = 4;
 constexpr uint32_t siz_4b = 0, siz_8b = 1, siz_32b = 3;
 
@@ -66,12 +68,18 @@ struct Rdp {
     // so they mark what they may have overwritten as unknown, and rectangles drawing from there are skipped.
     bool tmem_known[tmem_bytes]{};
     std::vector<uint64_t> found;
+    // gEXSetRDRAMExtended: the widescreen HUD calls lists of its own above the game's 8 MB with this on.
+    bool extended_rdram = false;
 
+    // RT64's RSP::fromSegmented and maskPhysicalAddress.
     uint32_t phys(uint32_t addr) const {
+        if (extended_rdram && (addr & 0x80000000)) {
+            return addr - 0x80000000;
+        }
         return (segments[(addr >> 24) & 0xF] + (addr & 0x00FFFFFF)) & 0x007FFFFF;
     }
-    uint32_t rd32(uint32_t p) const { return *reinterpret_cast<uint32_t*>(rdram + (p & 0x007FFFFC)); }
-    uint8_t rd8(uint32_t p) const { return rdram[(p & 0x007FFFFF) ^ 3]; }
+    uint32_t rd32(uint32_t p) const { return *reinterpret_cast<uint32_t*>(rdram + (p & (rdram_bytes - 4))); }
+    uint8_t rd8(uint32_t p) const { return rdram[(p & (rdram_bytes - 1)) ^ 3]; }
 
     // RT64's RDP::loadBlockOperation / loadToTMEMCommon for everything but 32-bit RGBA.
     void load_block(uint32_t t, uint32_t uls, uint32_t ult, uint32_t lrs, uint32_t dxt) {
@@ -208,9 +216,29 @@ struct Rdp {
                 p += 16;
                 break;
             case RT64_EXTENDED_OPCODE:
-                if ((w0 & 0xFFFFFF) == G_EX_TEXRECT_V1) {  // what the widescreen HUD turns race rectangles into
+                switch (w0 & 0xFFFFFF) {
+                case G_EX_TEXRECT_V1:  // what the widescreen HUD turns race rectangles into
                     texture_rect(w1 & 7);
                     p += 16;
+                    break;
+                case G_EX_SETSCISSORALIGN_V1:
+                    p += 16;
+                    break;
+                case G_EX_FILLRECT_V1:
+                case G_EX_SETVIEWPORT_V1:
+                case G_EX_SETSCISSOR_V1:
+                case G_EX_SETRECTALIGN_V1:
+                case G_EX_SETVIEWPORTALIGN_V1:
+                case G_EX_MATRIXGROUP_V1:
+                case G_EX_EDITGROUPBYADDRESS_V1:
+                case G_EX_VERTEX_V1:
+                case G_EX_MATRIX_FLOAT_V1:
+                case G_EX_SETVERTEXSEGMENT_V1:
+                    p += 8;
+                    break;
+                case G_EX_SETRDRAMEXTENDED_V1:
+                    extended_rdram = w1 & 1;
+                    break;
                 }
                 break;
             }
@@ -407,6 +435,7 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
     static Rdp rdp;
     rdp.rdram = rdram;
     rdp.found.clear();
+    rdp.extended_rdram = false;
     std::fill(std::begin(rdp.tmem_known), std::end(rdp.tmem_known), false);
     rdp.walk((uint32_t)MEM_W(0x30, task), 0);
     if (!rdp.found.empty()) {
