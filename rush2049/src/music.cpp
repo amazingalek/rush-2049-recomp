@@ -291,12 +291,24 @@ float volume = 1.0f;
 float volume_target = 1.0f;
 float volume_rate = 0.0f;
 
+// A stop command lets the file fade out instead of cutting it. The game sends its stop a few milliseconds after a
+// fade-out command, which the sequencer survives because its notes ring out; a recording would cut off mid-note.
+// So a running fade-out finishes, anything else gets a short release, and the file stops once it is silent.
+constexpr float release_seconds = 0.25f;
+bool stopping = false;
+float volume_after_stop = 1.0f;  // the game's volume once the stop is done, since the release is not the game's
+
 void stop_locked() {
     decoder.reset();
     playing_song = -1;
     if (resampler != nullptr) {
         SDL_FreeAudioStream(resampler);
         resampler = nullptr;
+    }
+    if (stopping) {
+        stopping = false;
+        volume = volume_target = volume_after_stop;
+        volume_rate = 0.0f;
     }
 }
 
@@ -375,10 +387,15 @@ void rush2049::music_mix(float* out, size_t frames, uint32_t channels, uint32_t 
                 volume = volume_target;
             }
         }
-        // Squared, as the 0-10 setting is heard roughly as a loudness scale.
-        float gain = volume * volume * replacement_gain * main_volume;
+        // Squared: the game's music drops 12.8 dB when its MUSIC VOLUME setting (sent here as 0-1) is halved.
+        // Halved like the game's own samples in queue_samples(), so a normally mastered recording at 100% plays at
+        // about the original music's level and leaves room for the sound effects.
+        float gain = volume * volume * replacement_gain * main_volume * 0.5f;
         out[i * channels + 0] += music[i * 2 + 0] * gain;
         out[i * channels + 1] += music[i * 2 + 1] * gain;
+    }
+    if (stopping && volume == 0.0f) {
+        stop_locked();
     }
 }
 
@@ -392,7 +409,7 @@ extern "C" void rush2049_music_command(uint8_t* rdram, uint32_t command) {
         {
             std::lock_guard lock{ music_mutex };
             enabled = replacement_enabled;
-            streaming = decoder != nullptr;
+            streaming = decoder != nullptr && !stopping && !decoder_ended;
         }
         if (streaming) {
             // A song is playing: the music thread ignores play commands until it stops.
@@ -422,7 +439,15 @@ extern "C" void rush2049_music_command(uint8_t* rdram, uint32_t command) {
         MEM_B(2, cmd) = (int8_t)command_ignored;
     } else if (type == 1) {
         std::lock_guard lock{ music_mutex };
-        stop_locked();
+        if (decoder == nullptr || stopping) {
+            return;
+        }
+        stopping = true;
+        volume_after_stop = volume_target;
+        if (volume_target != 0.0f || volume_rate == 0.0f) {
+            volume_target = 0.0f;
+            volume_rate = -volume / release_seconds;
+        }
     } else if (type == 10 && MEM_BU(0xC, cmd) != 0) {
         uint32_t w4 = (uint32_t)MEM_W(4, cmd);
         uint32_t w8 = (uint32_t)MEM_W(8, cmd);
@@ -431,6 +456,10 @@ extern "C" void rush2049_music_command(uint8_t* rdram, uint32_t command) {
         memcpy(&fade, &w8, 4);
         target = std::clamp(target, 0.0f, 1.0f);
         std::lock_guard lock{ music_mutex };
+        if (stopping) {
+            volume_after_stop = target;
+            return;
+        }
         volume_target = target;
         if (fade > 0.0f) {
             volume_rate = (volume_target - volume) / fade;
