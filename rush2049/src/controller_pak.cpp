@@ -1,24 +1,31 @@
-// File-backed Controller Pak: the libultra osPfs* API over a raw 32 KiB pak image per controller port.
+// File-backed Controller Pak: the libultra osPfs* API over a raw pak image per controller port.
 //
 // Rush 2049 saves only to the Controller Pak, and N64ModernRuntime's osPfs* (librecomp/src/pak.cpp) all report
 // PFS_ERR_NOPACK. This file defines every function pak.cpp does, so the linker uses these and never pulls that
 // object in.
 //
-// The image is the real on-pak layout, the same `.mpk` format emulators use, so saves can be moved between this
-// and an emulator:
-//   page 0      ID area (ID block copies at 0x20, 0x60, 0x80, 0xC0)
-//   pages 1, 2  inode table and its backup: 128 big-endian u16 entries; 0x0001 ends a chain, 0x0003 is free,
-//               anything else is the next page. Byte 1 of the page is a checksum of entries 5..127.
-//   pages 3, 4  note table: 16 entries of 32 bytes
-//   pages 5-127 data, 256 bytes each
+// The image is the real on-pak layout, the same `.mpk` format emulators use. A pak is 1 to 62 banks of 32 KiB
+// (libultra's PFS_MAX_BANKS): Nintendo's own paks have one, and the "Controller Pak Size" option picks between
+// that and 62. With B banks:
+//   bank 0, page 0           ID area (ID block copies at 0x20, 0x60, 0x80, 0xC0; byte 0x1A of the block is B)
+//   bank 0, pages 1..B       inode tables, one per bank: 128 big-endian u16 entries, one per page of that bank.
+//                            0x0001 ends a chain, 0x0003 is free, anything else is the next page, bank << 8 | page.
+//                            Byte 1 of each table is a checksum of its entries from the bank's first data page on.
+//   bank 0, pages B+1..2B    backups of the inode tables
+//   bank 0, the next 2 pages note table: 16 entries of 32 bytes
+//   the rest                 data, 256 bytes a page: bank 0 from page 2B+3, every other bank from page 1
+// One bank is the 32 KiB pak (data pages 5-127); 62 banks hold 7748 data pages, about 1.9 MB. The note table has
+// 16 entries whatever the size.
 // Files are saves/controllerpak_<port>.mpk in the app folder. A port without a file gets a freshly formatted pak,
-// written out on the first change.
+// written out on the first change. When the game initializes a pak of the other size, its files are moved to a pak
+// of the size picked; a pak whose files would not fit keeps its size.
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <vector>
 
 #include "recomp.h"
 #include "librecomp/game.hpp"
@@ -34,22 +41,24 @@ constexpr int PFS_ERR_DEVICE = 11;
 constexpr int PFS_INITIALIZED = 1;
 
 constexpr size_t page_size = 256;
-constexpr size_t pak_size = 128 * page_size;
-constexpr int first_data_page = 5;
-constexpr int num_pages = 128;
+constexpr int pages_per_bank = 128;
+constexpr size_t bank_size = pages_per_bank * page_size;
+constexpr int max_banks = 62;
 constexpr int num_notes = 16;
 constexpr size_t note_size = 32;
-constexpr size_t inode_offset = 1 * page_size;
-constexpr size_t inode_backup_offset = 2 * page_size;
-constexpr size_t note_table_offset = 3 * page_size;
+constexpr size_t id_offset = 0x20;
 constexpr size_t block_size = 32; // osPfsReadWriteFile offsets and sizes are in these units
 
 constexpr uint16_t inode_last = 0x0001;
 constexpr uint16_t inode_free = 0x0003;
 
+// Pages are named the way inode entries and notes name them: bank << 8 | page.
+using Page = uint16_t;
+
 struct Pak {
     bool loaded = false;
-    std::array<uint8_t, pak_size> data{};
+    int banks = 1;
+    std::vector<uint8_t> data;
 };
 
 std::mutex pak_mutex;
@@ -64,22 +73,51 @@ uint32_t read32(const uint8_t* p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p
 void write16(uint8_t* p, uint16_t v) { p[0] = (uint8_t)(v >> 8); p[1] = (uint8_t)v; }
 void write32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 
-uint16_t get_inode(const Pak& pak, int page) { return read16(&pak.data[inode_offset + page * 2]); }
-void set_inode(Pak& pak, int page, uint16_t value) { write16(&pak.data[inode_offset + page * 2], value); }
-uint8_t* note(Pak& pak, int index) { return &pak.data[note_table_offset + index * note_size]; }
-bool note_used(Pak& pak, int index) { return read16(note(pak, index) + 4) != 0 && read32(note(pak, index)) != 0; }
+int wanted_banks() { return rush2049::large_controller_pak() ? max_banks : 1; }
 
-void update_inode_checksum(Pak& pak) {
-    uint32_t sum = 0;
-    for (size_t i = first_data_page * 2; i < page_size; i++) {
-        sum += pak.data[inode_offset + i];
-    }
-    pak.data[inode_offset + 1] = (uint8_t)sum;
-    std::memcpy(&pak.data[inode_backup_offset], &pak.data[inode_offset], page_size);
+// libultra's inode_start_page: bank 0's first data page.
+int first_data_page(const Pak& pak, int bank) { return bank == 0 ? 3 + 2 * pak.banks : 1; }
+size_t inode_table_offset(const Pak& pak, int bank) { return (1 + (size_t)bank) * page_size; }
+size_t inode_backup_offset(const Pak& pak, int bank) { return (1 + (size_t)pak.banks + bank) * page_size; }
+size_t note_table_offset(const Pak& pak) { return (1 + 2 * (size_t)pak.banks) * page_size; }
+size_t page_offset(Page page) { return (page >> 8) * bank_size + (page & 0xFF) * page_size; }
+
+bool is_data_page(const Pak& pak, Page page) {
+    int bank = page >> 8;
+    return bank < pak.banks && (page & 0xFF) >= first_data_page(pak, bank);
 }
 
-void format(Pak& pak, int port) {
-    pak.data.fill(0);
+uint16_t get_inode(const Pak& pak, Page page) { return read16(&pak.data[inode_table_offset(pak, page >> 8) + (page & 0xFF) * 2]); }
+void set_inode(Pak& pak, Page page, uint16_t value) { write16(&pak.data[inode_table_offset(pak, page >> 8) + (page & 0xFF) * 2], value); }
+uint8_t* note(Pak& pak, int index) { return &pak.data[note_table_offset(pak) + index * note_size]; }
+bool note_used(Pak& pak, int index) { return read16(note(pak, index) + 4) != 0 && read32(note(pak, index)) != 0; }
+Page note_start(Pak& pak, int index) { return read16(note(pak, index) + 6); }
+
+std::vector<Page> data_pages(const Pak& pak) {
+    std::vector<Page> pages;
+    for (int bank = 0; bank < pak.banks; bank++) {
+        for (int page = first_data_page(pak, bank); page < pages_per_bank; page++) {
+            pages.push_back((Page)(bank << 8 | page));
+        }
+    }
+    return pages;
+}
+
+void update_inode_checksums(Pak& pak) {
+    for (int bank = 0; bank < pak.banks; bank++) {
+        uint8_t* table = &pak.data[inode_table_offset(pak, bank)];
+        uint32_t sum = 0;
+        for (size_t i = first_data_page(pak, bank) * 2; i < page_size; i++) {
+            sum += table[i];
+        }
+        table[1] = (uint8_t)sum;
+        std::memcpy(&pak.data[inode_backup_offset(pak, bank)], table, page_size);
+    }
+}
+
+void format(Pak& pak, int port, int banks) {
+    pak.banks = banks;
+    pak.data.assign(banks * bank_size, 0);
 
     // Page 0, block 0: 0x81 then 0x01..0x1F, as freshly formatted paks have it.
     pak.data[0] = 0x81;
@@ -93,7 +131,9 @@ void format(Pak& pak, int port) {
     write32(&id[0x00], 0xFFFFFFFF);
     // The game tells paks apart by this block, so each port's pak gets its own serial.
     write32(&id[0x04], 0x2049F00D + (uint32_t)port);
-    write32(&id[0x18], 0x00010100); // deviceid 0x0001, banks 1, version 0
+    write16(&id[0x18], 0x0001); // deviceid
+    id[0x1A] = (uint8_t)banks;
+    id[0x1B] = 0;               // version
     uint16_t sum = 0;
     for (int i = 0; i < 28; i += 2) {
         sum += read16(&id[i]);
@@ -104,25 +144,80 @@ void format(Pak& pak, int port) {
         std::memcpy(&pak.data[offset], id.data(), id.size());
     }
 
-    for (int page = first_data_page; page < num_pages; page++) {
+    for (Page page : data_pages(pak)) {
         set_inode(pak, page, inode_free);
     }
-    update_inode_checksum(pak);
+    update_inode_checksums(pak);
 }
 
-Pak& get_pak(int port) {
-    Pak& pak = paks[port & 3];
-    if (!pak.loaded) {
-        std::ifstream file{ pak_path(port), std::ios::binary };
-        if (file.good()) {
-            file.read(reinterpret_cast<char*>(pak.data.data()), pak.data.size());
+// A file's pages in order, from its note's start page.
+std::vector<Page> file_pages(const Pak& pak, Page start) {
+    std::vector<Page> pages;
+    size_t limit = pak.banks * (size_t)pages_per_bank;
+    for (Page page = start; is_data_page(pak, page) && pages.size() < limit;) {
+        pages.push_back(page);
+        uint16_t next = get_inode(pak, page);
+        if (next == inode_last) {
+            break;
         }
-        if (!file.good() || file.gcount() != (std::streamsize)pak.data.size()) {
-            format(pak, port);
-        }
-        pak.loaded = true;
+        page = next;
     }
-    return pak;
+    return pages;
+}
+
+int free_pages(const Pak& pak) {
+    int count = 0;
+    for (Page page : data_pages(pak)) {
+        count += get_inode(pak, page) == inode_free ? 1 : 0;
+    }
+    return count;
+}
+
+// Chains the lowest `count` free pages together and zeroes them. Empty when there aren't that many.
+std::vector<Page> allocate_pages(Pak& pak, int count) {
+    std::vector<Page> pages;
+    for (Page page : data_pages(pak)) {
+        if ((int)pages.size() == count) {
+            break;
+        }
+        if (get_inode(pak, page) == inode_free) {
+            pages.push_back(page);
+        }
+    }
+    if (count <= 0 || (int)pages.size() < count) {
+        return {};
+    }
+    for (size_t i = 0; i < pages.size(); i++) {
+        set_inode(pak, pages[i], i + 1 < pages.size() ? pages[i + 1] : inode_last);
+        std::memset(&pak.data[page_offset(pages[i])], 0, page_size);
+    }
+    update_inode_checksums(pak);
+    return pages;
+}
+
+// Moves the pak's files, in the same note slots, to a freshly formatted pak of `banks` banks.
+bool resize(Pak& pak, int port, int banks) {
+    Pak resized;
+    resized.loaded = true;
+    format(resized, port, banks);
+    for (int i = 0; i < num_notes; i++) {
+        if (!note_used(pak, i)) {
+            continue;
+        }
+        std::vector<Page> from = file_pages(pak, note_start(pak, i));
+        std::vector<Page> to = allocate_pages(resized, (int)from.size());
+        if (to.empty()) {
+            return false;
+        }
+        for (size_t k = 0; k < from.size(); k++) {
+            std::memcpy(&resized.data[page_offset(to[k])], &pak.data[page_offset(from[k])], page_size);
+        }
+        uint8_t* n = note(resized, i);
+        std::memcpy(n, note(pak, i), note_size);
+        write16(n + 6, to[0]);
+    }
+    pak = std::move(resized);
+    return true;
 }
 
 void save(int port) {
@@ -132,8 +227,9 @@ void save(int port) {
     std::filesystem::path temp = path;
     temp += ".tmp";
     {
+        const Pak& pak = paks[port & 3];
         std::ofstream file{ temp, std::ios::binary };
-        file.write(reinterpret_cast<const char*>(paks[port & 3].data.data()), pak_size);
+        file.write(reinterpret_cast<const char*>(pak.data.data()), (std::streamsize)pak.data.size());
         if (!file.good()) {
             fprintf(stderr, "[pak] could not write %s\n", temp.string().c_str());
             return;
@@ -145,26 +241,26 @@ void save(int port) {
     }
 }
 
-int free_pages(const Pak& pak) {
-    int count = 0;
-    for (int page = first_data_page; page < num_pages; page++) {
-        if (get_inode(pak, page) == inode_free) {
-            count++;
+Pak& get_pak(int port) {
+    Pak& pak = paks[port & 3];
+    if (!pak.loaded) {
+        std::error_code ec;
+        std::filesystem::path path = pak_path(port);
+        uintmax_t size = std::filesystem::file_size(path, ec);
+        bool good = false;
+        if (!ec && size >= bank_size && size <= max_banks * bank_size && size % bank_size == 0) {
+            pak.banks = (int)(size / bank_size);
+            pak.data.resize(size);
+            std::ifstream file{ path, std::ios::binary };
+            file.read(reinterpret_cast<char*>(pak.data.data()), (std::streamsize)size);
+            good = file.good() && pak.data[id_offset + 0x1A] == pak.banks;
         }
-    }
-    return count;
-}
-
-int file_pages(const Pak& pak, int start) {
-    int count = 0;
-    for (int page = start; page >= first_data_page && page < num_pages && count < num_pages; count++) {
-        uint16_t next = get_inode(pak, page);
-        if (next == inode_last) {
-            return count + 1;
+        if (!good) {
+            format(pak, port, wanted_banks());
         }
-        page = next & 0xFF;
+        pak.loaded = true;
     }
-    return count;
+    return pak;
 }
 
 // The pak's port, from OSPfs.channel.
@@ -219,20 +315,33 @@ extern "C" void osPfsInitPak_recomp(uint8_t* rdram, recomp_context* ctx) {
     int channel = (int)ctx->r6;
     Pak& pak = get_pak(channel);
 
-    // OSPfs fields as libultra fills them for a one-bank pak. The game compares id across ports to notice a pak
-    // moving between controllers, so it has to be the pak's own ID block.
+    int banks = wanted_banks();
+    if (pak.banks != banks) {
+        int from = pak.banks;
+        if (resize(pak, channel, banks)) {
+            fprintf(stderr, "[pak] port %d: %d bank(s) -> %d\n", channel + 1, from, banks);
+            save(channel);
+        }
+        else {
+            fprintf(stderr, "[pak] port %d: its files don't fit in %d bank(s), keeping %d\n", channel + 1, banks, from);
+        }
+    }
+
+    // OSPfs fields as libultra fills them. The game compares id across ports to notice a pak moving between
+    // controllers, so it has to be the pak's own ID block.
     MEM_W(0x00, pfs) = PFS_INITIALIZED;   // status
     MEM_W(0x04, pfs) = (int32_t)ctx->r4; // queue
     MEM_W(0x08, pfs) = channel;           // channel
-    write_guest(rdram, pfs + 0x0C, &pak.data[0x20], 32); // id
+    write_guest(rdram, pfs + 0x0C, &pak.data[id_offset], 32); // id
     write_guest(rdram, pfs + 0x2C, &pak.data[0x00], 32); // label
-    MEM_W(0x4C, pfs) = pak.data[0x20 + 0x1B]; // version
+    MEM_W(0x4C, pfs) = pak.data[id_offset + 0x1B]; // version
     MEM_W(0x50, pfs) = num_notes;         // dir_size
-    MEM_W(0x54, pfs) = 8;                 // inode_table (in 32-byte blocks)
-    MEM_W(0x58, pfs) = 16;                // minode_table
-    MEM_W(0x5C, pfs) = 24;                // dir_table
-    MEM_W(0x60, pfs) = first_data_page;   // inode_start_page
-    MEM_B(0x64, pfs) = 1;                 // banks
+    // Table offsets in 32-byte blocks.
+    MEM_W(0x54, pfs) = (int32_t)(inode_table_offset(pak, 0) / block_size);   // inode_table
+    MEM_W(0x58, pfs) = (int32_t)(inode_backup_offset(pak, 0) / block_size);  // minode_table
+    MEM_W(0x5C, pfs) = (int32_t)(note_table_offset(pak) / block_size);       // dir_table
+    MEM_W(0x60, pfs) = first_data_page(pak, 0); // inode_start_page
+    MEM_B(0x64, pfs) = (int8_t)pak.banks; // banks
     MEM_B(0x65, pfs) = 0;                 // activebank
     ctx->r2 = 0;
 }
@@ -279,7 +388,7 @@ extern "C" void osPfsFileState_recomp(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     uint8_t* n = note(pak, file_no);
-    MEM_W(0x00, state) = file_pages(pak, n[7]) * (int32_t)page_size; // file_size
+    MEM_W(0x00, state) = (int32_t)(file_pages(pak, note_start(pak, file_no)).size() * page_size); // file_size
     MEM_W(0x04, state) = (int32_t)read32(n);                         // game_code
     MEM_H(0x08, state) = (int16_t)read16(n + 4);                     // company_code
     write_guest(rdram, state + 0x0A, n + 0x0C, 4);                   // ext_name
@@ -333,38 +442,17 @@ extern "C" void osPfsAllocateFile_recomp(uint8_t* rdram, recomp_context* ctx) {
         ctx->r2 = PFS_DIR_FULL;
         return;
     }
-    int pages_needed = (int)((size + page_size - 1) / page_size);
-    if (pages_needed > free_pages(pak)) {
+    std::vector<Page> pages = allocate_pages(pak, (int)((size + page_size - 1) / page_size));
+    if (pages.empty()) {
         ctx->r2 = PFS_DATA_FULL;
         return;
     }
-
-    // Chain the lowest free pages together and zero them.
-    int first = -1;
-    int prev = -1;
-    for (int page = first_data_page; page < num_pages && pages_needed > 0; page++) {
-        if (get_inode(pak, page) != inode_free) {
-            continue;
-        }
-        if (prev < 0) {
-            first = page;
-        }
-        else {
-            set_inode(pak, prev, (uint16_t)page);
-        }
-        std::memset(&pak.data[page * page_size], 0, page_size);
-        prev = page;
-        pages_needed--;
-    }
-    set_inode(pak, prev, inode_last);
-    update_inode_checksum(pak);
 
     uint8_t* n = note(pak, slot);
     std::memset(n, 0, note_size);
     write32(n, game_code);
     write16(n + 4, company);
-    n[6] = 0;                 // start bank
-    n[7] = (uint8_t)first;    // start page
+    write16(n + 6, pages[0]); // start bank and page
     n[8] = 0x02;              // status: occupied
     read_guest(rdram, ext_name, n + 0x0C, 4);
     read_guest(rdram, game_name, n + 0x10, 16);
@@ -386,18 +474,11 @@ extern "C" void osPfsDeleteFile_recomp(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
 
-    uint8_t* n = note(pak, found);
-    int page = n[7];
-    for (int count = 0; page >= first_data_page && page < num_pages && count < num_pages; count++) {
-        uint16_t next = get_inode(pak, page);
+    for (Page page : file_pages(pak, note_start(pak, found))) {
         set_inode(pak, page, inode_free);
-        if (next == inode_last) {
-            break;
-        }
-        page = next & 0xFF;
     }
-    update_inode_checksum(pak);
-    std::memset(n, 0, note_size);
+    update_inode_checksums(pak);
+    std::memset(note(pak, found), 0, note_size);
 
     save(port);
     ctx->r2 = 0;
@@ -421,26 +502,15 @@ extern "C" void osPfsReadWriteFile_recomp(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
 
-    // Collect the file's pages in order.
-    std::array<int, num_pages> pages{};
-    int page_count = 0;
-    int page = note(pak, file_no)[7];
-    while (page >= first_data_page && page < num_pages && page_count < num_pages) {
-        pages[page_count++] = page;
-        uint16_t next = get_inode(pak, page);
-        if (next == inode_last) {
-            break;
-        }
-        page = next & 0xFF;
-    }
-    if ((size_t)offset + size > (size_t)page_count * page_size) {
+    std::vector<Page> pages = file_pages(pak, note_start(pak, file_no));
+    if ((size_t)offset + size > pages.size() * page_size) {
         ctx->r2 = PFS_ERR_INVALID;
         return;
     }
 
     for (int i = 0; i < size; i++) {
         size_t file_pos = (size_t)offset + i;
-        uint8_t& byte = pak.data[pages[file_pos / page_size] * page_size + file_pos % page_size];
+        uint8_t& byte = pak.data[page_offset(pages[file_pos / page_size]) + file_pos % page_size];
         if (write) {
             byte = (uint8_t)MEM_B(i, buffer);
         }
