@@ -1,0 +1,201 @@
+diff --git a/src/common/rt64_tmem_hasher.h b/src/common/rt64_tmem_hasher.h
+index 8c6af2b..015e2e8 100644
+--- a/src/common/rt64_tmem_hasher.h
++++ b/src/common/rt64_tmem_hasher.h
+@@ -4,6 +4,8 @@
+ 
+ #pragma once
+ 
++#include <cstring>
++
+ // Referenced from zstd.
+ 
+ static unsigned bitScanForward64(uint64_t val) {
+@@ -66,21 +68,23 @@ namespace RT64 {
+             const uint32_t tmemMask = halfTMEM ? TMEMMask16 : TMEMMask8;
+             const uint32_t tmemAddress = (loadTile.tmem << 3) & tmemMask;
+             uint64_t tlutBitset[4] = {};
++
++            // Which byte values the texture uses, one byte per value: setting a flag is a plain store, where setting a bit
++            // in tlutBitset waits on the update before it. Turned into tlutBitset once all of it is hashed.
++            alignas(16) uint8_t tlutSeen[256];
++            bool tlutSeenUsed = false;
+             auto hashUpdate = [&](const uint8_t *tmemBytes, uint32_t byteCount) {
+                 XXH3_64bits_update(&xxh3, tmemBytes, byteCount);
+ 
+                 // Version 5 parses every byte individually if TLUT is enabled to determine the TLUT bytes that can be hashed.
+                 if ((version >= 5) && usesTLUT) {
+-                    if (loadTile.siz == G_IM_SIZ_4b) {
+-                        for (uint32_t i = 0; i < byteCount; i++) {
+-                            tlutBitset[0] |= (1ULL << (tmemBytes[i] & 0xFU));
+-                            tlutBitset[0] |= (1ULL << ((tmemBytes[i] >> 4U) & 0xFU));
+-                        }
++                    if (!tlutSeenUsed) {
++                        memset(tlutSeen, 0, sizeof(tlutSeen));
++                        tlutSeenUsed = true;
+                     }
+-                    else {
+-                        for (uint32_t i = 0; i < byteCount; i++) {
+-                            tlutBitset[tmemBytes[i] >> 6U] |= (1ULL << (tmemBytes[i] & 0x3FU));
+-                        }
++
++                    for (uint32_t i = 0; i < byteCount; i++) {
++                        tlutSeen[tmemBytes[i]] = 1;
+                     }
+                 }
+             };
+@@ -141,6 +145,31 @@ namespace RT64 {
+                 }
+             }
+ 
++            // The byte values seen, as a bitset of the palette indices used: the byte values for 8-bit textures, and both
++            // nibbles of each for 4-bit ones.
++            if (tlutSeenUsed) {
++                uint64_t byteBitset[4] = {};
++                for (uint32_t w = 0; w < 4; w++) {
++                    for (uint32_t b = 0; b < 64; b += 8) {
++                        // Eight flags of 0 or 1, gathered into the top byte of the product, flag k at bit k.
++                        uint64_t flags;
++                        memcpy(&flags, &tlutSeen[w * 64 + b], sizeof(flags));
++                        byteBitset[w] |= ((flags * 0x0102040810204080ULL) >> 56) << b;
++                    }
++                }
++
++                if (loadTile.siz == G_IM_SIZ_4b) {
++                    for (uint32_t v = 0; v < 256; v++) {
++                        if ((byteBitset[v >> 6] >> (v & 0x3FU)) & 1) {
++                            tlutBitset[0] |= (1ULL << (v & 0xFU)) | (1ULL << (v >> 4U));
++                        }
++                    }
++                }
++                else {
++                    memcpy(tlutBitset, byteBitset, sizeof(tlutBitset));
++                }
++            }
++
+             // If TLUT is active, we also hash the corresponding palette bytes.
+             if (usesTLUT) {
+                 const bool CI4 = (loadTile.siz == G_IM_SIZ_4b);
+diff --git a/src/hle/rt64_game_frame.cpp b/src/hle/rt64_game_frame.cpp
+index 87392d0..81e5238 100644
+--- a/src/hle/rt64_game_frame.cpp
++++ b/src/hle/rt64_game_frame.cpp
+@@ -2,6 +2,8 @@
+ // RT64
+ //
+ 
++#include <algorithm>
++
+ #include "common/rt64_math.h"
+ 
+ #include "rt64_game_frame.h"
+@@ -403,8 +405,10 @@ namespace RT64 {
+             return;
+         }
+ 
+-        thread_local std::multimap<uint64_t, GameCallMap> curCallHashMap;
+-        thread_local std::multimap<uint64_t, GameCallMap> prevCallHashMap;
++        // Sorted vectors rather than multimaps and sets: they are rebuilt for every scene of every frame, and the
++        // node allocations were most of this thread's time. Sorted the same way, so they are visited in the same order.
++        thread_local std::vector<std::pair<uint64_t, GameCallMap>> curCallHashMap;
++        thread_local std::vector<std::pair<uint64_t, GameCallMap>> prevCallHashMap;
+         curCallHashMap.clear();
+         prevCallHashMap.clear();
+ 
+@@ -509,17 +513,24 @@ namespace RT64 {
+             buildCallHashMap(p, prevWorkload, prevProj, prevCallHashMap);
+         }
+ 
++        // As a multimap orders them: by hash, and calls with the same hash in the order they were added.
++        auto byHash = [](const std::pair<uint64_t, GameCallMap> &lhs, const std::pair<uint64_t, GameCallMap> &rhs) {
++            return lhs.first < rhs.first;
++        };
++        std::stable_sort(curCallHashMap.begin(), curCallHashMap.end(), byHash);
++        std::stable_sort(prevCallHashMap.begin(), prevCallHashMap.end(), byHash);
++
+         // FIXME: Transform set needs to be done per unique workload detected.
+-        thread_local std::set<IndexPair> transformCheckSet;
+-        thread_local std::set<IndexPair> tileCheckSet;
+-        thread_local std::set<IndexPair> lookAtCheckSet;
++        thread_local std::vector<IndexPair> transformCheckSet;
++        thread_local std::vector<IndexPair> tileCheckSet;
++        thread_local std::vector<IndexPair> lookAtCheckSet;
+         transformCheckSet.clear();
+         tileCheckSet.clear();
+         lookAtCheckSet.clear();
+ 
+         // Traverse the map and fill the set with all the combinations of transforms to check.
+         for (std::pair<uint64_t, GameCallMap> curIt : curCallHashMap) {
+-            auto prevRange = prevCallHashMap.equal_range(curIt.first);
++            auto prevRange = std::equal_range(prevCallHashMap.begin(), prevCallHashMap.end(), std::pair<uint64_t, GameCallMap>{ curIt.first, {} }, byHash);
+             for (auto prevIt = prevRange.first; prevIt != prevRange.second; prevIt++) {
+                 const GameIndices::Projection &curProjIndices = curScene.projections[curIt.second.sceneProjIndex];
+                 const Workload &curWorkload = workloadQueue.workloads[curProjIndices.workloadIndex];
+@@ -542,7 +553,7 @@ namespace RT64 {
+                         const uint32_t prevGroupIndex = prevWorkload.drawData.worldTransformGroups[prevWorldMatrix];
+                         const TransformGroup &prevGroup = prevWorkload.drawData.transformGroups[prevGroupIndex];
+                         if ((curGroup.matrixId == prevGroup.matrixId) && ((curGroup.matrixId == G_EX_ID_AUTO) || ((curGroup.matrixId != G_EX_ID_IGNORE) && (curGroup.ordering == G_EX_ORDER_AUTO)))) {
+-                            transformCheckSet.emplace(curWorldMatrix, prevWorldMatrix);
++                            transformCheckSet.emplace_back(curWorldMatrix, prevWorldMatrix);
+                         }
+                     }
+                 }
+@@ -556,7 +567,7 @@ namespace RT64 {
+                             continue;
+                         }
+ 
+-                        tileCheckSet.emplace(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
++                        tileCheckSet.emplace_back(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
+                     }
+                 }
+ 
+@@ -569,11 +580,17 @@ namespace RT64 {
+                     const uint32_t prevVertexIndex = prevWorkload.drawData.faceIndices[prevCall.meshDesc.faceIndicesStart];
+                     const uint32_t curLookAtIndex = curWorkload.drawData.lookAtIndices[curVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+                     const uint32_t prevLookAtIndex = prevWorkload.drawData.lookAtIndices[prevVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+-                    lookAtCheckSet.emplace(curLookAtIndex, prevLookAtIndex);
++                    lookAtCheckSet.emplace_back(curLookAtIndex, prevLookAtIndex);
+                 }
+             }
+         }
+ 
++        // Sorted and without repeats, as the sets were.
++        for (std::vector<IndexPair> *checkSet : { &transformCheckSet, &tileCheckSet, &lookAtCheckSet }) {
++            std::sort(checkSet->begin(), checkSet->end());
++            checkSet->erase(std::unique(checkSet->begin(), checkSet->end()), checkSet->end());
++        }
++
+         // Compute all the differences between transforms and insert them into a vector that will be sorted according to the differences.
+         thread_local std::vector<MatchCandidate> matchCandidates;
+         matchCandidates.clear();
+@@ -784,7 +801,7 @@ namespace RT64 {
+         }
+     }
+     
+-    void GameFrame::buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::multimap<uint64_t, GameCallMap> &hashMap) const {
++    void GameFrame::buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::vector<std::pair<uint64_t, GameCallMap>> &hashMap) const {
+         for (uint32_t c = 0; c < proj.gameCallCount; c++) {
+             const GameCall &call = proj.gameCalls[c];
+             uint32_t matrixIdHash = 0;
+@@ -802,7 +819,7 @@ namespace RT64 {
+                 doTileMatching = doTileMatching || (group.tileInterpolation == G_EX_COMPONENT_AUTO);
+             }
+ 
+-            hashMap.emplace(hashFromCall(call, matrixIdHash), GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
++            hashMap.emplace_back(hashFromCall(call, matrixIdHash), GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
+         }
+     }
+ 
+diff --git a/src/hle/rt64_game_frame.h b/src/hle/rt64_game_frame.h
+index 00a72f6..cfa769a 100644
+--- a/src/hle/rt64_game_frame.h
++++ b/src/hle/rt64_game_frame.h
+@@ -128,7 +128,7 @@ namespace RT64 {
+         void match(RenderWorker *worker, WorkloadQueue &workloadQueue, const GameFrame &prevFrame, BufferUploader *velocityUploader, bool &velocityUploaderUsed, bool &tileInterpolationUsed, bool &lookAtInterpolationUsed);
+         void matchScene(WorkloadQueue &workloadQueue, const GameFrame &prevFrame, const GameScene &curScene, const GameScene &prevScene, std::unordered_map<uint32_t, ModifiedBuffers> &workloadsModified, bool &tileInterpolationUsed, bool &lookAtInterpolationUsed);
+         void matchTransform(Workload &curWorkload, const Workload &prevWorkload, GameFrameMap::WorkloadMap &curWorkloadMap, const GameFrameMap::WorkloadMap *prevWorkloadMap, uint32_t curTransformIndex, uint32_t prevTransformIndex, ModifiedBuffers &modifiedBuffers);
+-        void buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::multimap<uint64_t, GameCallMap> &hashMap) const;
++        void buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::vector<std::pair<uint64_t, GameCallMap>> &hashMap) const;
+         void buildTransformIdMap(const Workload &workload, std::multimap<uint32_t, uint32_t> &idMap, std::vector<uint32_t> &ignoredIdVector) const;
+         uint64_t hashFromCall(const GameCall &call, uint32_t matrixIdHash) const;
+         bool isDebuggerCameraEnabled(const WorkloadQueue &workloadQueue);

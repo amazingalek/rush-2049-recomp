@@ -19,6 +19,17 @@ if (WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR")
 endif()
 
+# Speed for everything built here, RT64 and the runtime included, not just the game's own code. RelWithDebInfo (the
+# build the docs use) inlines only functions marked inline by default: inline as Release does, and keep the symbols for
+# crash traces. And build every x86-64 library for Nehalem (SSE4.2, 2008), which the executable has always been built
+# for, so that rounding functions such as ceilf become single instructions instead of library calls.
+foreach (lang C CXX)
+    string(REPLACE "/Ob1" "/Ob2" CMAKE_${lang}_FLAGS_RELWITHDEBINFO "${CMAKE_${lang}_FLAGS_RELWITHDEBINFO}")
+endforeach()
+if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+    add_compile_options(-march=nehalem)
+endif()
+
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
@@ -164,11 +175,7 @@ target_include_directories(Rush2049Recompiled PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    target_compile_options(Rush2049Recompiled PRIVATE -march=nehalem -fno-strict-aliasing -fms-extensions)
-else()
-    target_compile_options(Rush2049Recompiled PRIVATE -fno-strict-aliasing -fms-extensions)
-endif()
+target_compile_options(Rush2049Recompiled PRIVATE -fno-strict-aliasing -fms-extensions)
 
 if (MSVC)
     # Identical code folding would merge recompiled functions, which breaks function lookup by address.
