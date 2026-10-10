@@ -1,8 +1,13 @@
 # Builds build/mod.elf; then `RecompModTool mod.toml build` turns it into build/rush2049_hello_mod.nrm.
 # clang needs a MIPS backend: on Windows the llvm.org build has none, so use MSYS2's clang64 clang
 # (tools/env.sh: make CC="$MIPS_CC" LD="$MIPS_LD").
-CC ?= clang
-LD ?= ld.lld
+# make's built-in CC (cc) and LD (ld) would win over ?=, so replace only those defaults.
+ifeq ($(origin CC),default)
+CC := clang
+endif
+ifeq ($(origin LD),default)
+LD := ld.lld
+endif
 
 BUILD_DIR := build
 TARGET    := $(BUILD_DIR)/mod.elf

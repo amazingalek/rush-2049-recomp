@@ -3,8 +3,13 @@
 # On Windows the llvm.org clang has no MIPS backend: pass CC and LD (tools/env.sh sets MIPS_CC and MIPS_LD).
 TARGET = patches.elf
 
-CC      ?= clang
-LD      ?= ld.lld
+# make's built-in CC (cc) and LD (ld) would win over ?=, so replace only those defaults.
+ifeq ($(origin CC),default)
+CC := clang
+endif
+ifeq ($(origin LD),default)
+LD := ld.lld
+endif
 
 CFLAGS   := -target mips -mips2 -mabi=32 -O2 -G0 -mno-abicalls -mno-odd-spreg -mno-check-zero-division \
 			-fomit-frame-pointer -ffast-math -fno-unsafe-math-optimizations -fno-builtin-memset -funsigned-char \
