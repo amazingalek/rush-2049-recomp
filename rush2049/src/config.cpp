@@ -1,5 +1,6 @@
-// Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
-// and hi-res font and split-screen aspect ratio on the Graphics tab, and the music replacement options on the Sound tab.
+// Config tabs: the stock tabs, plus the controller accessory and Controller Pak size options on the General tab, the
+// game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and the music replacement options on
+// the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -24,6 +25,17 @@ namespace {
         {Accessory::RumblePak, "Rumble Pak"},
     };
     const std::string accessory_option = "accessory";
+
+    enum class PakSize {
+        Original,
+        Large,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> pak_size_options = {
+        {PakSize::Original, "Original", "Original (32 KiB)"},
+        {PakSize::Large, "Large", "Large (1.9 MB)"},
+    };
+    const std::string pak_size_option = "pak_size";
 
     enum class GameFrameRate {
         Original,
@@ -104,6 +116,11 @@ bool rush2049::split_screen_expand() {
 bool rush2049::rumble_pak_selected() {
     auto value = recompui::config::get_general_config().get_option_value(accessory_option);
     return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
+}
+
+bool rush2049::large_controller_pak() {
+    auto value = recompui::config::get_general_config().get_option_value(pak_size_option);
+    return static_cast<PakSize>(std::get<uint32_t>(value)) == PakSize::Large;
 }
 
 extern "C" gpr rush2049_frame_pace(gpr retraces) {
@@ -219,6 +236,21 @@ void rush2049::init_config() {
         "<b>Rumble Pak:</b> rumble, but the game can't save.",
         accessory_options,
         Accessory::ControllerPak
+    );
+    general.add_enum_option(
+        pak_size_option,
+        "Controller Pak Size",
+        "How much each Controller Pak holds. A player profile takes 9 of a pak's pages, and a pak holds 16 files "
+        "whatever its size."
+        "<br/>"
+        "<b>Original:</b> Nintendo's 32 KiB pak, 123 pages, about 13 profiles. "
+        "<b>Large:</b> 62 banks, 7748 pages, the most libultra can address, so it never fills up. "
+        "Emulators that only take 32 KiB paks can't read it."
+        "<br/>"
+        "Saves are moved to the new size the next time the game starts. A pak whose saves don't fit in 32 KiB "
+        "stays large.",
+        pak_size_options,
+        PakSize::Large
     );
 
     recomp::config::Config& graphics = recompui::config::create_graphics_tab();

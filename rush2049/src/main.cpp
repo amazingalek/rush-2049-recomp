@@ -47,6 +47,7 @@
 #include "crash_handler.h"
 #include "debug_probe.h"
 #include "musyx_hle.h"
+#include "rom_finder.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -84,7 +85,21 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 static bool log_input = false;
 static int fake_players = 0;
 
+// Whether a player plays on this port. In single-player mode that's only port 1. --players N: ports 1..N, so split
+// screen can be tested with one pad (the extra ports get port 1's input).
+static bool port_has_player(int port) {
+    bool assigned = recompinput::players::is_single_player_mode() ? port == 0 : recompinput::players::get_player_is_assigned(port);
+    return assigned || port < fake_players;
+}
+
 static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float* x_out, float* y_out) {
+    // A port with nobody on it still has a controller (see get_connected_device_info), left alone.
+    if (!port_has_player(player_index)) {
+        *buttons_out = 0;
+        *x_out = 0.0f;
+        *y_out = 0.0f;
+        return true;
+    }
     bool ret = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
     if (log_input && player_index == 0) {
         rush2049::probe_input_reads++;
@@ -106,24 +121,14 @@ static void set_rumble_logged(int controller_num, bool rumble) {
     recompinput::set_rumble(controller_num, rumble);
 }
 
-ultramodern::input::connected_device_info_t get_connected_device_info(int controller_num) {
-    // Every port with a controller has the accessory picked in the config: a Controller Pak (src/controller_pak.cpp)
-    // or a Rumble Pak. osPfsInitPak fails for a Rumble Pak, and the runtime's osMotorInit always succeeds, so
-    // reporting RumblePak here for both is harmless. In single-player mode only port 1 has a controller.
-    bool connected = recompinput::players::is_single_player_mode() ? controller_num == 0
-                                                                   : recompinput::players::get_player_is_assigned(controller_num);
-    // --players N: report ports 1..N as connected, so split screen can be tested with one pad (the extra ports get port 1's input).
-    connected = connected || controller_num < fake_players;
-    if (connected) {
-        return ultramodern::input::connected_device_info_t{
-            .connected_device = ultramodern::input::Device::Controller,
-            .connected_pak = ultramodern::input::Pak::RumblePak,
-        };
-    }
-
+ultramodern::input::connected_device_info_t get_connected_device_info(int) {
+    // All four ports always have a controller with the accessory picked in the config plugged in, so every port's
+    // Controller Pak (src/controller_pak.cpp) can be loaded from and saved to. A port nobody plays on reads as a
+    // controller left alone (get_n64_input_logged). osPfsInitPak fails for a Rumble Pak, and the runtime's
+    // osMotorInit always succeeds, so reporting RumblePak here for both is harmless.
     return ultramodern::input::connected_device_info_t{
-        .connected_device = ultramodern::input::Device::None,
-        .connected_pak = ultramodern::input::Pak::None,
+        .connected_device = ultramodern::input::Device::Controller,
+        .connected_pak = ultramodern::input::Pak::RumblePak,
     };
 }
 
@@ -320,7 +325,7 @@ std::vector<recomp::GameEntry> supported_games = {
     {
         // XXH3 of San Francisco Rush 2049 (USA), SHA-1 3f99351d7bb61656614bdb2aa1a90cfe55d1922c.
         .rom_hash = 0x86A0D6C1C9A3DEA1ULL,
-        .internal_name = "RUSH 2049",
+        .internal_name = "Rush 2049", // as in the header at 0x20; the runtime compares it exactly
         .display_name = "San Francisco Rush 2049",
         .game_id = u8"rush2049.n64.us",
         .mod_game_id = "rush2049",
@@ -353,6 +358,12 @@ void on_launcher_update(recompui::LauncherMenu*) {
 }
 
 void on_launcher_init(recompui::LauncherMenu* menu) {
+    // Before the menu reads whether a ROM is stored, so a found one starts on Start Game.
+    recomp::GameEntry& game = supported_games[0];
+    if (!recomp::is_rom_valid(game.game_id) && rush2049::find_rom(game.game_id, game.internal_name)) {
+        recomp::check_all_stored_roms();
+    }
+
     auto game_options_menu = menu->init_game_options_menu(
         supported_games[0].game_id,
         supported_games[0].mod_game_id,
@@ -373,6 +384,7 @@ int main(int argc, char** argv) {
 
 #ifdef _WIN32
     timeBeginPeriod(1);
+#endif
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--boot") == 0) {
@@ -426,6 +438,7 @@ int main(int argc, char** argv) {
         }
     }
 
+#ifdef _WIN32
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--show-console") == 0) {
             if (GetConsoleWindow() == nullptr) {
@@ -442,12 +455,6 @@ int main(int argc, char** argv) {
 
     // wasapi; directsound has had sample queueing issues.
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
-#else
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--boot") == 0) {
-            autoboot = true;
-        }
-    }
 #endif
 
     NFD_Init();
