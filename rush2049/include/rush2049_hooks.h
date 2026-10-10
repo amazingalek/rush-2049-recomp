@@ -35,6 +35,10 @@ void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 /* ultramodern (scheduling.cpp): let queued game threads run, waking after at most 1 ms. For spin loops. */
 void yield_self_1ms(uint8_t* rdram);
 
+/* Rewind (src/rewind.cpp): before and after each 60 Hz race tick in thread 5. */
+void rush2049_rewind_tick_begin(uint8_t* rdram);
+void rush2049_rewind_tick_end(uint8_t* rdram);
+
 /* Debug tracing for bring-up: prints "<ms> <tag> <value>" to stderr. */
 void rush2049_trace(const char* tag, uint32_t value);
 void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg);

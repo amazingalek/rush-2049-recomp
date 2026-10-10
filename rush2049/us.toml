@@ -195,3 +195,16 @@ text = "    if (MEM_W(0x274, ctx->r16) == ctx->r2) yield_self_1ms(rdram);"
 func = "func_8000063C"
 before_vram = 0x80000664
 text = "    rush2049_probe_sched_msg(rdram, MEM_W(0x24, ctx->r29));"
+
+# Rewind (src/rewind.cpp). Thread 5 (func_800E7808) steps the race 60 times a second: it waits for a retrace, reads
+# the controllers and calls func_800E6AF8, the tick. Around that call is the one point where the race is between
+# steps, so that is where it is saved, and restored while Rewind is held.
+[[patches.hook]]
+func = "func_800E7808"
+before_vram = 0x800E78D8
+text = "    rush2049_rewind_tick_begin(rdram);"
+
+[[patches.hook]]
+func = "func_800E7808"
+before_vram = 0x800E78E0
+text = "    rush2049_rewind_tick_end(rdram);"
