@@ -399,7 +399,7 @@ std::vector<recomp::GameEntry> supported_games = {
 };
 
 // --boot (development): start the game on the launcher's first frame, as its "Start Game" option does, so
-// bring-up runs don't need someone at the window. Needs the ROM already stored (see docs/rush2049.md).
+// bring-up runs don't need someone at the window. Needs the ROM already stored (src/rom_finder.cpp).
 static bool autoboot = false;
 
 void on_launcher_update(recompui::LauncherMenu*) {

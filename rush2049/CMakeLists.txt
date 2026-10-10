@@ -20,7 +20,7 @@ if (WIN32)
 endif()
 
 # Speed for everything built here, RT64 and the runtime included, not just the game's own code. RelWithDebInfo (the
-# build the docs use) inlines only functions marked inline by default: inline as Release does, and keep the symbols for
+# build the README uses) inlines only functions marked inline by default: inline as Release does, and keep the symbols for
 # crash traces. And build every x86-64 library for Nehalem (SSE4.2, 2008), which the executable has always been built
 # for, so that rounding functions such as ceilf become single instructions instead of library calls.
 foreach (lang C CXX)
