@@ -183,7 +183,11 @@ measured.
   every run that shares a pipeline (wrong textures, timing only) halves the ~500 calls and the draws part moves
   less than ±4%. With a 1x1 viewport (no pixels) ~90k cycles stay, and the ubershader, which cuts pipeline binds
   from 80% of draws to 7%, doesn't lower them; it doubles the draws part with pixels on. Draw calls and pipeline
-  binds are not the cost. The VI pass is one textured triangle and a clear. Only the upload barriers were overhead.
+  binds are not the cost. Only the upload barriers were overhead.
+- A cheaper VI pass. Its ~71k in a 1920x1080 window are ~10k of render-pass start and clear (a driver fast clear;
+  clearing only the bars saves 1-2k), ~50k filling the window once (the same triangle in a flat colour, about 40
+  pixels a clock) and ~10k for its one bilinear tap of the frame (320x240 at 240p). The gamma `pow` measures
+  nothing. Only a smaller window shrinks it.
 - Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
   Rewrite commands in place instead.
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
