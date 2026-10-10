@@ -41,5 +41,5 @@ __pycache__/
 /rush2049/patches/patches.map
 /rush2049/mod_template/build/
 *.nrm
-# Made at runtime from a picture of the title screen the player supplies (src/hires_font.cpp)
+# The hi-res title's pack, cut at runtime, and a picture to make a patch from (src/hires_font.cpp)
 /rush2049/hires_title/

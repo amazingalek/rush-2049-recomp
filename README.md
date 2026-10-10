@@ -20,6 +20,8 @@ option has an Original value that runs the game as it shipped.
 
 - **High resolution**: renders at the window's size, up to 4K and beyond, instead of 320×240, with 2× MSAA.
 - **Hi-res menu and HUD text**: the game's bitmap fonts are upscaled instead of drawn as 240p blocks.
+- **Hi-res title screen**: the title picture is drawn from a 4× AI upscale (Real-ESRGAN) instead of at 240p. The
+  repo ships only a patch, which the game applies to its own picture.
 - **60 fps and unlocked frame rates**: the game logic runs at 60 instead of 30, and on a high-refresh monitor
   RT64 interpolates between frames up to the display's refresh rate.
 - **Widescreen**: 3D widens to the window's aspect ratio, the race HUD moves out to the edges, two- and
@@ -117,6 +119,7 @@ but no real mod has been played with yet, so expect rough edges. How to write on
 
 Built on [N64Recomp](https://github.com/N64Recomp/N64Recomp), [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime),
 [RecompFrontend](https://github.com/N64Recomp/RecompFrontend) and [RT64](https://github.com/rt64/rt64), by Wiseguy,
-Dario and the N64Recomp contributors; function signatures from [n64sym](https://github.com/shygoo/n64sym).
+Dario and the N64Recomp contributors; function signatures from [n64sym](https://github.com/shygoo/n64sym); the title
+screen upscaled with [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN).
 *San Francisco Rush 2049* belongs to its rights holders; this project ships none of it. The recomp in `rush2049/` is
 GPLv3, see [rush2049/COPYING](rush2049/COPYING).

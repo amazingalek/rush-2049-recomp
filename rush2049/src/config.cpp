@@ -91,6 +91,17 @@ namespace {
     };
     const std::string hires_font_option = "hires_font";
 
+    enum class HiresTitle {
+        Original,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> hires_title_options = {
+        {HiresTitle::Original, "Original", "Original"},
+        {HiresTitle::On, "On", "On"},
+    };
+    const std::string hires_title_option = "hires_title";
+
     enum class SplitScreenRatio {
         Expand,
         Original,
@@ -339,6 +350,21 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(hires_font_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_hires_font(static_cast<HiresFont>(std::get<uint32_t>(cur_value)) == HiresFont::On);
+        });
+
+    graphics.add_enum_option(
+        hires_title_option,
+        "Hi-res Title Screen",
+        "Draws the title screen from a 4x upscale of its picture (made with Real-ESRGAN) instead of the 240p original. "
+        "The game rebuilds the upscale from its own picture and a patch that ships with it."
+        "<br/>"
+        "Texture packs you enable take priority.",
+        hires_title_options,
+        HiresTitle::On
+    );
+    graphics.add_option_change_callback(hires_title_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_hires_title(static_cast<HiresTitle>(std::get<uint32_t>(cur_value)) == HiresTitle::On);
         });
 
     graphics.add_enum_option(
