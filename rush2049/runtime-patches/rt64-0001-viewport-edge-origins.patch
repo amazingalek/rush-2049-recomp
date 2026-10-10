@@ -49,6 +49,21 @@ index 20c0d4d..0f86aee 100644
          }
          
          void setScissorAlignV1(State *state, DisplayList **dl) {
+diff --git a/src/hle/rt64_rdp.cpp b/src/hle/rt64_rdp.cpp
+index a10c11a..d2b772e 100644
+--- a/src/hle/rt64_rdp.cpp
++++ b/src/hle/rt64_rdp.cpp
+@@ -1036,7 +1036,9 @@ namespace RT64 {
+ #   endif
+ 
+         // Filter out incorrect rectangles.
+-        if ((lrx < ulx) || (lry < uly)) {
++        // Rush 2049 patch: compare the edges where their origins put them, so a rectangle from the left edge to the
++        // right edge isn't dropped for its right coordinate being negative.
++        if ((movedFromOrigin(lrx, extAlignment.rightOrigin) < movedFromOrigin(ulx, extAlignment.leftOrigin)) || (lry < uly)) {
+             return;
+         }
+ 
 diff --git a/src/hle/rt64_rsp.cpp b/src/hle/rt64_rsp.cpp
 index ee2030b..8ebfb47 100644
 --- a/src/hle/rt64_rsp.cpp
