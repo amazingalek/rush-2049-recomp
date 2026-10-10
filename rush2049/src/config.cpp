@@ -1,4 +1,4 @@
-// Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
+// Config tabs: the stock tabs, plus the controller accessory and rewind options on the General tab, the game frame rate
 // and hi-res font on the Graphics tab, and the music replacement options on the Sound tab.
 
 #include <algorithm>
@@ -24,6 +24,17 @@ namespace {
         {Accessory::RumblePak, "Rumble Pak"},
     };
     const std::string accessory_option = "accessory";
+
+    enum class Rewind {
+        Off,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> rewind_options = {
+        {Rewind::Off, "Off", "Off"},
+        {Rewind::On, "On", "On"},
+    };
+    const std::string rewind_option = "rewind";
 
     enum class GameFrameRate {
         Original,
@@ -203,6 +214,20 @@ void rush2049::init_config() {
         accessory_options,
         Accessory::ControllerPak
     );
+    general.add_enum_option(
+        rewind_option,
+        "Rewind",
+        "Hold <recomp-color primary>Rewind</recomp-color> (Controls tab) in a single-player race and the race runs "
+        "backwards: every car, the clock, the laps and the ghost. Let go to drive on from there. Goes back up to about "
+        "a minute, and uses up to 128 MB of memory for it.",
+        rewind_options,
+        Rewind::On
+    );
+    // Called on load too.
+    general.add_option_change_callback(rewind_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_rewind(static_cast<Rewind>(std::get<uint32_t>(cur_value)) == Rewind::On);
+        });
 
     recomp::config::Config& graphics = recompui::config::create_graphics_tab();
     graphics.add_enum_option(

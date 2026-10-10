@@ -437,9 +437,6 @@ int main(int argc, char** argv) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
         }
-        if (strcmp(argv[i], "--rewind-map") == 0 && i + 1 < argc) {
-            rush2049::start_rewind_map(atoi(argv[++i]));
-        }
         if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
             load_input_script(argv[++i]);
         }

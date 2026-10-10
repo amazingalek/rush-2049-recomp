@@ -1,133 +1,263 @@
-// Rewind (WIP): diagnostic map of which RDRAM words each part of a race frame writes.
+// Rewind, as in Braid: hold the Rewind input in a single-player race and the race runs backwards, every car, the
+// clock, the laps and the ghost being recorded, until you let go and drive on from there.
+//
+// The race is saved in the frame loop (thread 7) just before it draws a race frame: there the frame's logic is done,
+// and thread 5 is between two ticks of the race (when it isn't, the frame is skipped). What is saved is RAM from the
+// end of the code up, minus the parts that belong to something other than the race: the OS's message queues, the
+// controller and pak state, the audio and music threads' memory, the scheduler and graphics tasks, the vertex
+// buffers, the Z-buffer and the framebuffers, and the timestamp the game measures each tick against. Those were found
+// by watching which part of a frame writes each word: the tick, the frame's logic, its drawing, or another thread.
+//
+// A copy of that memory (the shadow) holds it as of the last frame saved. Each frame, the 64-byte pieces that changed
+// since are stored with their old contents as that frame's record, and the shadow is updated. A frame while Rewind is
+// held first puts back everything that changed since the shadow (the tick that ran from the restored state), then
+// applies the newest record, which takes RAM and the shadow one frame further back. The records are capped at
+// history_cap bytes, the oldest dropped first. A frame in which no race time passed (paused, or no tick since the last
+// frame above 60 fps) is neither saved nor stepped back, so the race rewinds at the speed it was played.
 
+#include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <vector>
 
 #include "recomp.h"
+#include "recompinput/profiles.h"
 #include "rush2049_game.h"
 #include "rush2049_hooks.h"
 
 namespace {
 
-constexpr uint32_t rdram_size = 8 * 1024 * 1024;
-constexpr uint32_t game_state_addr = 0x801174B4;   // the frame loop's state bits; 0x00400000 in a race
+constexpr uint32_t game_state_addr = 0x801174B4;  // the frame loop's state bits; 0x00400000 in a race
+constexpr uint32_t race_clock_addr = 0x801543CC;  // float, written by the tick
+constexpr uint32_t saved_lo = 0x8010FD80;         // the end of the main code segment
+constexpr uint32_t saved_hi = 0x80800000;
+constexpr size_t history_cap = 128 * 1024 * 1024;
 
-uint8_t* at(uint8_t* rdram, uint32_t addr) { return rdram + (addr - 0x80000000u); }
-uint32_t word(uint8_t* rdram, uint32_t addr) { return *(uint32_t*)at(rdram, addr); }
+struct Range {
+    uint32_t lo, hi;
+};
 
-bool in_race(uint8_t* rdram) {
-    return word(rdram, game_state_addr) == 0x00400000;
+// Not the race's (see the top of the file), in address order.
+constexpr Range not_saved[] = {
+    { 0x80110240, 0x80110290 },  // music: the playing song
+    { 0x80111958, 0x80111968 },
+    { 0x80114730, 0x80114734 },  // frames in flight
+    { 0x80116178, 0x8011617C },
+    { 0x801161CC, 0x801161D0 },
+    { 0x80118E30, 0x80118E34 },
+    { 0x8011EACC, 0x8011EAD0 },
+    { 0x80124EE0, 0x80124F90 },  // timing, with the tick's timestamp at 0x80124F70
+    { 0x801253B8, 0x80126108 },  // matrices for the display list
+    { 0x8012A470, 0x8012AC08 },
+    { 0x8012E608, 0x8012E6D4 },
+    { 0x80130EA8, 0x80130EAC },
+    { 0x80138A4C, 0x80138A5C },
+    { 0x8013FED0, 0x8013FED4 },
+    { 0x801403C0, 0x80140414 },
+    { 0x80142728, 0x80142FF0 },  // music thread, its queues
+    { 0x801439D8, 0x80143CF8 },
+    { 0x80143F5C, 0x80143F60 },
+    { 0x80143FFC, 0x80144E00 },  // controllers and paks (0x80143FF4 before it counts the race's ticks)
+    { 0x801460C8, 0x80146200 },  // queues
+    { 0x80149438, 0x8014943C },  // display list pointer
+    { 0x80149780, 0x80149A60 },  // queues
+    { 0x80149B10, 0x80149DA4 },
+    { 0x8014A11C, 0x8014A128 },
+    { 0x8014A248, 0x8014A24C },
+    { 0x8014E060, 0x8014E754 },  // sounds
+    { 0x80150BA0, 0x80150BD0 },
+    { 0x80150F18, 0x80150F60 },  // boot queue messages
+    { 0x80151AE0, 0x80151AE4 },
+    { 0x80152730, 0x801527F0 },  // queues
+    { 0x80153E68, 0x80153F18 },  // queue
+    { 0x801541AC, 0x80154210 },
+    { 0x80154378, 0x801543A0 },  // queue
+    { 0x801543B8, 0x801543BC },
+    { 0x80155234, 0x8015699C },
+    { 0x80156BA8, 0x80156D00 },  // thread 8's queue, the graphics task
+    { 0x8015B250, 0x8015D680 },
+    { 0x8015F72C, 0x8015F7A0 },
+    { 0x801613F0, 0x8017A640 },  // vertex buffers, queue
+    { 0x8017AEC0, 0x8019D4C0 },  // Z-buffer
+    { 0x801A6000, 0x80216300 },  // audio
+    { 0x807BB000, 0x80800000 },  // framebuffers
+};
+
+std::atomic<bool> enabled{ true };
+bool tick_running = false;     // thread 5 is inside a tick
+std::vector<Range> saved;      // what is saved, as offsets into RDRAM
+std::vector<uint8_t> shadow;   // the saved memory as of the last frame saved, indexed like RDRAM
+bool have_shadow = false;
+// Per frame, newest last: { offset, length, old contents } for each piece that changed.
+std::deque<std::vector<uint8_t>> history;
+size_t history_bytes = 0;
+uint32_t frames_back = 0;     // frames stepped back since Rewind was pressed
+
+uint32_t read_word(const uint8_t* mem, uint32_t addr) {
+    return *(const uint32_t*)(mem + (addr - 0x80000000u));
 }
 
-// Where each thread is: thread 5 inside its tick, thread 7 between the top of its frame and the end of it.
-bool t5_in_tick = false;
-bool t7_in_frame = false;
-uint32_t t5_busy_at_draw = 0, draws = 0, t7_busy_at_tick = 0, ticks = 0;
-
-// --rewind-map <frames>: mark every word by who wrote it: the race tick (1), the frame loop before drawing (2),
-// drawing (4) or anything else (8), then print the ranges of each combination.
-enum Part { Other = 8, Tick = 1, Logic = 2, Draw = 4 };
-int map_frames_left = 0;
-std::vector<uint8_t> map_marks, map_last;
-Part map_part = Other;
-Part map_resume = Other;   // the part thread 7 was in when a tick preempted it
-bool map_started = false;
-constexpr uint32_t map_lo = 0x8010FD80u - 0x80000000u, map_hi = 0x801A6000u - 0x80000000u;  // the part in question
-
-void map_boundary(uint8_t* rdram, Part next) {
-    if (map_frames_left <= 0 || !in_race(rdram)) {
-        map_part = next;
-        return;
-    }
-    if (!map_started) {
-        map_started = true;
-        memcpy(map_last.data(), at(rdram, 0x80000000), rdram_size);
-        map_part = next;
-        return;
-    }
-    const uint32_t* wa = (const uint32_t*)map_last.data();
-    const uint32_t* wb = (const uint32_t*)at(rdram, 0x80000000);
-    for (uint32_t i = map_lo / 4; i < map_hi / 4; i += 16) {
-        if (memcmp(wa + i, wb + i, 64) == 0) {
-            continue;
-        }
-        for (uint32_t j = i; j < i + 16; j++) {
-            if (wa[j] != wb[j]) {
-                map_marks[j] |= map_part;
-            }
-        }
-    }
-    memcpy(map_last.data(), wb, rdram_size);
-    map_part = next;
+bool rewind_held() {
+    return recompinput::profiles::get_game_input_held(0, recompinput::GameInput::REWIND) || rush2049::scripted_rewind();
 }
 
-void print_map() {
-    fprintf(stderr, "[rewind map] thread 5 mid-tick at %u of %u draws, thread 7 mid-frame at %u of %u ticks\n",
-        t5_busy_at_draw, draws, t7_busy_at_tick, ticks);
-    for (int kind = 1; kind < 16; kind++) {
-        uint32_t total = 0;
-        fprintf(stderr, "[rewind map] %s%s%s%s:\n", kind & Tick ? "tick " : "", kind & Logic ? "logic " : "",
-            kind & Draw ? "draw " : "", kind & Other ? "other" : "");
-        uint32_t i = (0x8010FD80u - 0x80000000u) / 4;
-        while (i < map_hi / 4) {
-            if (map_marks[i] != kind) {
-                i++;
+void forget() {
+    fprintf(stderr, "[rewind dbg] forget, %zu frames\n", history.size());
+    history.clear();
+    history_bytes = 0;
+    have_shadow = false;
+}
+
+// Calls f(offset, length) for each piece of saved memory that differs from the shadow.
+template <typename F>
+void for_each_change(const uint8_t* rdram, F f) {
+    constexpr uint32_t block = 4096, piece = 64;
+    for (Range r : saved) {
+        for (uint32_t p = r.lo; p < r.hi;) {
+            uint32_t end = std::min(p + block, r.hi);
+            if (memcmp(rdram + p, shadow.data() + p, end - p) == 0) {
+                p = end;
                 continue;
             }
-            // Merge runs separated by fewer than 16 words.
-            uint32_t start = i, end = i + 1, words = 0;
-            while (i < map_hi / 4 && i < end + 16) {
-                if (map_marks[i] == kind) {
-                    end = i + 1;
-                    words++;
+            for (; p < end; p += piece) {
+                uint32_t n = std::min(piece, end - p);
+                if (memcmp(rdram + p, shadow.data() + p, n) != 0) {
+                    f(p, n);
                 }
-                i++;
             }
-            total += words;
-            fprintf(stderr, "  %08X-%08X %u\n", 0x80000000u + start * 4, 0x80000000u + end * 4, words);
         }
-        fprintf(stderr, "[rewind map] total %u\n", total);
     }
 }
 
+void save_frame(uint8_t* rdram) {
+    std::vector<uint8_t> record;
+    for_each_change(rdram, [&](uint32_t p, uint32_t n) {
+        size_t at = record.size();
+        record.resize(at + 8 + n);
+        memcpy(record.data() + at, &p, 4);
+        memcpy(record.data() + at + 4, &n, 4);
+        memcpy(record.data() + at + 8, shadow.data() + p, n);
+        memcpy(shadow.data() + p, rdram + p, n);
+    });
+    record.shrink_to_fit();
+    history_bytes += record.size();
+    history.push_back(std::move(record));
+    while (history_bytes > history_cap) {
+        history_bytes -= history.front().size();
+        history.pop_front();
+    }
 }
 
-void rush2049::start_rewind_map(int frames) {
-    map_frames_left = frames;
-    map_marks.assign(rdram_size / 4, 0);
-    map_last.resize(rdram_size);
+void step_back(uint8_t* rdram) {
+    for_each_change(rdram, [&](uint32_t p, uint32_t n) { memcpy(rdram + p, shadow.data() + p, n); });
+    if (history.empty()) {
+        return;  // as far back as it goes: stay there
+    }
+    const std::vector<uint8_t>& record = history.back();
+    for (size_t at = 0; at < record.size();) {
+        uint32_t p, n;
+        memcpy(&p, record.data() + at, 4);
+        memcpy(&n, record.data() + at + 4, 4);
+        memcpy(rdram + p, record.data() + at + 8, n);
+        memcpy(shadow.data() + p, record.data() + at + 8, n);
+        at += 8 + n;
+    }
+    history_bytes -= record.size();
+    history.pop_back();
+    frames_back++;
+}
+
+}
+
+void rush2049::set_rewind(bool on) {
+    enabled = on;
 }
 
 extern "C" void rush2049_rewind_tick_begin(uint8_t* rdram) {
-    t5_in_tick = true;
-    ticks++;
-    t7_busy_at_tick += t7_in_frame;
-    map_resume = t7_in_frame ? map_part : Other;
-    map_boundary(rdram, Tick);
+    tick_running = true; static uint32_t t; if (++t % 60 == 0 && frames_back) fprintf(stderr, "[rewind dbg] tick %u\n", t);
 }
 
 extern "C" void rush2049_rewind_tick_end(uint8_t* rdram) {
-    t5_in_tick = false;
-    map_boundary(rdram, map_resume);
+    tick_running = false;
 }
 
 extern "C" void rush2049_rewind_frame_begin(uint8_t* rdram) {
-    t7_in_frame = true;
-    map_boundary(rdram, Logic);
+    { static uint32_t f; if (++f % 30 == 0 && frames_back) fprintf(stderr, "[rewind dbg] frame %u\n", f); }
+    static uint32_t last_state = 0;
+    if (read_word(rdram, game_state_addr) != last_state) {
+        last_state = read_word(rdram, game_state_addr);
+        fprintf(stderr, "[rewind dbg] state %08X\n", last_state);
+    }
+    if (read_word(rdram, game_state_addr) != 0x00400000 && have_shadow) {
+        forget();
+    }
 }
 
 extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
-    draws++;
-    t5_busy_at_draw += t5_in_tick;
-    map_boundary(rdram, Draw);
-}
-
-extern "C" void rush2049_rewind_frame_end(uint8_t* rdram) {
-    t7_in_frame = false;
-    map_boundary(rdram, Other);
-    if (map_frames_left > 0 && in_race(rdram) && --map_frames_left == 0) {
-        print_map();
+    if (!enabled || rush2049::split_screen()) {
+        if (have_shadow) {
+            forget();
+        }
+        return;
+    }
+    if (tick_running) {
+        return;
+    }
+    if (!have_shadow) {
+        if (saved.empty()) {
+            uint32_t lo = saved_lo;
+            for (Range r : not_saved) {
+                saved.push_back({ lo - 0x80000000u, r.lo - 0x80000000u });
+                lo = r.hi;
+            }
+            if (lo < saved_hi) {
+                saved.push_back({ lo - 0x80000000u, saved_hi - 0x80000000u });
+            }
+            shadow.resize(saved_hi - 0x80000000u);
+            if (const char* ex = getenv("RW_EX")) {  // DEBUG: "a-b,c-d" more not saved
+                uint32_t a, b; int used;
+                while (sscanf(ex, "%x-%x%n", &a, &b, &used) == 2) {
+                    a -= 0x80000000u; b -= 0x80000000u;
+                    std::vector<Range> next;
+                    for (Range r : saved) {
+                        if (r.hi <= a || r.lo >= b) { next.push_back(r); continue; }
+                        if (r.lo < a) next.push_back({ r.lo, a });
+                        if (r.hi > b) next.push_back({ b, r.hi });
+                    }
+                    saved = next;
+                    fprintf(stderr, "[rewind dbg] not saving %08X-%08X\n", a + 0x80000000u, b + 0x80000000u);
+                    ex += used; if (*ex == ',') ex++;
+                }
+            }
+        }
+        for (Range r : saved) {
+            memcpy(shadow.data() + r.lo, rdram + r.lo, r.hi - r.lo);
+        }
+        have_shadow = true;
+        return;
+    }
+    if (read_word(rdram, race_clock_addr) == read_word(shadow.data(), race_clock_addr)) {
+        return;  // no race time has passed
+    }
+    static uint32_t n = 0;
+    if (++n % 30 == 0) {
+        float clock; uint32_t w = read_word(rdram, race_clock_addr); memcpy(&clock, &w, 4);
+        fprintf(stderr, "[rewind dbg] clock %.2f held %d frames %zu bytes %zu\n", clock, rewind_held(), history.size(), history_bytes);
+    }
+    if (rewind_held()) {
+        { float a, b; uint32_t w = read_word(rdram, race_clock_addr), v = read_word(shadow.data(), race_clock_addr); memcpy(&a, &w, 4); memcpy(&b, &v, 4);
+          fprintf(stderr, "[rewind dbg] step ram %.3f shadow %.3f\n", a, b); }
+        step_back(rdram);
+    } else {
+        if (frames_back > 0) {
+            fprintf(stderr, "[rewind] back %u frames, %zu frames (%zu MB) left\n", frames_back, history.size(),
+                history_bytes >> 20);
+            frames_back = 0;
+        }
+        save_frame(rdram);
     }
 }

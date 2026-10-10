@@ -19,8 +19,10 @@ namespace rush2049 {
     void start_ram_dump(const char* prefix, const char* times);
     // --input: whether the input script holds Rewind right now (src/main.cpp).
     bool scripted_rewind();
-    // --rewind-map: over that many race ticks, find which RDRAM words the tick writes (src/rewind.cpp).
-    void start_rewind_map(int ticks);
+    // Rewind (src/rewind.cpp): the General tab's Rewind option.
+    void set_rewind(bool enabled);
+    // Whether the last frame the game drew was split screen (src/widescreen.cpp).
+    bool split_screen();
 
     // Hi-res font (src/hires_font.cpp): set up the generated texture pack in the app folder, then turn it on or off.
     void init_hires_font();

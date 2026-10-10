@@ -154,6 +154,10 @@ void anchor_model(uint8_t* rdram, uint32_t p, uint32_t list, uint32_t viewport, 
 
 } // namespace
 
+bool rush2049::split_screen() {
+    return split_screen_last_frame;
+}
+
 extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
     race_timer_retrace = retrace_count(rdram);
     race_timer_seen = true;
@@ -207,17 +211,19 @@ extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
 
 extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr) {
     gpr task = (gpr)(int32_t)task_addr;
-    if (!hud_moves() || MEM_W(0x00, task) != 1) {  // M_GFXTASK
+    if (MEM_W(0x00, task) != 1) {  // M_GFXTASK
         return;
     }
+    // The list is walked at any HUD Placement, to tell split screen (rewind needs to know), but only changed when
+    // the HUD moves.
     uint32_t dl = (uint32_t)MEM_W(0x30, task) | 0x80000000;
-    if (read_word(rdram, dl) != 0xDB060000 || read_word(rdram, dl + 4) != 0) {  // gsSPSegment(0, 0)
-        return;
+    bool extended = hud_moves() && read_word(rdram, dl) == 0xDB060000 && read_word(rdram, dl + 4) == 0;  // gsSPSegment(0, 0)
+    if (extended) {
+        GfxCommand cmd{};
+        gEXEnable(&cmd);
+        write_word(rdram, dl, cmd.values.word0);
+        write_word(rdram, dl + 4, cmd.values.word1);
     }
-    GfxCommand cmd{};
-    gEXEnable(&cmd);
-    write_word(rdram, dl, cmd.values.word0);
-    write_word(rdram, dl + 4, cmd.values.word1);
 
     bool in_race = single_player_race(rdram);
 
@@ -288,14 +294,14 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     // 60 fps the VI is faster than that, so the list says the rate instead, in the place of a pipe sync. Otherwise
     // RT64 would take it for 60 fps and, when its Framerate is above 60, interpolate frames it doesn't need.
     uint32_t fps = rush2049::game_frame_rate();
-    if (fps > 60 && first_pipe_sync != 0) {
+    if (extended && fps > 60 && first_pipe_sync != 0) {
         GfxCommand rate{};
         gEXSetRefreshRate(&rate, fps);
         write_word(rdram, first_pipe_sync, rate.values.word0);
         write_word(rdram, first_pipe_sync + 4, rate.values.word1);
     }
     split_screen_last_frame = split_screen;
-    if (!in_race || split_screen) {
+    if (!extended || !in_race || split_screen) {
         return;
     }
     if (model_count > 0 && model_lists == 0) {
