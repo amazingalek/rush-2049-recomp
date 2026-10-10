@@ -38,6 +38,9 @@ void yield_self_1ms(uint8_t* rdram);
 /* Rewind (src/rewind.cpp): before and after each 60 Hz race tick in thread 5. */
 void rush2049_rewind_tick_begin(uint8_t* rdram);
 void rush2049_rewind_tick_end(uint8_t* rdram);
+void rush2049_rewind_frame_begin(uint8_t* rdram);
+void rush2049_rewind_frame_draw(uint8_t* rdram);
+void rush2049_rewind_frame_end(uint8_t* rdram);
 
 /* Debug tracing for bring-up: prints "<ms> <tag> <value>" to stderr. */
 void rush2049_trace(const char* tag, uint32_t value);

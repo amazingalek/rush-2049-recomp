@@ -208,3 +208,19 @@ text = "    rush2049_rewind_tick_begin(rdram);"
 func = "func_800E7808"
 before_vram = 0x800E78E0
 text = "    rush2049_rewind_tick_end(rdram);"
+
+# The frame loop (func_800FD464, thread 7): after its wait for a frame, before it draws a race frame, and at its end.
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD524
+text = "    rush2049_rewind_frame_begin(rdram);"
+
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD6A4
+text = "    rush2049_rewind_frame_draw(rdram);"
+
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD6EC
+text = "    rush2049_rewind_frame_end(rdram);"
