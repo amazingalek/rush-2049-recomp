@@ -45,6 +45,7 @@
 
 #include "rush2049_game.h"
 #include "crash_handler.h"
+#include "audio_limiter.h"
 #include "audio_resampler.h"
 #include "debug_probe.h"
 #include "musyx_hle.h"
@@ -171,7 +172,8 @@ void update_gfx(void*) {
 
 // Audio output: the game's samples (s16 stereo, channels swapped by the runtime's address xor) are converted to
 // float and resampled to the device rate (rush2049::Resampler). With the high-quality MusyX mix on, each buffer is
-// first swapped for the same audio rendered at twice the game's rate.
+// first swapped for the same audio rendered at twice the game's rate. At the device rate it is halved and then limited
+// (rush2049::Limiter), since that mix isn't clamped to 16 bits and its peaks reach about twice the game's full scale.
 
 static rush2049::Resampler resampler;
 static uint32_t resampler_input_rate = 0;
@@ -213,11 +215,13 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     static std::vector<float> output;
     output.clear();
     resampler.process(input.data(), input.size() / 2, output);
-    // Halved, so the game's full scale (and the high-quality mix's peaks above it) doesn't clip on the device.
+    // Halved, so the game's full scale doesn't clip on the device, and limited, so neither do the high-quality mix's
+    // peaks above it.
     float main_volume = static_cast<float>(recompui::config::sound::get_main_volume()) / 100.0f;
     for (float& v : output) {
         v *= 0.5f * main_volume;
     }
+    rush2049::output_limiter.process(output.data(), output.size() / 2);
 
     uint64_t cur_queued_microseconds = uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / sample_rate;
     uint32_t num_bytes_to_queue = uint32_t(output.size() * sizeof(float));
@@ -288,6 +292,7 @@ bool reset_audio(uint32_t output_freq) {
 
     SDL_PauseAudioDevice(audio_device, 0);
     output_sample_rate = output_freq;
+    rush2049::output_limiter.reset(output_sample_rate);
     update_audio_converter();
     return true;
 }
