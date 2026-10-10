@@ -45,17 +45,17 @@ namespace {
 rush2049::MusyxMode mode = rush2049::MusyxMode::Hle;
 bool hires_wanted = true;
 
-// The high-quality mix (src/hle/musyx.c, musyx_hires_t): each subframe the HLE rendered at twice the game's rate,
-// beside a copy of the game's own subframe and where it sits in RDRAM. The audio output looks up each buffer the
-// game queues here; the copy tells a live subframe from a stale one that happens to sit at the same address.
+// The high-quality mix (src/hle/musyx.c, musyx_hires_t): the latest subframe the HLE rendered at twice the game's
+// rate for each output buffer, beside a copy of the game's own subframe and where it sits in RDRAM. The audio output
+// looks up each buffer the game queues here; the copy catches a buffer the game changed after the mix wrote it.
 constexpr size_t subframe_frames = 192;
 struct HiresSubframe {
     const uint32_t* native_at = nullptr;
     uint32_t native[subframe_frames];
     uint32_t hires[2 * subframe_frames];
 };
-// ~1.1 s of audio. The game queues a subframe a few VIs after mixing it.
-std::array<HiresSubframe, 128> hires_subframes;
+// One per output buffer: the game cycles through 8, 0x300 bytes apart.
+std::array<HiresSubframe, 32> hires_subframes;
 size_t hires_next = 0;
 std::mutex hires_mutex;
 std::atomic<uint64_t> hires_matched{ 0 };
@@ -141,11 +141,21 @@ RspExitReason run_hle_task(uint8_t* rdram, uint32_t) {
 
 extern "C" void musyx_hires_store(const uint32_t* native, const uint32_t* hires) {
     std::lock_guard lock{ hires_mutex };
-    HiresSubframe& entry = hires_subframes[hires_next];
-    hires_next = (hires_next + 1) % hires_subframes.size();
-    entry.native_at = native;
-    memcpy(entry.native, native, sizeof(entry.native));
-    memcpy(entry.hires, hires, sizeof(entry.hires));
+    // A buffer the mix writes again replaces its entry, so a lookup never finds a stale one.
+    HiresSubframe* entry = nullptr;
+    for (HiresSubframe& candidate : hires_subframes) {
+        if (candidate.native_at == native) {
+            entry = &candidate;
+            break;
+        }
+    }
+    if (entry == nullptr) {
+        entry = &hires_subframes[hires_next];
+        hires_next = (hires_next + 1) % hires_subframes.size();
+    }
+    entry->native_at = native;
+    memcpy(entry->native, native, sizeof(entry->native));
+    memcpy(entry->hires, hires, sizeof(entry->hires));
 }
 
 void rush2049::set_musyx_mode(MusyxMode new_mode) {

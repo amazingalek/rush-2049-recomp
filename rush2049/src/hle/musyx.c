@@ -119,14 +119,23 @@ enum {
  * Kaiser-windowed sinc in place of RESAMPLE_LUT. Everything else that reaches the left/right output (the base
  * volumes, the delayed cc0 surround channel, the delay effect) is carried over from the original mix. The result
  * goes to musyx_hires_store() beside the subframe the game gets, and the audio output plays it in place of the
- * game's buffer. RDRAM and the game's own output stay exactly as the original mix leaves them. MusyX v1 only. */
+ * game's buffer. RDRAM and the game's own output stay exactly as the original mix leaves them. MusyX v1 only.
+ *
+ * It mixes on two buses. A voice at or below 1x has nothing above the original mix's Nyquist frequency but the
+ * interpolator's images, so bus 0 holds those voices and everything carried over from the original mix, and is
+ * low-passed just under 11 kHz. Voices above 1x do have content up there (it is what the original mix aliases),
+ * so bus 1 holds them and is only delayed to match: a voice whose pitch crosses 1x moves bus without moving in
+ * time. */
 enum { HIRES_SIZE = 2 * SUBFRAME_SIZE };
 enum { HIRES_PHASES = 256 };
+enum { HIRES_LPF_TAPS = 97 };
+enum { HIRES_DELAY = (HIRES_LPF_TAPS - 1) / 2 };
 
 typedef struct musyx_hires {
-    float left[HIRES_SIZE];
-    float right[HIRES_SIZE];
-    float cc0[HIRES_SIZE];            /* carried into the next subframe, like musyx_t's cc0 */
+    float left[2][HIRES_SIZE];        /* [bus] */
+    float right[2][HIRES_SIZE];
+    float cc0[2][HIRES_SIZE];         /* carried into the next subframe, like musyx_t's cc0 */
+    float history[2][2][HIRES_LPF_TAPS - 1]; /* [bus][left, right] the last inputs */
 
     int16_t cc0_check[SUBFRAME_SIZE]; /* the original mix's cc0 that the carry belongs to */
     float sfx_history[3];             /* the delay effect's last samples, for upsampling it */
@@ -135,6 +144,7 @@ typedef struct musyx_hires {
 /* the RSP task thread is the only caller */
 static musyx_hires_t hires_state;
 static float hires_kernel[HIRES_PHASES + 1][4];
+static float hires_lpf[HIRES_LPF_TAPS];
 
 typedef struct {
     /* internal subframes */
@@ -1054,32 +1064,58 @@ static double bessel_i0(double x)
     return sum;
 }
 
+static double kaiser(double x, double beta) /* x in [-1, 1] */
+{
+    double w = 1.0 - x * x;
+
+    return (w > 0.0) ? bessel_i0(beta * sqrt(w)) / bessel_i0(beta) : 0.0;
+}
+
+static double sinc(double x)
+{
+    const double pi = 3.14159265358979323846;
+
+    return (x == 0.0) ? 1.0 : sin(pi * x) / (pi * x);
+}
+
 /* hires_kernel[p] weighs sample[0..3] for the point p/HIRES_PHASES of the way from sample[1] to sample[2], the
  * same taps RESAMPLE_LUT uses (the game loads no more than that). A Kaiser window with beta 3 keeps the passband
  * flatter than RESAMPLE_LUT (-2.5 dB against -6.5 dB at 0.4 of the sample rate) and rejects the images further
- * out better (-36 dB against -29 dB at 0.75). */
+ * out better (-36 dB against -29 dB at 0.75).
+ * hires_lpf is bus 0's low-pass, relative to the doubled rate: flat to 10 kHz, -3 dB at 10.5 kHz, -74 dB from 12 kHz
+ * on, at 44.1 kHz. */
 static void init_hires_kernel(void)
 {
-    const double pi = 3.14159265358979323846;
-    const double beta = 3.0;
+    const double cutoff = 0.243;
+    double sum = 0.0;
     unsigned p, k;
 
     for (p = 0; p <= HIRES_PHASES; ++p) {
         double c[4];
-        double sum = 0.0;
         double f = (double)p / HIRES_PHASES;
 
+        sum = 0.0;
         for (k = 0; k < 4; ++k) {
             double t = f + 1.0 - k;
-            double w = 1.0 - (t / 2.0) * (t / 2.0);
-            double sinc = (t == 0.0) ? 1.0 : sin(pi * t) / (pi * t);
 
-            c[k] = (w > 0.0) ? sinc * bessel_i0(beta * sqrt(w)) / bessel_i0(beta) : 0.0;
+            c[k] = sinc(t) * kaiser(t / 2.0, 3.0);
             sum += c[k];
         }
 
         for (k = 0; k < 4; ++k)
             hires_kernel[p][k] = (float)(c[k] / sum);
+    }
+
+    sum = 0.0;
+    for (k = 0; k < HIRES_LPF_TAPS; ++k) {
+        double t = (double)k - HIRES_DELAY;
+
+        sum += 2.0 * cutoff * sinc(2.0 * cutoff * t) * kaiser(t / HIRES_DELAY, 7.0);
+    }
+    for (k = 0; k < HIRES_LPF_TAPS; ++k) {
+        double t = (double)k - HIRES_DELAY;
+
+        hires_lpf[k] = (float)(2.0 * cutoff * sinc(2.0 * cutoff * t) * kaiser(t / HIRES_DELAY, 7.0) / sum);
     }
 }
 
@@ -1117,11 +1153,12 @@ static void hires_begin_task(musyx_hires_t *hires, const int16_t *cc0)
     if (memcmp(hires->cc0_check, cc0, sizeof(hires->cc0_check)) == 0)
         return;
 
+    memset(hires->cc0[1], 0, sizeof(hires->cc0[1]));
     for (i = 0; i < SUBFRAME_SIZE; ++i) {
         int16_t next = cc0[(i + 1 < SUBFRAME_SIZE) ? i + 1 : i];
 
-        hires->cc0[2 * i]     = cc0[i];
-        hires->cc0[2 * i + 1] = 0.5f * ((float)cc0[i] + (float)next);
+        hires->cc0[0][2 * i]     = cc0[i];
+        hires->cc0[0][2 * i + 1] = 0.5f * ((float)cc0[i] + (float)next);
     }
 }
 
@@ -1130,14 +1167,16 @@ static void init_hires_v1(musyx_t *musyx)
 {
     musyx_hires_t *hires = musyx->hires;
     float base_cc0 = clamp_s16(musyx->base_vol[2]);
-    unsigned i;
+    unsigned i, bus;
 
-    for (i = 0; i < HIRES_SIZE; ++i) {
-        float c = hires->cc0[i] + base_cc0;
+    for (bus = 0; bus < 2; ++bus) {
+        for (i = 0; i < HIRES_SIZE; ++i) {
+            float c = hires->cc0[bus][i] + ((bus == 0) ? base_cc0 : 0.0f);
 
-        hires->left[i]  = c;
-        hires->right[i] = -c;
-        hires->cc0[i]   = 0.0f;
+            hires->left[bus][i]  = c;
+            hires->right[bus][i] = -c;
+            hires->cc0[bus][i]   = 0.0f;
+        }
     }
 }
 
@@ -1149,12 +1188,13 @@ static void mix_voice_hires(musyx_hires_t *hires, const int16_t *samples, unsign
                             const int32_t *env, const int32_t *env_step)
 {
     const uint32_t half_step = pitch_step >> 1; /* pitch_step is a multiple of 16, so this is exact */
+    const int bus = (pitch_step > 0x10000) ? 1 : 0;
     float *dst[3];
     int i, k;
 
-    dst[0] = hires->left;
-    dst[1] = hires->right;
-    dst[2] = hires->cc0;
+    dst[0] = hires->left[bus];
+    dst[1] = hires->right[bus];
+    dst[2] = hires->cc0[bus];
 
     for (i = 0; i < HIRES_SIZE; ++i) {
         uint32_t frac = pitch_accu & 0xffff;
@@ -1204,10 +1244,37 @@ static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe)
         float even = x[i + 1];
         float odd  = half[0] * x[i] + half[1] * x[i + 1] + half[2] * x[i + 2] + half[3] * x[i + 3];
 
-        hires->left[2 * i]      += even;
-        hires->right[2 * i]     += even;
-        hires->left[2 * i + 1]  += odd;
-        hires->right[2 * i + 1] += odd;
+        hires->left[0][2 * i]      += even;
+        hires->right[0][2 * i]     += even;
+        hires->left[0][2 * i + 1]  += odd;
+        hires->right[0][2 * i + 1] += odd;
+    }
+}
+
+/* Low-passes bus 0 and adds bus 1, delayed to match, for one channel. */
+static void hires_join_buses(musyx_hires_t *hires, unsigned channel, const float *bus0, const float *bus1,
+                             float base, float *y)
+{
+    enum { HISTORY = HIRES_LPF_TAPS - 1 };
+    float x0[HISTORY + HIRES_SIZE];
+    float x1[HISTORY + HIRES_SIZE];
+    unsigned i, k;
+
+    memcpy(x0, hires->history[0][channel], sizeof(hires->history[0][channel]));
+    memcpy(x1, hires->history[1][channel], sizeof(hires->history[1][channel]));
+    for (i = 0; i < HIRES_SIZE; ++i) {
+        x0[HISTORY + i] = bus0[i] + base;
+        x1[HISTORY + i] = bus1[i];
+    }
+    memcpy(hires->history[0][channel], x0 + HIRES_SIZE, sizeof(hires->history[0][channel]));
+    memcpy(hires->history[1][channel], x1 + HIRES_SIZE, sizeof(hires->history[1][channel]));
+
+    for (i = 0; i < HIRES_SIZE; ++i) {
+        float v = x1[i + HIRES_DELAY];
+
+        for (k = 0; k < HIRES_LPF_TAPS; ++k)
+            v += hires_lpf[k] * x0[i + k];
+        y[i] = v;
     }
 }
 
@@ -1215,14 +1282,17 @@ static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe)
 static void interleave_hires_v1(struct hle_t* hle, musyx_t *musyx, uint32_t output_ptr)
 {
     musyx_hires_t *hires = musyx->hires;
-    float base_left  = clamp_s16(musyx->base_vol[0]);
-    float base_right = clamp_s16(musyx->base_vol[1]);
+    float left[HIRES_SIZE];
+    float right[HIRES_SIZE];
     uint32_t out[HIRES_SIZE];
     unsigned i;
 
+    hires_join_buses(hires, 0, hires->left[0], hires->left[1], clamp_s16(musyx->base_vol[0]), left);
+    hires_join_buses(hires, 1, hires->right[0], hires->right[1], clamp_s16(musyx->base_vol[1]), right);
+
     for (i = 0; i < HIRES_SIZE; ++i) {
-        uint16_t l = (uint16_t)hires_s16(hires->left[i]  + base_left);
-        uint16_t r = (uint16_t)hires_s16(hires->right[i] + base_right);
+        uint16_t l = (uint16_t)hires_s16(left[i]);
+        uint16_t r = (uint16_t)hires_s16(right[i]);
 
         out[i] = ((uint32_t)l << 16) | r;
     }
