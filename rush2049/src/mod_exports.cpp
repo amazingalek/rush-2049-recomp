@@ -164,8 +164,10 @@ extern "C" void recomp_vprintf(uint8_t* rdram, recomp_context* ctx) {
 extern "C" void recomp_get_window_resolution(uint8_t* rdram, recomp_context* ctx) {
     int width, height;
     recompui::get_window_size(width, height);
-    MEM_W(0, _arg<0, PTR(u32)>(rdram, ctx)) = (u32)width;
-    MEM_W(0, _arg<1, PTR(u32)>(rdram, ctx)) = (u32)height;
+    gpr width_out = _arg<0, PTR(u32)>(rdram, ctx);
+    gpr height_out = _arg<1, PTR(u32)>(rdram, ctx);
+    MEM_W(0, width_out) = (u32)width;
+    MEM_W(0, height_out) = (u32)height;
 }
 
 // float recomp_get_target_aspect_ratio(float original): the aspect ratio the game is shown at, from RT64's Aspect

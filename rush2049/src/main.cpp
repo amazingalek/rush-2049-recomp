@@ -1,7 +1,7 @@
 // San Francisco Rush 2049: Recompiled - entry point.
 //
 // Structure follows BanjoRecomp's src/main/main.cpp (GPL-3.0), trimmed to what this project uses so far:
-// no mod exports, no patches library, no custom launcher.
+// no custom launcher. Mod support (patches library, exports) is in register_patches.cpp and mod_exports.cpp.
 
 #include <array>
 #include <cassert>
@@ -327,7 +327,10 @@ std::vector<recomp::GameEntry> supported_games = {
         // Saves go to the Controller Pak, which the runtime doesn't emulate yet.
         .save_type = recomp::SaveType::None,
         .is_enabled = false,
-        .has_compressed_code = false,
+        // Not compressed for the game itself (it inflates its own code), but the runtime needs the inflated code to
+        // recompile a function a mod hooks: see build_recomp_rom.
+        .decompression_routine = rush2049::build_recomp_rom,
+        .has_compressed_code = true,
         .entrypoint_address = get_entrypoint_address(),
         .entrypoint = recomp_entrypoint,
     },
@@ -474,6 +477,8 @@ int main(int argc, char** argv) {
     }
 
     rush2049::register_overlays();
+    rush2049::register_patches();
+    rush2049::register_mod_exports();
 
     recompinput::players::set_single_player_mode(true);
 

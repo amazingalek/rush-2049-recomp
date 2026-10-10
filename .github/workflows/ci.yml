@@ -1,4 +1,4 @@
-# Build and checks only; nothing is deployed or released.
+# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact).
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.
@@ -31,6 +31,38 @@ jobs:
           git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
           bash tools/rush2049/apply_runtime_patches.sh
           bash tools/rush2049/apply_runtime_patches.sh | grep -q "already applied"
+
+  # The patches library and the example mod are MIPS code: built with the distro's clang and lld, then recompiled by
+  # N64Recomp and packed by RecompModTool, both built from the runtime's pinned N64Recomp. None of it needs the ROM.
+  # (The Windows job doesn't compile register_patches.cpp, which includes this job's output.)
+  patches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch N64Recomp
+        run: |
+          git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
+          git -C rush2049/lib/N64ModernRuntime submodule update --init --recursive --depth 1 N64Recomp
+      - name: Install clang and lld
+        run: sudo apt-get update -q && sudo apt-get install -y -q clang lld ninja-build
+      - name: Build N64Recomp and RecompModTool
+        run: |
+          cmake -S rush2049/lib/N64ModernRuntime/N64Recomp -B n64recomp -G Ninja -DCMAKE_BUILD_TYPE=Release
+          ninja -C n64recomp N64RecompCLI RecompModTool
+      - name: Patches library (patches.elf, then N64Recomp into RecompiledPatches/)
+        run: |
+          make -C rush2049/patches CC=clang LD=ld.lld
+          cd rush2049 && ../n64recomp/N64Recomp patches.toml
+          grep -q '"recomp_printf"' RecompiledPatches/recomp_overlays.inl
+      - name: Example mod (mod_template)
+        run: |
+          make -C rush2049/mod_template CC=clang LD=ld.lld
+          cd rush2049/mod_template && ../../n64recomp/RecompModTool mod.toml build
+          test -s build/rush2049_hello_mod.nrm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rush2049_hello_mod
+          path: rush2049/mod_template/build/rush2049_hello_mod.nrm
 
   build:
     runs-on: windows-2025
@@ -69,7 +101,7 @@ jobs:
         shell: bash
         run: |
           objs=$(ninja -C rush2049/build -t targets all |
-            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.obj' | grep -vE 'register_overlays|/rsp/')
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.obj' | grep -vE 'register_overlays|register_patches|/rsp/')
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs

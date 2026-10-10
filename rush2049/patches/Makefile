@@ -10,8 +10,8 @@ CFLAGS   := -target mips -mips2 -mabi=32 -O2 -G0 -mno-abicalls -mno-odd-spreg -m
 			-fomit-frame-pointer -ffast-math -fno-unsafe-math-optimizations -fno-builtin-memset -funsigned-char \
 			-ffreestanding -Wall -Wextra -Wno-incompatible-library-redeclaration -Wno-unused-parameter \
 			-Wno-unknown-pragmas -Wno-unused-variable -Wno-missing-braces -Wno-unsupported-floating-point-opt
-CPPFLAGS := -D_LANGUAGE_C -DMIPS -I ../lib/N64ModernRuntime/ultramodern/include/ultramodern
-LDFLAGS  := -nostdlib -T patches.ld -T syms.ld -Map patches.map --unresolved-symbols=ignore-all --emit-relocs
+CPPFLAGS := -D_LANGUAGE_C -DMIPS -I ../mod_template/include
+LDFLAGS  := -nostdlib -T patches.ld -T syms.ld -Map patches.map --unresolved-symbols=ignore-all --emit-relocs -e 0
 
 C_SRCS := $(wildcard *.c)
 C_OBJS := $(C_SRCS:.c=.o)
@@ -21,7 +21,7 @@ $(TARGET): $(C_OBJS) patches.ld syms.ld
 	$(LD) $(C_OBJS) $(LDFLAGS) -o $@
 
 $(C_OBJS): %.o : %.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< -MMD -MF $(@:.o=.d) -c -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) $< -MMD -MP -MF $(@:.o=.d) -c -o $@
 
 clean:
 	rm -rf $(C_OBJS) $(TARGET) $(C_DEPS) patches.map
