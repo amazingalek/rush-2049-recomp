@@ -77,7 +77,13 @@ jobs:
       - name: Submodules
         if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
-        run: git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8
+        # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        run: |
+          for i in 1 2 3; do
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            echo "attempt $i failed"; sleep $((i * 15))
+          done
+          exit 1
       - name: Apply runtime patches
         shell: bash
         run: bash tools/rush2049/apply_runtime_patches.sh
@@ -147,7 +153,13 @@ jobs:
           restore-keys: ${{ steps.key.outputs.prefix }}
       - name: Submodules
         if: steps.cache.outputs.cache-hit != 'true'
-        run: git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8
+        # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        run: |
+          for i in 1 2 3; do
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            echo "attempt $i failed"; sleep $((i * 15))
+          done
+          exit 1
       - name: Apply runtime patches
         run: bash tools/rush2049/apply_runtime_patches.sh
       - name: Install dependencies
