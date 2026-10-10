@@ -43,6 +43,8 @@ namespace rush2049 {
     // Hi-res font (src/hires_font.cpp): set up the generated texture pack in the app folder, then turn it on or off.
     void init_hires_font();
     void set_hires_font(bool on);
+    // Hi-res title screen (src/hires_font.cpp, set up by init_hires_font): the title cut from assets/title.patch.
+    void set_hires_title(bool on);
 
     // Music replacement (src/music.cpp): mixes the playing replacement file into `frames` frames of float audio
     // at `rate` Hz with `channels` channels.
