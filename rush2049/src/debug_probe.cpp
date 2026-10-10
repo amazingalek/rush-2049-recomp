@@ -1,7 +1,9 @@
 // Bring-up probes: counters fed by us.toml hooks, printed every few seconds with --probes or --stacks.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <mutex>
 
@@ -45,6 +47,8 @@ std::atomic<uint32_t> audio_frequency{ 0 };
 std::mutex dump_mutex;
 FILE* dump_file = nullptr;
 uint32_t dump_bytes = 0;
+FILE* output_dump_file = nullptr;
+uint32_t output_dump_bytes = 0;
 
 // 44-byte PCM WAV header for 16-bit stereo; rewritten with the final sizes after each buffer.
 void write_wav_header(FILE* f, uint32_t rate, uint32_t data_bytes) {
@@ -70,6 +74,29 @@ void rush2049::probe_audio_frequency(uint32_t freq) {
     if (audio_frequency.exchange(freq) != freq) {
         fprintf(stderr, "[audio] frequency %u Hz\n", freq);
     }
+}
+
+void rush2049::start_output_dump(const char* path) {
+    std::lock_guard lock{ dump_mutex };
+    output_dump_file = fopen(path, "wb");
+    if (output_dump_file != nullptr) {
+        write_wav_header(output_dump_file, 0, 0);
+    }
+}
+
+void rush2049::probe_output(const float* samples, size_t frames, uint32_t rate) {
+    std::lock_guard lock{ dump_mutex };
+    if (output_dump_file == nullptr) {
+        return;
+    }
+    for (size_t i = 0; i < frames * 2; i++) {
+        float v = std::clamp(samples[i], -1.0f, 1.0f) * 32767.0f;
+        int16_t s = (int16_t)std::lround(v);
+        fwrite(&s, sizeof(s), 1, output_dump_file);
+    }
+    output_dump_bytes += (uint32_t)(frames * 4);
+    write_wav_header(output_dump_file, rate, output_dump_bytes);
+    fflush(output_dump_file);
 }
 
 void rush2049::probe_audio(const int16_t* samples, size_t count) {
