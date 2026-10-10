@@ -67,51 +67,8 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
 
 ## Work in progress
 
-- **Music replacement**: `rush2049/src/music.cpp`, WIP commit 7eb79dd. *Alek asked for better music: "music is very low
-  quality… would be extremely awesome if we can do something about it".*
-  - **What was found:**
-    - Most MusyX voices play at 0.25–0.5× of the 22050 Hz mix rate, so the samples themselves are about 5–11 kHz.
-      A better mixer or resampler can't add the missing treble, so the path chosen is user-supplied
-      replacement recordings.
-    - Music is controlled by commands sent to the music thread `func_800992AC` through the queue at 0x801427A8.
-      Type 0 plays the song at +4, type 1 stops, and type 10 sets volume (float 0–1 at +4, fade seconds at
-      +8; it applies to music when the byte at +C is set). Types 2–6 are sound effects. 0x80110240 holds the
-      currently playing song (−1 for none).
-    - Songs 0–11 are BASSY, GARAGE, NIGHT, TRANCEY, SEVENTIES, CREDITS, TITLE, RETRO, STUNTED, FLIER, BATTLE1 and
-      BATTLE2. The menu plays 6; a race plays its track's default from the table at 0x8010FFD4, or the AUDIO →
-      MUSIC TRACK setting, which is the byte at 0x80146116 (12 = DEFAULTS). Song selection is in
-      `func_800D6160`.
-    - MUSIC VOLUME (0–10) is the byte at 0x80146114, read by `func_800D6160` and at 0x800DE58C.
-  - **What's built:**
-    - A hook in `us.toml` at 0x80099390 calls `rush2049_music_command`. If a file exists for the song in a
-      `music/` folder (next to the exe, or in the app data folder), named `00.ogg`, `bassy.flac`,
-      `03 - Trancey.mp3` and so on, the play command's type byte is overwritten with 0xFF, so the game's
-      sequence never starts.
-    - The file is decoded with vendored stb_vorbis / dr_flac / dr_mp3 / dr_wav (`rush2049/lib/decoders/`,
-      public domain / MIT-0, pinned commits). It is resampled with an `SDL_AudioStream` and mixed in
-      `queue_samples()` in `src/main.cpp` at the device rate, after the game audio has been resampled.
-    - Stop and volume/fade commands drive it. OGG LOOPSTART/LOOPEND/LOOPLENGTH tags give loop points; without
-      them the whole file loops.
-  - **Status:** it compiles and links. It has **never been run with a replacement file**, so nothing about the
-    playback path is verified.
-  - **Left to do:**
-    1. Register the options on the Sound tab in `src/config.cpp`: an on/off enum and a gain slider. Use
-       `recompui::config::create_sound_tab()`, which returns `Config&`, then `add_enum_option` /
-       `add_percent_number_option` plus a change callback calling `rush2049::set_music_replacement(_volume)`.
-       Copy the "Game Frame Rate" pattern in the same file. Don't read config values right after `finalize()`:
-       that crashes, so rely on the callback, which also fires on load.
-    2. Test it:
-       - Make a test file such as `music/06.ogg` (any audio; the menu plays song 6) and check the log for
-         `[music] song 6 (title): ...`.
-       - Check that the game's own menu music is silent and that changing MUSIC VOLUME changes the
-         replacement's volume.
-       - Start a race (song 0 on track 1) and confirm the end-of-race fade (a type 10 command to 0 over 3 s,
-         then a stop).
-       - `--dump-audio <wav>` records only the game's samples, not the replacement, so listen or extend the
-         dump.
-    3. Check the pause menu: the game may duck or pause music there.
-    4. Set the default gain against the original music's level.
-    5. Document it in `docs/games/rush2049.md` and README: file names, folders and formats. Ship no music.
+- **Music replacement**: finished and merged. How to use it and what was measured: `docs/games/rush2049.md` →
+  "Replacement music" and "Runtime notes" → "Music replacement".
 - **Temporary debug edits in generated code:** `rush2049/RecompiledFuncs/funcs_27.c` has `fprintf` traces
   (`[mus] ...`) added by hand. They are not in git and disappear on the next `iterate.sh`, so ignore them.
 
