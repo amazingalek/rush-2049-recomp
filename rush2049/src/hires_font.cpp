@@ -11,6 +11,12 @@
 // The atlases are anti-aliased (rasterised from a vector font), so the upscale is a smooth bicubic followed by a
 // moderate contrast curve around half the atlas's brightest value: edges come out clean without closing the
 // one-texel gaps inside glyphs, which a hard threshold or a pixel-art scaler does.
+//
+// Upscaled title (experiment). The title screen's 320x220 picture is 35 copy-mode strips of an 8-bit colour-indexed
+// texture. A picture of it at 2x-8x, made by the player (an AI upscaler, say) and saved as hires_title/title.png in the
+// app folder, is cut into those strips the same way: each strip the walk finds is hashed with its palette, and its
+// replacement is read out of the picture where the strip lands on screen. A strip whose texels don't match the
+// picture shrunk back down (another screen drawn the same way, or a picture of something else) is left alone.
 
 #include <algorithm>
 #include <atomic>
@@ -34,6 +40,7 @@
 #include "shared/rt64_f3d_defines.h"
 #include "common/rt64_load_types.h"
 #include "common/rt64_tmem_hasher.h"
+#include "stb/stb_image.h"
 
 #define F3DEX_GBI_2
 #include "../lib/rt64/include/rt64_extended_gbi.h"
@@ -47,7 +54,7 @@ constexpr float contrast = 2.5f;
 
 constexpr uint32_t tmem_bytes = 4096;
 constexpr uint32_t rdram_bytes = (uint32_t)recomp::mem_size;
-constexpr uint32_t fmt_rgba = 0, fmt_i = 4;
+constexpr uint32_t fmt_rgba = 0, fmt_ci = 2, fmt_i = 4;
 constexpr uint32_t siz_4b = 0, siz_8b = 1, siz_32b = 3;
 
 // On by default: the option's change callback doesn't run on a first launch, before there is a saved config.
@@ -56,6 +63,17 @@ std::filesystem::path pack_dir;
 // Every hash already handled: in the pack, or drawn but not wanted (empty).
 std::unordered_set<uint64_t> seen;
 std::vector<uint64_t> in_pack;
+
+// The upscaled title: hires_title/title.png, scaled title_scale times from 320x220, and the pack cut from it.
+constexpr int title_width = 320, title_height = 220;
+// Mean difference per channel, out of 255, between a strip's texels and the picture shrunk back down, above which
+// the strip isn't the title.
+constexpr float title_match = 16.0f;
+std::filesystem::path title_dir;
+std::vector<uint8_t> title_rgba;
+int title_scale = 0;
+std::unordered_set<uint64_t> title_seen;
+std::vector<uint64_t> title_in_pack;
 
 struct Rdp {
     uint8_t* rdram;
@@ -71,6 +89,9 @@ struct Rdp {
     std::vector<uint64_t> found;
     // gEXSetRDRAMExtended: the widescreen HUD calls lists of its own above the game's 8 MB with this on.
     bool extended_rdram = false;
+    // The high half of the other modes, for the TLUT type.
+    uint32_t othermode_h = 0;
+    bool found_title = false;
 
     // RT64's RSP::fromSegmented and maskPhysicalAddress.
     uint32_t phys(uint32_t addr) const {
@@ -133,10 +154,44 @@ struct Rdp {
         }
     }
 
-    // RT64's sample size (State::updateDrawCall...) and hash for a rectangle drawn with tile `t`.
-    void texture_rect(uint32_t t) {
+    // RT64's RDP::loadTLUTOperation: each 16-bit entry fills a TMEM word, four times over.
+    void load_tlut(uint32_t t, uint32_t uls, uint32_t ult, uint32_t lrs, uint32_t lrt) {
+        RT64::LoadTile& tile = tiles[t];
+        tile.uls = uls;
+        tile.ult = ult;
+        tile.lrs = lrs;
+        tile.lrt = lrt;
+        uint32_t bytes_per_row = timg.width << timg.siz >> 1;
+        uint32_t src_row = timg.address + ((uls >> 2) << timg.siz >> 1) + bytes_per_row * (ult >> 2);
+        uint32_t rows = 1 + (lrt >> 2) - (ult >> 2), words = (lrs >> 2) - (uls >> 2) + 1;
+        uint32_t dst_row = (tile.tmem << 3) & (tmem_bytes - 1), xor_mask = 0;
+        for (uint32_t r = 0; r < rows && r < 64; r++) {
+            uint32_t src = src_row, dst = dst_row;
+            for (uint32_t w = 0; w < words && w < tmem_bytes / 8; w++) {
+                for (uint32_t i = 0; i < 8; i++) {
+                    uint32_t a = ((dst + i) ^ xor_mask) & (tmem_bytes - 1);
+                    tmem[a] = rd8(src + (i & 1));
+                    tmem_known[a] = true;
+                }
+                src += 2;
+                dst = (dst + 8) & (tmem_bytes - 1);
+            }
+            dst_row = (dst_row + (tile.line << 5)) & (tmem_bytes - 1);
+            src_row += bytes_per_row;
+            xor_mask ^= 4;
+        }
+    }
+
+    // RT64's sample size (State::updateDrawCall...) and hash for a rectangle drawn with tile `t`. `rect` is the
+    // G_TEXRECT's three commands, or null for one the widescreen HUD made.
+    void texture_rect(uint32_t t, const uint32_t* rect) {
         const RT64::LoadTile& tile = tiles[t];
-        if (tile.fmt != fmt_i || (tile.siz != siz_4b && tile.siz != siz_8b) || tile.line == 0) {
+        if (tile.fmt == fmt_ci && tile.siz == siz_8b && rect != nullptr && title_scale > 0 && tile.line != 0) {
+            title_rect(tile, rect);
+            return;
+        }
+        if (!enabled.load(std::memory_order_relaxed) || tile.fmt != fmt_i || (tile.siz != siz_4b && tile.siz != siz_8b) ||
+            tile.line == 0) {
             return;
         }
         bool clamp_s = tile.masks == 0 || (tile.cms & 2);
@@ -166,6 +221,7 @@ struct Rdp {
     }
 
     void make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width, uint32_t height);
+    void title_rect(const RT64::LoadTile& tile, const uint32_t* rect);
 
     void walk(uint32_t addr, int depth) {
         if (depth > 12) {
@@ -222,18 +278,31 @@ struct Rdp {
                 load_block((w1 >> 24) & 7, (w0 >> 12) & 0xFFF, w0 & 0xFFF, (w1 >> 12) & 0xFFF, w1 & 0xFFF);
                 break;
             case 0xF4:  // G_LOADTILE
-            case 0xF0:  // G_LOADTLUT
                 std::fill(std::begin(tmem_known), std::end(tmem_known), false);
                 break;
+            case 0xF0:  // G_LOADTLUT
+                load_tlut((w1 >> 24) & 7, (w0 >> 12) & 0xFFF, w0 & 0xFFF, (w1 >> 12) & 0xFFF, w1 & 0xFFF);
+                break;
+            case 0xE3: {  // G_SETOTHERMODE_H
+                uint32_t len = (w0 & 0xFF) + 1, shift = 32 - ((w0 >> 8) & 0xFF) - len;
+                uint32_t mask = (uint32_t)(((1ull << len) - 1) << shift);
+                othermode_h = (othermode_h & ~mask) | (w1 & mask);
+                break;
+            }
+            case 0xEF:  // G_RDPSETOTHERMODE
+                othermode_h = w0 & 0x00FFFFFF;
+                break;
             case 0xE4:  // G_TEXRECT
-            case 0xE5:  // G_TEXRECTFLIP
-                texture_rect((w1 >> 24) & 7);
+            case 0xE5: {  // G_TEXRECTFLIP
+                uint32_t full[4] = { w0, w1, rd32(p + 12), rd32(p + 20) };
+                texture_rect((w1 >> 24) & 7, (w0 >> 24) == 0xE4 ? full : nullptr);
                 p += 16;
                 break;
+            }
             case RT64_EXTENDED_OPCODE:
                 switch (w0 & 0xFFFFFF) {
                 case G_EX_TEXRECT_V1:  // what the widescreen HUD turns race rectangles into
-                    texture_rect(w1 & 7);
+                    texture_rect(w1 & 7, nullptr);
                     p += 16;
                     break;
                 case G_EX_SETSCISSORALIGN_V1:
@@ -325,7 +394,7 @@ bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uin
     return ok;
 }
 
-void write_database() {
+void write_database(const std::filesystem::path& pack_dir, const std::vector<uint64_t>& in_pack) {
     std::string json = "{\n  \"configuration\": { \"autoPath\": \"rt64\", \"configurationVersion\": 3, \"hashVersion\": " +
                        std::to_string(RT64::TMEMHasher::CurrentHashVersion) +
                        ", \"defaultOperation\": \"preload\", \"defaultShift\": \"none\" },\n  \"textures\": [";
@@ -405,9 +474,150 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
     found.push_back(hash);
 }
 
+void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
+    uint32_t w0 = rect[0], w1 = rect[1], st = rect[2], d = rect[3];
+    int dsdx = (int16_t)(d >> 16), dtdy = (int16_t)d;  // s5.10
+    if (dsdx != 4 << 10 || std::abs(dtdy) != 1 << 10) {  // copy mode, a texel to a pixel
+        return;
+    }
+    float ulx = ((w1 >> 12) & 0xFFF) / 4.0f, uly = (w1 & 0xFFF) / 4.0f;
+    float lrx = ((w0 >> 12) & 0xFFF) / 4.0f + 1.0f, lry = (w0 & 0xFFF) / 4.0f + 1.0f;  // inclusive in copy mode
+    if (lrx > title_width || lry > title_height) {
+        return;
+    }
+    uint32_t tlut = othermode_h & (3u << 14);  // G_MDSFT_TEXTLUT, as RT64's OtherMode::textLUT
+    int width = std::max((tile.lrs - tile.uls + 4) / 4, 1), height = std::max((tile.lrt - tile.ult + 4) / 4, 1);
+    if (tlut == 0 || width > 1024 || height > 1024 ||
+        RT64::TMEMHasher::requiresRawTMEM(tile, width, height, tlut)) {
+        return;
+    }
+    uint32_t row_bytes = tile.line << 3, start = tile.tmem << 3;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            if (!tmem_known[(start + y * row_bytes + x) & (tmem_bytes - 1)]) {
+                return;
+            }
+        }
+    }
+    uint64_t hash = RT64::TMEMHasher::hash(tmem, tile, width, height, tlut, RT64::TMEMHasher::CurrentHashVersion);
+    if (title_seen.count(hash) != 0) {
+        return;
+    }
+
+    // Texel (u, v), in texels from the tile's origin, lands on screen at (x, y).
+    float s0 = (int16_t)(st >> 16) / 32.0f - tile.uls / 4.0f, t0 = (int16_t)st / 32.0f - tile.ult / 4.0f;
+    float dt = dtdy / 1024.0f;
+    auto screen_x = [&](float u) { return ulx + 0.5f + (u - s0 - 0.5f); };
+    auto screen_y = [&](float v) { return uly + 0.5f + (v - t0 - 0.5f) / dt; };
+    int pic_w = title_width * title_scale, pic_h = title_height * title_scale;
+    auto pixel = [&](float x, float y) {
+        int px = std::clamp((int)std::floor(x * title_scale), 0, pic_w - 1);
+        int py = std::clamp((int)std::floor(y * title_scale), 0, pic_h - 1);
+        return &title_rgba[((size_t)py * pic_w + px) * 4];
+    };
+
+    // The strip as the game draws it against the picture shrunk back down: the mean of each texel's block.
+    float diff = 0.0f;
+    int count = 0;
+    for (int v = 0; v < height; v++) {
+        for (int u = 0; u < width; u++) {
+            float x = screen_x(u + 0.5f), y = screen_y(v + 0.5f);
+            if (x < ulx || x >= lrx || y < uly || y >= lry) {
+                continue;
+            }
+            uint32_t a = start + v * row_bytes + u;
+            if (v & 1) {
+                a ^= 4;
+            }
+            uint32_t e = (tmem_bytes / 2 + tmem[a & (tmem_bytes - 1)] * 8) & (tmem_bytes - 1);
+            if (!tmem_known[e] || !tmem_known[e + 1]) {
+                return;  // the palette was loaded by an earlier task
+            }
+            uint32_t c = (tmem[e] << 8) | tmem[e + 1];  // RGBA 5551
+            float texel[3] = { ((c >> 11) & 31) * 255.0f / 31, ((c >> 6) & 31) * 255.0f / 31, ((c >> 1) & 31) * 255.0f / 31 };
+            float sum[3] = {};
+            for (int j = 0; j < title_scale; j++) {
+                for (int i = 0; i < title_scale; i++) {
+                    const uint8_t* p = pixel(std::floor(x) + (i + 0.5f) / title_scale, std::floor(y) + (j + 0.5f) / title_scale);
+                    for (int k = 0; k < 3; k++) {
+                        sum[k] += p[k];
+                    }
+                }
+            }
+            for (int k = 0; k < 3; k++) {
+                diff += std::fabs(sum[k] / (title_scale * title_scale) - texel[k]);
+            }
+            count += 3;
+        }
+    }
+    title_seen.insert(hash);
+    if (count == 0 || diff / count > title_match) {
+        if (count > 0) {
+            fprintf(stderr, "[hires title] strip at (%g,%g) %016" PRIx64 " differs from the picture by %.1f, left alone\n", ulx, uly,
+                    hash, diff / count);
+        }
+        return;
+    }
+
+    // A replaced texture is drawn with the rectangle's edge on texel coordinate (s, t) exactly, so a flipped strip's
+    // rows land one texel off from where the RDP puts them, and its last screen row is the texture's first row
+    // clamped (the original drawn by RT64 does the same). That row gets the middle of the screen row it fills.
+    uint32_t out_w = width * title_scale, out_h = height * title_scale;
+    std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
+    for (uint32_t oy = 0; oy < out_h; oy++) {
+        for (uint32_t ox = 0; ox < out_w; ox++) {
+            float u = (ox + 0.5f) / title_scale, v = (oy == 0 && dt < 0) ? -0.5f : (oy + 0.5f) / title_scale;
+            const uint8_t* p = pixel(ulx + (u - s0), uly + (v - t0) / dt);
+            uint8_t* o = &rgba[((size_t)oy * out_w + ox) * 4];
+            o[0] = p[0];
+            o[1] = p[1];
+            o[2] = p[2];
+            o[3] = 255;
+        }
+    }
+    char name[32];
+    snprintf(name, sizeof(name), "%016" PRIx64 ".dds", hash);
+    if (!write_dds(title_dir / "pack" / name, std::move(rgba), out_w, out_h)) {
+        fprintf(stderr, "[hires title] can't write %s\n", name);
+        return;
+    }
+    fprintf(stderr, "[hires title] strip at (%g,%g) %016" PRIx64 " matches the picture by %.1f\n", ulx, uly, hash, diff / count);
+    title_in_pack.push_back(hash);
+    found_title = true;
+}
+
 void register_pack() {
-    recompui::renderer::set_builtin_texture_packs(enabled ? std::vector<std::filesystem::path>{ pack_dir }
-                                                          : std::vector<std::filesystem::path>{});
+    std::vector<std::filesystem::path> packs;
+    if (enabled) {
+        packs.push_back(pack_dir);
+    }
+    if (title_scale > 0) {
+        packs.push_back(title_dir / "pack");
+    }
+    recompui::renderer::set_builtin_texture_packs(packs);
+}
+
+// hires_title/title.png, if there is one: the pack is cut from it afresh each launch.
+void init_hires_title() {
+    title_dir = recompui::file::get_app_folder_path() / "hires_title";
+    std::error_code ec;
+    std::filesystem::remove_all(title_dir / "pack", ec);
+    int w = 0, h = 0, channels = 0;
+    uint8_t* data = stbi_load((title_dir / "title.png").string().c_str(), &w, &h, &channels, 4);
+    if (data == nullptr) {
+        return;
+    }
+    int scale = w / title_width;
+    if (scale >= 2 && scale <= 8 && w == title_width * scale && h == title_height * scale) {
+        title_rgba.assign(data, data + (size_t)w * h * 4);
+        title_scale = scale;
+        std::filesystem::create_directories(title_dir / "pack", ec);
+        write_database(title_dir / "pack", title_in_pack);
+        fprintf(stderr, "[hires title] %dx%d picture, %dx\n", w, h, scale);
+    } else {
+        fprintf(stderr, "[hires title] title.png is %dx%d, not 320x220 times 2 to 8\n", w, h);
+    }
+    stbi_image_free(data);
 }
 
 } // namespace
@@ -430,7 +640,8 @@ void rush2049::init_hires_font() {
             in_pack.push_back(hash);
         }
     }
-    write_database();
+    write_database(pack_dir, in_pack);
+    init_hires_title();
     register_pack();
 }
 
@@ -440,7 +651,7 @@ void rush2049::set_hires_font(bool on) {
 }
 
 extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
-    if (!enabled.load(std::memory_order_relaxed) || pack_dir.empty()) {
+    if ((!enabled.load(std::memory_order_relaxed) && title_scale == 0) || pack_dir.empty()) {
         return;
     }
     gpr task = (gpr)(int32_t)task_addr;
@@ -451,10 +662,15 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
     rdp.rdram = rdram;
     rdp.found.clear();
     rdp.extended_rdram = false;
+    rdp.found_title = false;
     std::fill(std::begin(rdp.tmem_known), std::end(rdp.tmem_known), false);
     rdp.walk((uint32_t)MEM_W(0x30, task), 0);
+    if (rdp.found_title) {
+        write_database(title_dir / "pack", title_in_pack);
+        register_pack();
+    }
     if (!rdp.found.empty()) {
-        write_database();
+        write_database(pack_dir, in_pack);
         register_pack();
         fprintf(stderr, "[hires font] %zu new texture(s), %zu in the pack\n", rdp.found.size(), in_pack.size());
     }
