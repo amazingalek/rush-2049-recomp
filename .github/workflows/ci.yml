@@ -1,4 +1,5 @@
-# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact).
+# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact). Releases are
+# built on the PC with the ROM by tools/rush2049/release.sh (CLAUDE.md, "Releases").
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.
@@ -92,16 +93,19 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
+        # so a file an older patch created would block the patch that creates it now: clean them.
         run: |
           for i in 1 2 3; do
-            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
+              git submodule foreach -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1
       - name: Apply runtime patches
         shell: bash
         run: bash tools/rush2049/apply_runtime_patches.sh
-      # The dev box uses CMake 3.31 (docs/03-local-env.md): CMake 4 rejects the old submodules' cmake_minimum_required.
+      # The dev box uses CMake 3.31 (CLAUDE.md, "This machine"): CMake 4 rejects the old submodules' cmake_minimum_required.
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: "~3.31.0"
@@ -171,9 +175,12 @@ jobs:
       - name: Submodules
         if: steps.cache.outputs.cache-hit != 'true'
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
+        # so a file an older patch created would block the patch that creates it now: clean them.
         run: |
           for i in 1 2 3; do
-            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
+              git submodule foreach -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1

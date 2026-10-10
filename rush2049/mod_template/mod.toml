@@ -1,5 +1,5 @@
 # Example mod for San Francisco Rush 2049: Recompiled, and a starting point for your own. Build it with
-# `make` and `RecompModTool mod.toml build` (docs/games/rush2049.md, "Mods"), then put build/*.nrm in the game's
+# `make` and `RecompModTool mod.toml build` (README, "Mods"), then put build/*.nrm in the game's
 # mods folder.
 
 [manifest]

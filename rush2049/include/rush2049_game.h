@@ -11,7 +11,7 @@ namespace rush2049 {
     inline const std::string program_name = "San Francisco Rush 2049: Recompiled";
 
     void register_overlays();
-    // Mods (docs/games/rush2049.md, "Mods"): the patches library (src/register_patches.cpp), the functions the
+    // Mods (README, "Mods"): the patches library (src/register_patches.cpp), the functions the
     // executable exports to mods (src/mod_exports.cpp), and the recomp ROM rebuilt for hooking (src/code_loading.cpp).
     void register_patches();
     void register_mod_exports();
@@ -22,6 +22,8 @@ namespace rush2049 {
     // The "Controller Pak Size" setting: 62 banks (about 1.9 MB) rather than the original 32 KiB.
     bool large_controller_pak();
     // Frames a second the game draws at the "Game Frame Rate" setting: 30, 60, or more with Match Framerate.
+    // The frame rate the Game Frame Rate option asks for; 0 is Match Framerate (src/frame_rate.cpp).
+    void set_game_frame_rate(uint32_t fps);
     uint32_t game_frame_rate();
     // Whether 2- and 4-player views widen with the window ("Split-Screen Aspect Ratio" at Expand).
     bool split_screen_expand();

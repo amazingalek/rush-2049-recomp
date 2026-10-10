@@ -12,6 +12,14 @@
 // moderate contrast curve around half the atlas's brightest value: edges come out clean without closing the
 // one-texel gaps inside glyphs, which a hard threshold or a pixel-art scaler does.
 //
+// An intensity texel is its own colour and alpha, and the game draws text as colour TEXEL0 * PRIM, alpha TEXEL0, so
+// a half-transparent texel is also half dark: an edge pixel ends up a quarter of the text colour plus half the
+// background, darker than both. Point-sampled at 320x240 that is a dim texel or two; along a smooth hi-res edge it is
+// a dark outline around every letter, and the quarter texel of a glyph's soft edge that reaches into a neighbouring
+// glyph's rectangle (the atlases pack glyphs edge to edge) shows as a dark line along that rectangle. So the pack's
+// colour is the atlas's brightest value wherever alpha isn't 0, and alpha alone carries the edge. The letters'
+// insides are unchanged, and a texel that is fully transparent stays black.
+//
 // Hi-res title screen. The title screen's 320x220 picture is 35 copy-mode strips of an 8-bit colour-indexed texture.
 // An upscaled picture of it (4x, by Real-ESRGAN) is cut into those strips the same way: each strip the walk finds is
 // hashed with its palette, and its replacement is read out of the picture where the strip lands on screen. A strip
@@ -19,7 +27,9 @@
 // The picture is made from the game's art, so the repo can't hold it. It holds assets/title.patch, which describes
 // the picture in terms of the title as the game draws it and is noise without it (tools/rush2049/title_patch.py says
 // how). On the first task that draws the whole title, the strips make the original, which unlocks and unpacks the
-// patch. To make a patch for another picture, save it as hires_title/title.png in the app folder: it is used instead,
+// patch, and the strips are cut into hires_title/pack/ in the app folder: once per launch, about 100 ms. The Midway
+// screen is drawn the same way but never covers the whole picture. Hi-res Title Screen (Graphics) turns it off, and
+// the strips are drawn bottom-up, which needs runtime-patches/rt64-0005. To make a patch for another picture, save it as hires_title/title.png in the app folder: it is used instead,
 // and each run writes the title as the game draws it to hires_title/original.ppm for the tool.
 
 #include <algorithm>
@@ -54,7 +64,7 @@
 namespace {
 
 // Bump when the upscale changes, so textures made by an older version are thrown away.
-const char* const pack_version = "v1";
+const char* const pack_version = "v2";
 constexpr int scale = 4;
 constexpr float contrast = 2.5f;
 
@@ -378,7 +388,8 @@ float cubic(float x) {
     return 0.0f;
 }
 
-// Uncompressed RGBA8 DDS with a full mip chain, so RT64 can filter the text when it is drawn smaller.
+// Uncompressed RGBA8 DDS with a full mip chain, so RT64 can filter the text when it is drawn smaller. Colour is
+// averaged weighted by alpha, so a smaller level doesn't pull black from transparent texels into the edges.
 bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uint32_t width, uint32_t height) {
     uint32_t levels = 1;
     while ((width >> levels) > 0 || (height >> levels) > 0) {
@@ -412,13 +423,17 @@ bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uin
         std::vector<uint8_t> next((size_t)nw * nh * 4);
         for (uint32_t y = 0; y < nh; y++) {
             for (uint32_t x = 0; x < nw; x++) {
-                for (uint32_t c = 0; c < 4; c++) {
-                    uint32_t x0 = std::min(x * 2, w - 1), x1 = std::min(x * 2 + 1, w - 1);
-                    uint32_t y0 = std::min(y * 2, h - 1), y1 = std::min(y * 2 + 1, h - 1);
-                    uint32_t sum = rgba[(y0 * w + x0) * 4 + c] + rgba[(y0 * w + x1) * 4 + c] +
-                                   rgba[(y1 * w + x0) * 4 + c] + rgba[(y1 * w + x1) * 4 + c];
-                    next[(y * nw + x) * 4 + c] = (uint8_t)((sum + 2) / 4);
+                uint32_t x0 = std::min(x * 2, w - 1), x1 = std::min(x * 2 + 1, w - 1);
+                uint32_t y0 = std::min(y * 2, h - 1), y1 = std::min(y * 2 + 1, h - 1);
+                const uint8_t* in[4] = { &rgba[(y0 * w + x0) * 4], &rgba[(y0 * w + x1) * 4], &rgba[(y1 * w + x0) * 4],
+                                         &rgba[(y1 * w + x1) * 4] };
+                uint8_t* o = &next[(y * nw + x) * 4];
+                uint32_t alpha = in[0][3] + in[1][3] + in[2][3] + in[3][3];
+                for (uint32_t c = 0; c < 3; c++) {
+                    uint32_t sum = in[0][c] * in[0][3] + in[1][c] * in[1][3] + in[2][c] * in[2][3] + in[3][c] * in[3][3];
+                    o[c] = alpha == 0 ? 0 : (uint8_t)((sum + alpha / 2) / alpha);
                 }
+                o[3] = (uint8_t)((alpha + 2) / 4);
             }
         }
         rgba = std::move(next);
@@ -475,6 +490,7 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
 
     uint32_t out_w = width * scale, out_h = height * scale;
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
+    uint8_t colour = (uint8_t)std::lround(peak * 255.0f);
     auto texel = [&](int x, int y) {
         x = std::clamp(x, 0, (int)width - 1);
         y = std::clamp(y, 0, (int)height - 1);
@@ -496,7 +512,8 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
             v = std::clamp((v / peak - 0.5f) * contrast + 0.5f, 0.0f, 1.0f) * peak;
             uint8_t i = (uint8_t)std::lround(v * 255.0f);
             uint8_t* o = &rgba[((size_t)oy * out_w + ox) * 4];
-            o[0] = o[1] = o[2] = o[3] = i;
+            o[0] = o[1] = o[2] = i == 0 ? 0 : colour;
+            o[3] = i;
         }
     }
 
@@ -615,7 +632,7 @@ bool cut_title_strip(const TitleStrip& strip) {
     }
 
     // Each texel gets the part of the picture it covers on screen. A flipped strip needs RT64 to start its high
-    // resolution UV on the texel each pixel shows (rt64-0004-flipped-rect-high-res.patch), or it lands a row off.
+    // resolution UV on the texel each pixel shows (rt64-0005-flipped-rect-high-res.patch), or it lands a row off.
     uint32_t out_w = strip.width * title_scale, out_h = strip.height * title_scale;
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
     for (uint32_t oy = 0; oy < out_h; oy++) {

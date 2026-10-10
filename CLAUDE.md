@@ -5,38 +5,258 @@ and RT64, plus enhancements. Almost all of it is written by AI sessions, so this
 
 ## Where things are written down
 
-- `README.md` is for **humans**: what the project is, its enhancements, how to get it running, controls, mods,
-  credits. Plain words, no internals.
-- `docs/games/rush2049.md` is the **source of truth** for everything else: status, the enhancements table, building,
-  memory map, runtime fixes and why, performance numbers, developer flags. Read the section you are working in
-  before you change the code it describes, and update it in the same PR.
-- `docs/01-toolchain.md` explains how N64Recomp, the runtime and RT64 fit together; `docs/03-local-env.md` is the
-  toolchain on this machine (`tools/env.sh` / `tools/env.ps1`).
+There is no `docs/` folder. Three places, and nothing else:
 
-## Keep the README current
+- `README.md`, for **humans**: what it is, the enhancements and their settings, building, controls, replacement
+  music, performance, mods. Plain words, no internals.
+- **Comments beside the code**, for how something works and why: each `rush2049/src/` file's header, the comment on
+  every hook in `rush2049/us.toml`, `tools/rush2049/extract.py` (memory map), `gen_syms.py` (naming),
+  `find_spins.py` (busy-wait loops). Read the header of the file you are changing first, and update it in the same
+  commit as the code.
+- **This file**, for what an agent can't get from either: the rules, this machine, how to run and test, what has
+  been ruled out.
 
-The README must match what the game does on main. Any PR that changes something a player would notice updates it
-in the same PR:
+## Keep README.md and this file current
 
-- an enhancement added, removed or renamed (the "Modern enhancements" list), or a default changed
-- the status line: a mode, track, platform or multiplayer setup newly working or newly broken
-- build or run steps, ROM requirements, where settings, saves, music or mods live
-- default key or pad bindings (the "Controls" block)
-- mod support (the "Mods" section says *supported but untested* until a real mod has been played)
-- a new doc under `docs/` (the "Docs" table)
+Both describe main as it is. A PR that makes either one wrong fixes it in the same PR.
 
-Keep the detail in `docs/games/rush2049.md` and link to it; the README says what and where, the doc says how and
-why. Keep the AI note at the top as it is.
+The README changes when a player would notice: an enhancement added, removed or renamed (the list *and* the settings
+table), a default, the status line, build or run steps, where settings, saves, music or mods live, default bindings,
+mod support ("supported but untested" until a real mod has been played). Keep the AI note at the top as it is.
+
+This file changes when a rule, a command, a flag, the machine setup or a ruled-out result changes. Keep it short:
+only what an agent can't read from the README or the code. The how and why of a feature go in its comments, not
+here, and a finding that explains code goes beside that code.
 
 ## Rules
 
-- No ROMs, ROM-derived assets or extracted game data in git, CI or PRs (`tools/ci/check_repo.py` checks).
+- No ROMs, ROM-derived assets or extracted game data in git, CI, PRs or releases (`tools/ci/check_repo.py` checks).
+  The generated hi-res font pack (`rush2049/hires_font/`) and title pack (`rush2049/hires_title/`) are ROM-derived
+  too. `rush2049/assets/title.patch` is allowed (Alek's call): it describes an upscale in terms of the game's own
+  title and is noise without it. Make a new one with `tools/rush2049/title_patch.py`, never commit the picture.
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
-  topic (General, Graphics, Sound, Controls), with a row in the enhancements table in `docs/games/rush2049.md` and a
-  line in the README.
+  topic (General, Graphics, Sound, Controls), with a line in the README's list and a row in its settings table.
 - Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
 - Changes to the submodules go in `rush2049/runtime-patches/` and are applied by
-  `tools/rush2049/apply_runtime_patches.sh`; never commit inside `rush2049/lib/`.
+  `tools/rush2049/apply_runtime_patches.sh`; never commit inside `rush2049/lib/`. A new change is a new numbered
+  patch file per submodule; check that the set still applies to a clean checkout of the submodule.
+- Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
+  cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
-  code and stops short of linking. Anything that changes behaviour needs a run here (`tools/rush2049/iterate.sh`,
-  the developer flags in the doc) before it lands.
+  code and stops short of linking. Anything that changes behaviour needs a run here before it lands. Pure code
+  (resampler, limiters, the MusyX side mix) has tests in `rush2049/tests/` that CI runs; new pure code gets one.
+
+## How it fits together
+
+- `tools/rush2049/extract.py` writes `roms/rush2049.us.recomp.z64`, the ROM with its deflate-compressed main code
+  and two overlays appended inflated at fake ROM addresses; `gen_syms.py` writes the symbol file; N64Recomp
+  (`rush2049/us.toml`) turns it into `rush2049/RecompiledFuncs/` and RSPRecomp (`musyx.toml`) the audio ucode into
+  `rush2049/rsp/musyx.cpp`. Both are generated, not in git, and `iterate.sh` wipes and regenerates
+  `RecompiledFuncs/`, so never edit them.
+- `us.toml` is where game code is changed: `stubs`, `ignored`, instruction patches and `[[patches.hook]]` C text
+  calling into `rush2049/src/`. N64Recomp drops or reimplements libultra **by name**, so an unnamed libultra
+  function that touches hardware is recompiled and crashes, and a game function wrongly given a libultra name
+  silently disappears.
+- The runtime registers code only where the game's inflate routine is hooked (`src/code_loading.cpp`). Game
+  addresses map to `rdram + (addr - 0x80000000)`; a fault in guard memory minus the RDRAM base is the hardware
+  register the game touched.
+- ultramodern runs one game thread at a time and delivers interrupts only inside OS calls, so a loop polling
+  memory never ends unless it yields: `find_spins.py --toml` generates those hooks into `us.toml`.
+- Mods: the patches library (`rush2049/patches/`, MIPS C built with the MIPS clang) is what mods import from `"*"`,
+  with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
+  recompile hooked functions.
+
+The runtime patches, one line each (the why is in the code they touch):
+
+```
+N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
+N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
+N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
+                       thread names
+N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
+RecompFrontend-0001    built-in texture packs (the hi-res font and title)
+RecompFrontend-0002    the Rewind input
+rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
+rt64-0002              CPU hot paths: texture hashing, frame matching containers
+rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
+rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
+rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
+```
+
+## This machine
+
+- Windows 10 LTSC 17763, RTX 2070, **no admin rights**: the toolchain is per-user under
+  `%LOCALAPPDATA%\Programs\n64-toolchain\` (LLVM 22 clang-cl, CMake 3.31, Ninja, GNU make, portable MSVC 14.44 and
+  SDK 10.0.26100, MSYS2 clang 23 for MIPS). Source `tools/env.sh` (Git Bash) or `tools/env.ps1` before building:
+  they set `PATH`, `INCLUDE`/`LIB`, and `MIPS_CC`, `MIPS_LD`, `MIPS_OBJDUMP`.
+- llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
+  (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
+- RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
+- The desktop is 3840x2160 at **30 Hz**, so Framerate Display presents 30 frames a second while the game renders
+  60, and interpolation can't be seen or measured here.
+- The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
+  (`.venv`) and a full build. Never build or edit there.
+
+**A fresh worktree** has none of the generated files. From its root, in Git Bash:
+
+```sh
+M=/c/Users/Alek/Documents/Source/n64-recomp
+git -c core.longpaths=true submodule update --init --recursive && bash tools/rush2049/apply_runtime_patches.sh
+mkdir -p roms && cp $M/roms/*.z64 roms/
+cmd //c "mklink /J .venv $(cygpath -w $M/.venv)"     # iterate.sh runs .venv/Scripts/python
+mkdir -p ref && cp -r $M/ref/n64sym ref/              # libultra signatures for gen_syms.py
+touch rush2049/portable.txt                          # keep settings, saves and mods in rush2049/
+source tools/env.sh && cmake -S rush2049 -B rush2049/build ...   # the README's configure line, MIPS_CC/MIPS_LD
+bash tools/rush2049/iterate.sh 30
+```
+
+Copying `rush2049/lib/` from another worktree on the same submodule commits is faster than cloning; run the
+submodule update after it anyway. Without `portable.txt` the game reads and writes the user's own settings in
+`%LOCALAPPDATA%\Rush2049Recompiled\`. If `git status` then fails with `bad object HEAD` in a nested submodule, a
+fetch hit the path limit; repair it with
+`git -c core.longpaths=true submodule foreach --recursive 'git config core.longpaths true; git cat-file -e $sha1 || git fetch origin $sha1'`.
+
+**Running the game.** `iterate.sh <secs>` boots with `--boot --stacks` into `rush2049/run.log`, and
+`ninja -C rush2049/build Rush2049Recompiled` is enough after a source change. Other sessions run the game on
+this machine too: stop only the PID you started (`taskkill //PID <pid> //F`), never by image name, and check
+`gpu.mjs` before you measure anything.
+
+**Screenshots.** Capture the game window by your own PID with `PrintWindow(hwnd, hdc, 3)` (client area, full
+content) from a DPI-aware process (`SetProcessDPIAware()` first, or a 1280x960 window comes back as 731x548). Never
+copy the screen (`CopyFromScreen`, BitBlt of the desktop, a screenshot tool): this is someone's shared desktop, the
+game is often not on top, and an image you Read is posted to the card. A screen copy posted another app's window
+there once.
+
+## Releases
+
+Cut here, never in CI (no ROM, so no link). Bump `version_string` in `rush2049/src/main.cpp`, merge, then from a
+clean checkout of `origin/main` with a full setup: `bash tools/rush2049/release.sh` (`--dry-run` builds and zips
+only). It builds Release in `rush2049/build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
+and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
+no ROM.
+
+## Developer flags
+
+```
+--boot                       skip the launcher (needs the ROM already stored)
+--stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
+--players <n>                ports 2..n copy port 1, to drive split screen with one pad
+--input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
+--window <w>x<h>             window size (default 1600x1200; Auto resolution follows it)
+--musyx hle|native|lle|compare   audio path; native is the HLE without the 44.1 kHz mix
+--dump-audio <wav>           the game's mix before resampling (float); --dump-output <wav>: what the device gets
+--dump-dl <file> <seconds>   one frame's display list as text
+--dump-ram <prefix> <t1,..>  all of RDRAM at those times; diff two to find a setting's byte
+--watch <addr>               stacks on the first 6 changes of one RDRAM byte; --hwwatch <addr>: reads too
+--profile <after> <secs>     sample every thread each ms, print top functions (Windows)
+--gpu-profile <after> <secs> RT64's GPU time per frame and per present, and per part of each
+```
+
+GPU readings are wall time and the 2070's clock wanders 630–1620 MHz under light load, so compare in cycles (ms ×
+the clock `nvidia-smi` reports over the same run) and interleave runs. Check the host too: with its CPU busy the
+game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves. Separate
+runs at 240p still differ by ±15% in cycles, so for a change worth less than that, switch it on and off every few
+frames inside one run and time the two halves apart.
+
+Where a frame goes, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of cycles (Auto is
+the 1080p column):
+
+```
+part                         240p   1080p
+render: draws                 116     754   ~500 calls; ~90k of it stays with no pixels
+        vertex compute         27      31
+        uploads                25      35   was ~36 at 240p before rt64-0004
+        barriers, resolves     13      21
+        everything else         5       6
+present: VI pass               71      95   sized by the window: 37 in 1280x720
+         resolve (MSAA 2x)     20      94   3 with MSAA off
+         UI                     6       6
+```
+
+So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: see Ruled out), the
+VI pass (it scales with the window instead) and about 50k of compute and uploads. No integrated GPU has been
+measured.
+
+## Testing in the game
+
+- The cheat menu (in the README) unlocks every track.
+- Ghost Race (mode word `0x8014A110` == 2) replays the player's inputs, recorded only for a race finished inside the
+  time limit, and offered as GHOST 1 in the *next* Ghost Race on that track; ghosts never survive a restart (the
+  SAVE GHOST prompt needs a developer profile name). To skip a 47-second lap, write a bigger float into the
+  track's time limit in the table at `0x80111754` before the race starts.
+- Every port reports a controller with a pak; a port nobody plays reads as a pad left alone.
+
+## The web target
+
+The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
+for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
+
+**Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
+N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
+prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
+
+```sh
+git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
+EMSDK_PYTHON=<python 3> <python 3> emsdk.py install latest && <python 3> emsdk.py activate latest
+source emsdk_env.sh                # then, with RecompiledFuncs/ and rsp/musyx.cpp generated:
+emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXE_LINKER_FLAGS="--preload-file <rom.z64>@/rom.z64"
+cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120
+```
+
+A browser needs the page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+require-corp` (threads need SharedArrayBuffer; on GitHub Pages that takes coi-serviceworker). What it took, besides
+N64ModernRuntime-0003 and N64Recomp-0001:
+
+- wasm-ld turns a call whose signature doesn't match the callee into a trap. The recompiler's C calls a few
+  functions it never declares, so `headless/recompiled_externs.h` declares them and Emscripten builds make an
+  implicit declaration an error. A new one shows up as that error, or as `unreachable` at run time.
+- WebAssembly only rounds to nearest and `fesetround` silently does nothing; without N64Recomp-0001 the game's
+  truncating float-to-int conversions round instead, and the attract race walks off RDRAM after 40 seconds.
+- Float to int out of range saturates in wasm and gives 0x80000000 on x86. Nothing has hit it yet.
+- RDRAM has no guard pages, so a stray access corrupts memory rather than faulting, unless it lands past the heap.
+
+Measured on 2026-10-10 (title screen and attract races, 60 retraces and 30 display lists a second wanted, HQ mix):
+
+```
+                          retraces/s  display lists/s  CPU, every thread   per display list
+native (clang-cl /O2)         60            30          1% of one core        0.3-0.5 ms
+node 24                       60            30          4-5%                  1.3-1.8 ms
+Chrome 154, headless          60            30          7% (whole browser)    2.3 ms
+--fps 120: native, node      120            60          1%, 5%                0.2, 0.9 ms
+```
+
+So wasm costs about 4 times the CPU of native, and a frame still uses a small part of its 16.7 ms: the CPU side
+keeps up. The host was 14-54% busy with other sessions; at 100% busy both builds fell to 36-54 retraces a second
+with their own CPU use unchanged, so what drops frames there is threads waiting for a core, not the work.
+
+**Still to do, each its own card:** graphics. RT64 and recompui draw through plume, which has D3D12, Vulkan and
+Metal backends only (`rt64/src/contrib/plume/`, `recompui/src/renderer/rt64_render_context.cpp`). WebGPU needs a
+plume backend (Emdawnwebgpu), a redesign of the texture binding (the shaders index a bindless texture array,
+`shaders/TextureSampler.hlsli`, which core WebGPU lacks) and HLSL to WGSL; a WebGL renderer instead would lose the
+rt64 patches. Then the frontend: SDL2 audio and input exist in Emscripten; `_WIN32` branches are only in `main.cpp`,
+`music.cpp`, `rom_finder.cpp` and `crash_handler.cpp`; the ROM comes from a file picker and stays in IndexedDB,
+never hosted. Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
+have to emit and load wasm modules instead. No other N64
+recomp running in a browser was found to learn from.
+
+## Ruled out, so don't retry
+
+- AI upsampling (AudioSR) of the MusyX mix: inaudible in a headphone A/B. The mix is close to mono (L/R correlate
+  0.99).
+- A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
+- A draw-distance unlock: the game draws to just short of its far plane already, and its fog sits beyond it.
+- Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
+- Merging or batching RT64's draws to cut the 240p floor. Only ~5% of draws repeat the one before exactly; merging
+  every run that shares a pipeline (wrong textures, timing only) halves the ~500 calls and the draws part moves
+  less than ±4%. With a 1x1 viewport (no pixels) ~90k cycles stay, and the ubershader, which cuts pipeline binds
+  from 80% of draws to 7%, doesn't lower them; it doubles the draws part with pixels on. Draw calls and pipeline
+  binds are not the cost. Only the upload barriers were overhead.
+- A cheaper VI pass. Its ~71k in a 1920x1080 window are ~10k of render-pass start and clear (a driver fast clear;
+  clearing only the bars saves 1-2k), ~50k filling the window once (the same triangle in a flat colour, about 40
+  pixels a clock) and ~10k for its one bilinear tap of the frame (320x240 at 240p). The gamma `pow` measures
+  nothing. Only a smaller window shrinks it.
+- Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
+  Rewrite commands in place instead.
+- Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
+- SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.

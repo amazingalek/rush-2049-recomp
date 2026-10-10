@@ -1,7 +1,7 @@
 # Names for functions we have worked out, applied by tools/rush2049/gen_syms.py on top of the generated ones.
 # These are the names mods hook and call (RECOMP_HOOK("draw_tex_rect")), so treat them as an API: add names
 # freely, but renaming or removing one breaks every mod that uses it. Where each was worked out:
-# docs/games/rush2049.md and the comments on the hooks in rush2049/us.toml.
+# the comments on the hooks in rush2049/us.toml and in the source files that use them.
 
 # boot
 [[func]]

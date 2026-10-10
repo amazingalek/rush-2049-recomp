@@ -1,0 +1,111 @@
+diff --git a/src/render/rt64_buffer_uploader.cpp b/src/render/rt64_buffer_uploader.cpp
+index de997a0..5ec1573 100644
+--- a/src/render/rt64_buffer_uploader.cpp
++++ b/src/render/rt64_buffer_uploader.cpp
+@@ -118,19 +118,32 @@ namespace RT64 {
+         workCondition.notify_all();
+     }
+ 
+-    void BufferUploader::commandListBeforeBarriers(RenderWorker *worker) {
+-        thread_local std::vector<RenderBufferBarrier> beforeBarriers;
+-        beforeBarriers.clear();
++    void BufferUploader::addBeforeBarriers(std::vector<RenderBufferBarrier> &barriers) {
++        for (const Upload &u : pendingUploads) {
++            if (!u.valid()) {
++                continue;
++            }
++
++            auto &defaultBuffer = u.dstPair->defaultBuffer;
++            barriers.push_back(RenderBufferBarrier(defaultBuffer.get(), RenderBufferAccess::WRITE));
++        }
++    }
+ 
++    void BufferUploader::addAfterBarriers(std::vector<RenderBufferBarrier> &barriers) {
+         for (const Upload &u : pendingUploads) {
+             if (!u.valid()) {
+                 continue;
+             }
+ 
+             auto &defaultBuffer = u.dstPair->defaultBuffer;
+-            beforeBarriers.push_back(RenderBufferBarrier(defaultBuffer.get(), RenderBufferAccess::WRITE));
++            barriers.push_back(RenderBufferBarrier(defaultBuffer.get(), RenderBufferAccess::READ));
+         }
++    }
+ 
++    void BufferUploader::commandListBeforeBarriers(RenderWorker *worker) {
++        thread_local std::vector<RenderBufferBarrier> beforeBarriers;
++        beforeBarriers.clear();
++        addBeforeBarriers(beforeBarriers);
+         if (!beforeBarriers.empty()) {
+             worker->commandList->barriers(RenderBarrierStage::COPY, beforeBarriers);
+         }
+@@ -151,16 +164,7 @@ namespace RT64 {
+     void BufferUploader::commandListAfterBarriers(RenderWorker *worker) {
+         thread_local std::vector<RenderBufferBarrier> afterBarriers;
+         afterBarriers.clear();
+-
+-        for (const Upload &u : pendingUploads) {
+-            if (!u.valid()) {
+-                continue;
+-            }
+-
+-            auto &defaultBuffer = u.dstPair->defaultBuffer;
+-            afterBarriers.push_back(RenderBufferBarrier(defaultBuffer.get(), RenderBufferAccess::READ));
+-        }
+-
++        addAfterBarriers(afterBarriers);
+         if (!afterBarriers.empty()) {
+             worker->commandList->barriers(RenderBarrierStage::ALL, afterBarriers);
+         }
+diff --git a/src/render/rt64_buffer_uploader.h b/src/render/rt64_buffer_uploader.h
+index 08d9d2f..02d34ae 100644
+--- a/src/render/rt64_buffer_uploader.h
++++ b/src/render/rt64_buffer_uploader.h
+@@ -60,6 +60,8 @@ namespace RT64 {
+         void threadLoop();
+         void threadUpload(const Upload &upload);
+         void updateResources(RenderWorker *worker, std::vector<Upload> &blankUploads); // Upload data does not need to be filled in with valid data, only the sizes.
++        void addBeforeBarriers(std::vector<RenderBufferBarrier> &barriers);
++        void addAfterBarriers(std::vector<RenderBufferBarrier> &barriers);
+         void commandListBeforeBarriers(RenderWorker *worker);
+         void commandListCopyResources(RenderWorker *worker);
+         void commandListAfterBarriers(RenderWorker *worker);
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+index f7ec00b..2d55587 100644
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1183,11 +1183,17 @@ namespace RT64 {
+             dummyDepthTargetTransitioned = true;
+         }
+ 
++        // One barrier call for every uploader's buffers instead of one per uploader, before and after the copies.
++        thread_local std::vector<RenderBufferBarrier> uploadBarriers;
++        uploadBarriers.clear();
+         for (BufferUploader *uploader : bufferUploaders) {
+-            uploader->commandListBeforeBarriers(worker);
++            uploader->addBeforeBarriers(uploadBarriers);
+         }
+ 
+-        shaderUploader->commandListBeforeBarriers(worker);
++        shaderUploader->addBeforeBarriers(uploadBarriers);
++        if (!uploadBarriers.empty()) {
++            worker->commandList->barriers(RenderBarrierStage::COPY, uploadBarriers);
++        }
+ 
+         for (BufferUploader *uploader : bufferUploaders) {
+             uploader->commandListCopyResources(worker);
+@@ -1195,8 +1201,13 @@ namespace RT64 {
+ 
+         shaderUploader->commandListCopyResources(worker);
+ 
++        uploadBarriers.clear();
+         for (BufferUploader *uploader : bufferUploaders) {
+-            uploader->commandListAfterBarriers(worker);
++            uploader->addAfterBarriers(uploadBarriers);
++        }
++
++        if (!uploadBarriers.empty()) {
++            worker->commandList->barriers(RenderBarrierStage::ALL, uploadBarriers);
+         }
+ 
+         markGPUPart(GPUTimings::RenderUploads);
