@@ -29,12 +29,20 @@ stubs = [
 [[patches.hook]]
 func = "func_80000C54"
 before_vram = 0x80000CFC
-text = "    rush2049_frame_pace(ctx);"
+text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
 
 [[patches.hook]]
 func = "func_80000880"
 before_vram = 0x800008C8
-text = "    rush2049_frame_pace(ctx);"
+text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
+
+# The same count gates the next graphics task (func_80000BA4, $t2): while a swap is pending it may start only
+# once 2 retraces have passed since the last swap. Paced the same way, a frame can be drawn while the previous one
+# waits for its retrace, rather than after it.
+[[patches.hook]]
+func = "func_80000BA4"
+before_vram = 0x80000C14
+text = "    ctx->r10 = rush2049_frame_pace(ctx->r10);"
 
 # Above 60 fps (Match Framerate) the VI runs at the frame rate and the swap above happens on every retrace. The
 # retrace handler then sends each retrace to its clients (list at +0x260, loaded into $t8 just before this
