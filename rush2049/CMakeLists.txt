@@ -134,6 +134,7 @@ add_executable(Rush2049Recompiled)
 target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/main.cpp
     ${CMAKE_SOURCE_DIR}/src/config.cpp
+    ${CMAKE_SOURCE_DIR}/src/frame_rate.cpp
     ${CMAKE_SOURCE_DIR}/src/register_overlays.cpp
     ${CMAKE_SOURCE_DIR}/src/mod_exports.cpp
     ${CMAKE_SOURCE_DIR}/src/code_loading.cpp
