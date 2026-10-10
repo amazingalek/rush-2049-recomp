@@ -17,7 +17,8 @@ tag="v$version"
 name="Rush2049Recompiled-$tag-windows-x64"
 
 if ! $dry_run; then
-    [ -z "$(git status --porcelain)" ] || { echo "the tree has uncommitted changes"; exit 1; }
+    # Submodule worktrees are dirty with the runtime patches applied; their pinned commits still count.
+    [ -z "$(git status --porcelain --ignore-submodules=dirty)" ] || { echo "the tree has uncommitted changes"; exit 1; }
     git fetch -q origin main
     [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "HEAD is not origin/main"; exit 1; }
     ! gh release view "$tag" > /dev/null 2>&1 || { echo "release $tag exists: bump version_string first"; exit 1; }

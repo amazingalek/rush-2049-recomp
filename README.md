@@ -16,7 +16,7 @@ exists ([docs/games/jet-force-gemini.md](docs/games/jet-force-gemini.md)).
 | [docs/01-toolchain.md](docs/01-toolchain.md) | How N64Recomp, N64ModernRuntime and RT64 work, and the anatomy of a recomp repo |
 | [docs/02-existing-recomps.md](docs/02-existing-recomps.md) | Games that already have a recomp or a native port, so we don't duplicate one |
 | [docs/03-local-env.md](docs/03-local-env.md) | The installed toolchain and how to use it (`tools/env.sh`, `tools/env.ps1`) |
-| [docs/games/rush2049.md](docs/games/rush2049.md) | Rush 2049: building, memory map, what N64Recomp can't translate, runtime fixes |
+| [docs/games/rush2049.md](docs/games/rush2049.md) | Rush 2049: building, releases, memory map, what N64Recomp can't translate, runtime fixes |
 | [docs/games/jet-force-gemini.md](docs/games/jet-force-gemini.md) | Jet Force Gemini: triage, and the recomps that already exist |
 
 ## Ground rules
