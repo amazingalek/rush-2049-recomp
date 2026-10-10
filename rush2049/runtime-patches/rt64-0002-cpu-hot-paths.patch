@@ -1,0 +1,366 @@
+diff --git a/src/common/rt64_tmem_hasher.h b/src/common/rt64_tmem_hasher.h
+index 8c6af2b..d0cdacb 100644
+--- a/src/common/rt64_tmem_hasher.h
++++ b/src/common/rt64_tmem_hasher.h
+@@ -4,6 +4,8 @@
+ 
+ #pragma once
+ 
++#include <cstring>
++
+ // Referenced from zstd.
+ 
+ static unsigned bitScanForward64(uint64_t val) {
+@@ -45,12 +47,48 @@ namespace RT64 {
+             return tmemBytesPerRow > drawBytesPerRow;
+         }
+ 
++        // Collects the bytes a hash covers into one buffer and hashes them in one go. XXH3 gives the same hash for the same
++        // bytes whether they come at once or piece by piece, and this skips the cost of every small streaming update.
++        struct GatheredXXH3 {
++            alignas(16) uint8_t buffer[8192];
++            uint32_t size = 0;
++            bool streaming = false;
++            XXH3_state_t state;
++
++            void update(const void *data, uint32_t byteCount) {
++                if ((size + byteCount) > sizeof(buffer)) {
++                    if (!streaming) {
++                        XXH3_64bits_reset(&state);
++                        streaming = true;
++                    }
++
++                    XXH3_64bits_update(&state, buffer, size);
++                    size = 0;
++                    if (byteCount > sizeof(buffer)) {
++                        XXH3_64bits_update(&state, data, byteCount);
++                        return;
++                    }
++                }
++
++                memcpy(&buffer[size], data, byteCount);
++                size += byteCount;
++            }
++
++            uint64_t digest() {
++                if (!streaming) {
++                    return XXH3_64bits(buffer, size);
++                }
++
++                XXH3_64bits_update(&state, buffer, size);
++                return XXH3_64bits_digest(&state);
++            }
++        };
++
+         static uint64_t hash(const uint8_t *TMEM, const LoadTile &loadTile, uint16_t width, uint16_t height, uint32_t tlut, uint32_t version) {
+             const uint32_t TMEMBytes = 4096;
+             const uint32_t TMEMMask8 = 4095;
+             const uint32_t TMEMMask16 = 2047;
+-            XXH3_state_t xxh3;
+-            XXH3_64bits_reset(&xxh3);
++            GatheredXXH3 xxh3;
+             const bool RGBA32 = (loadTile.siz == G_IM_SIZ_32b) && (loadTile.fmt == G_IM_FMT_RGBA);
+             const bool usesTLUT = tlut > 0;
+             bool halfTMEM = RGBA32;
+@@ -66,21 +104,23 @@ namespace RT64 {
+             const uint32_t tmemMask = halfTMEM ? TMEMMask16 : TMEMMask8;
+             const uint32_t tmemAddress = (loadTile.tmem << 3) & tmemMask;
+             uint64_t tlutBitset[4] = {};
++
++            // Which byte values the texture uses, one byte per value: setting a flag is a plain store, where setting a bit
++            // in tlutBitset waits on the update before it. Turned into tlutBitset once all of it is hashed.
++            alignas(16) uint8_t tlutSeen[256];
++            bool tlutSeenUsed = false;
+             auto hashUpdate = [&](const uint8_t *tmemBytes, uint32_t byteCount) {
+-                XXH3_64bits_update(&xxh3, tmemBytes, byteCount);
++                xxh3.update(tmemBytes, byteCount);
+ 
+                 // Version 5 parses every byte individually if TLUT is enabled to determine the TLUT bytes that can be hashed.
+                 if ((version >= 5) && usesTLUT) {
+-                    if (loadTile.siz == G_IM_SIZ_4b) {
+-                        for (uint32_t i = 0; i < byteCount; i++) {
+-                            tlutBitset[0] |= (1ULL << (tmemBytes[i] & 0xFU));
+-                            tlutBitset[0] |= (1ULL << ((tmemBytes[i] >> 4U) & 0xFU));
+-                        }
++                    if (!tlutSeenUsed) {
++                        memset(tlutSeen, 0, sizeof(tlutSeen));
++                        tlutSeenUsed = true;
+                     }
+-                    else {
+-                        for (uint32_t i = 0; i < byteCount; i++) {
+-                            tlutBitset[tmemBytes[i] >> 6U] |= (1ULL << (tmemBytes[i] & 0x3FU));
+-                        }
++
++                    for (uint32_t i = 0; i < byteCount; i++) {
++                        tlutSeen[tmemBytes[i]] = 1;
+                     }
+                 }
+             };
+@@ -141,6 +181,31 @@ namespace RT64 {
+                 }
+             }
+ 
++            // The byte values seen, as a bitset of the palette indices used: the byte values for 8-bit textures, and both
++            // nibbles of each for 4-bit ones.
++            if (tlutSeenUsed) {
++                uint64_t byteBitset[4] = {};
++                for (uint32_t w = 0; w < 4; w++) {
++                    for (uint32_t b = 0; b < 64; b += 8) {
++                        // Eight flags of 0 or 1, gathered into the top byte of the product, flag k at bit k.
++                        uint64_t flags;
++                        memcpy(&flags, &tlutSeen[w * 64 + b], sizeof(flags));
++                        byteBitset[w] |= ((flags * 0x0102040810204080ULL) >> 56) << b;
++                    }
++                }
++
++                if (loadTile.siz == G_IM_SIZ_4b) {
++                    for (uint32_t v = 0; v < 256; v++) {
++                        if ((byteBitset[v >> 6] >> (v & 0x3FU)) & 1) {
++                            tlutBitset[0] |= (1ULL << (v & 0xFU)) | (1ULL << (v >> 4U));
++                        }
++                    }
++                }
++                else {
++                    memcpy(tlutBitset, byteBitset, sizeof(tlutBitset));
++                }
++            }
++
+             // If TLUT is active, we also hash the corresponding palette bytes.
+             if (usesTLUT) {
+                 const bool CI4 = (loadTile.siz == G_IM_SIZ_4b);
+@@ -151,7 +216,7 @@ namespace RT64 {
+                 if (version >= 5) {
+                     // Fast path for a full bitset for CI4.
+                     if (CI4 && (tlutBitset[0] == UINT16_MAX)) {
+-                        XXH3_64bits_update(&xxh3, &TMEM[paletteAddress], 0x80);
++                        xxh3.update(&TMEM[paletteAddress], 0x80);
+                     }
+                     else {
+                         const uint32_t bitsetCount = CI4 ? 1 : 4;
+@@ -160,14 +225,14 @@ namespace RT64 {
+                         for (uint32_t i = 0; i < bitsetCount; i++) {
+                             // Fast path for a full bitset.
+                             if (tlutBitset[i] == UINT64_MAX) {
+-                                XXH3_64bits_update(&xxh3, &TMEM[paletteAddress + i * 0x200], 0x200);
++                                xxh3.update(&TMEM[paletteAddress + i * 0x200], 0x200);
+                             }
+                             else {
+                                 // Must check every bit individually.
+                                 while (tlutBitset[i] > 0) {
+                                     bitsetIndex = bitScanForward64(tlutBitset[i]);
+                                     paletteIndex = (i * 0x40) + bitsetIndex;
+-                                    XXH3_64bits_update(&xxh3, &TMEM[paletteAddress + paletteIndex * 8], 8);
++                                    xxh3.update(&TMEM[paletteAddress + paletteIndex * 8], 8);
+                                     tlutBitset[i] &= ~(1ULL << bitsetIndex);
+                                 }
+                             }
+@@ -176,7 +241,7 @@ namespace RT64 {
+                 }
+                 else {
+                     const int32_t bytesToHash = CI4 ? 0x80 : 0x800;
+-                    XXH3_64bits_update(&xxh3, &TMEM[paletteAddress], bytesToHash);
++                    xxh3.update(&TMEM[paletteAddress], bytesToHash);
+                 }
+             }
+             
+@@ -187,14 +252,14 @@ namespace RT64 {
+             static_assert(sizeof(loadTile.line) == 2, "Hash must use 16-bit line.");
+             static_assert(sizeof(loadTile.siz) == 1, "Hash must use 8-bit siz.");
+             static_assert(sizeof(loadTile.fmt) == 1, "Hash must use 8-bit fmt.");
+-            XXH3_64bits_update(&xxh3, &width, sizeof(width));
+-            XXH3_64bits_update(&xxh3, &height, sizeof(height));
+-            XXH3_64bits_update(&xxh3, &tlut, sizeof(tlut));
+-            XXH3_64bits_update(&xxh3, &loadTile.line, sizeof(loadTile.line));
+-            XXH3_64bits_update(&xxh3, &loadTile.siz, sizeof(loadTile.siz));
+-            XXH3_64bits_update(&xxh3, &loadTile.fmt, sizeof(loadTile.fmt));
+-
+-            return XXH3_64bits_digest(&xxh3);
++            xxh3.update(&width, sizeof(width));
++            xxh3.update(&height, sizeof(height));
++            xxh3.update(&tlut, sizeof(tlut));
++            xxh3.update(&loadTile.line, sizeof(loadTile.line));
++            xxh3.update(&loadTile.siz, sizeof(loadTile.siz));
++            xxh3.update(&loadTile.fmt, sizeof(loadTile.fmt));
++
++            return xxh3.digest();
+         }
+ 
+         static bool requiresRawTMEM(const LoadTile &loadTile, uint16_t width, uint16_t height, uint32_t tlutFormat) {
+diff --git a/src/hle/rt64_game_frame.cpp b/src/hle/rt64_game_frame.cpp
+index 87392d0..03d7720 100644
+--- a/src/hle/rt64_game_frame.cpp
++++ b/src/hle/rt64_game_frame.cpp
+@@ -2,6 +2,8 @@
+ // RT64
+ //
+ 
++#include <algorithm>
++
+ #include "common/rt64_math.h"
+ 
+ #include "rt64_game_frame.h"
+@@ -168,6 +170,55 @@ namespace RT64 {
+         return (lhs.first < rhs.first) || ((lhs.first == rhs.first) && lhs.second < rhs.second);
+     }
+ 
++    // Sorts the pairs in the order operator< gives and drops the repeats. Each pair becomes a 64-bit key that sorts the same way,
++    // and the keys are sorted a byte at a time, skipping the bytes no key uses: the indices are small, so that is a few passes.
++    static void sortUniqueIndexPairs(std::vector<IndexPair> &pairs) {
++        thread_local std::vector<uint64_t> keys;
++        thread_local std::vector<uint64_t> sortedKeys;
++        const size_t count = pairs.size();
++        keys.resize(count);
++        sortedKeys.resize(count);
++        uint64_t keyBits = 0;
++        for (size_t i = 0; i < count; i++) {
++            keys[i] = (uint64_t(pairs[i].first) << 32) | pairs[i].second;
++            keyBits |= keys[i];
++        }
++
++        for (uint32_t shift = 0; shift < 64; shift += 8) {
++            // A byte that is zero in every key leaves the order as it is.
++            if (((keyBits >> shift) & 0xFFU) == 0) {
++                continue;
++            }
++
++            uint32_t offsets[256] = {};
++            for (size_t i = 0; i < count; i++) {
++                offsets[(keys[i] >> shift) & 0xFFU]++;
++            }
++
++            uint32_t offset = 0;
++            for (uint32_t &o : offsets) {
++                const uint32_t bucketCount = o;
++                o = offset;
++                offset += bucketCount;
++            }
++
++            for (size_t i = 0; i < count; i++) {
++                sortedKeys[offsets[(keys[i] >> shift) & 0xFFU]++] = keys[i];
++            }
++
++            keys.swap(sortedKeys);
++        }
++
++        size_t uniqueCount = 0;
++        for (size_t i = 0; i < count; i++) {
++            if ((i == 0) || (keys[i] != keys[i - 1])) {
++                pairs[uniqueCount++] = IndexPair(uint32_t(keys[i] >> 32), uint32_t(keys[i]));
++            }
++        }
++
++        pairs.resize(uniqueCount);
++    }
++
+     struct MatchCandidate {
+         uint32_t curIndex = 0;
+         uint32_t prevIndex = 0;
+@@ -403,8 +454,10 @@ namespace RT64 {
+             return;
+         }
+ 
+-        thread_local std::multimap<uint64_t, GameCallMap> curCallHashMap;
+-        thread_local std::multimap<uint64_t, GameCallMap> prevCallHashMap;
++        // Sorted vectors rather than multimaps and sets: they are rebuilt for every scene of every frame, and the
++        // node allocations were most of this thread's time. Sorted the same way, so they are visited in the same order.
++        thread_local std::vector<std::pair<uint64_t, GameCallMap>> curCallHashMap;
++        thread_local std::vector<std::pair<uint64_t, GameCallMap>> prevCallHashMap;
+         curCallHashMap.clear();
+         prevCallHashMap.clear();
+ 
+@@ -509,17 +562,24 @@ namespace RT64 {
+             buildCallHashMap(p, prevWorkload, prevProj, prevCallHashMap);
+         }
+ 
++        // As a multimap orders them: by hash, and calls with the same hash in the order they were added.
++        auto byHash = [](const std::pair<uint64_t, GameCallMap> &lhs, const std::pair<uint64_t, GameCallMap> &rhs) {
++            return lhs.first < rhs.first;
++        };
++        std::stable_sort(curCallHashMap.begin(), curCallHashMap.end(), byHash);
++        std::stable_sort(prevCallHashMap.begin(), prevCallHashMap.end(), byHash);
++
+         // FIXME: Transform set needs to be done per unique workload detected.
+-        thread_local std::set<IndexPair> transformCheckSet;
+-        thread_local std::set<IndexPair> tileCheckSet;
+-        thread_local std::set<IndexPair> lookAtCheckSet;
++        thread_local std::vector<IndexPair> transformCheckSet;
++        thread_local std::vector<IndexPair> tileCheckSet;
++        thread_local std::vector<IndexPair> lookAtCheckSet;
+         transformCheckSet.clear();
+         tileCheckSet.clear();
+         lookAtCheckSet.clear();
+ 
+         // Traverse the map and fill the set with all the combinations of transforms to check.
+         for (std::pair<uint64_t, GameCallMap> curIt : curCallHashMap) {
+-            auto prevRange = prevCallHashMap.equal_range(curIt.first);
++            auto prevRange = std::equal_range(prevCallHashMap.begin(), prevCallHashMap.end(), std::pair<uint64_t, GameCallMap>{ curIt.first, {} }, byHash);
+             for (auto prevIt = prevRange.first; prevIt != prevRange.second; prevIt++) {
+                 const GameIndices::Projection &curProjIndices = curScene.projections[curIt.second.sceneProjIndex];
+                 const Workload &curWorkload = workloadQueue.workloads[curProjIndices.workloadIndex];
+@@ -542,7 +602,7 @@ namespace RT64 {
+                         const uint32_t prevGroupIndex = prevWorkload.drawData.worldTransformGroups[prevWorldMatrix];
+                         const TransformGroup &prevGroup = prevWorkload.drawData.transformGroups[prevGroupIndex];
+                         if ((curGroup.matrixId == prevGroup.matrixId) && ((curGroup.matrixId == G_EX_ID_AUTO) || ((curGroup.matrixId != G_EX_ID_IGNORE) && (curGroup.ordering == G_EX_ORDER_AUTO)))) {
+-                            transformCheckSet.emplace(curWorldMatrix, prevWorldMatrix);
++                            transformCheckSet.emplace_back(curWorldMatrix, prevWorldMatrix);
+                         }
+                     }
+                 }
+@@ -556,7 +616,7 @@ namespace RT64 {
+                             continue;
+                         }
+ 
+-                        tileCheckSet.emplace(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
++                        tileCheckSet.emplace_back(curCall.callDesc.tileIndex + t, prevCall.callDesc.tileIndex + t);
+                     }
+                 }
+ 
+@@ -569,11 +629,16 @@ namespace RT64 {
+                     const uint32_t prevVertexIndex = prevWorkload.drawData.faceIndices[prevCall.meshDesc.faceIndicesStart];
+                     const uint32_t curLookAtIndex = curWorkload.drawData.lookAtIndices[curVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+                     const uint32_t prevLookAtIndex = prevWorkload.drawData.lookAtIndices[prevVertexIndex] >> RSP_LOOKAT_INDEX_SHIFT;
+-                    lookAtCheckSet.emplace(curLookAtIndex, prevLookAtIndex);
++                    lookAtCheckSet.emplace_back(curLookAtIndex, prevLookAtIndex);
+                 }
+             }
+         }
+ 
++        // Sorted and without repeats, as the sets were.
++        for (std::vector<IndexPair> *checkSet : { &transformCheckSet, &tileCheckSet, &lookAtCheckSet }) {
++            sortUniqueIndexPairs(*checkSet);
++        }
++
+         // Compute all the differences between transforms and insert them into a vector that will be sorted according to the differences.
+         thread_local std::vector<MatchCandidate> matchCandidates;
+         matchCandidates.clear();
+@@ -784,7 +849,7 @@ namespace RT64 {
+         }
+     }
+     
+-    void GameFrame::buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::multimap<uint64_t, GameCallMap> &hashMap) const {
++    void GameFrame::buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::vector<std::pair<uint64_t, GameCallMap>> &hashMap) const {
+         for (uint32_t c = 0; c < proj.gameCallCount; c++) {
+             const GameCall &call = proj.gameCalls[c];
+             uint32_t matrixIdHash = 0;
+@@ -802,7 +867,7 @@ namespace RT64 {
+                 doTileMatching = doTileMatching || (group.tileInterpolation == G_EX_COMPONENT_AUTO);
+             }
+ 
+-            hashMap.emplace(hashFromCall(call, matrixIdHash), GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
++            hashMap.emplace_back(hashFromCall(call, matrixIdHash), GameCallMap{ sceneProjIndex, c, doTransformMatching, doTileInterpolation, doTileMatching });
+         }
+     }
+ 
+diff --git a/src/hle/rt64_game_frame.h b/src/hle/rt64_game_frame.h
+index 00a72f6..cfa769a 100644
+--- a/src/hle/rt64_game_frame.h
++++ b/src/hle/rt64_game_frame.h
+@@ -128,7 +128,7 @@ namespace RT64 {
+         void match(RenderWorker *worker, WorkloadQueue &workloadQueue, const GameFrame &prevFrame, BufferUploader *velocityUploader, bool &velocityUploaderUsed, bool &tileInterpolationUsed, bool &lookAtInterpolationUsed);
+         void matchScene(WorkloadQueue &workloadQueue, const GameFrame &prevFrame, const GameScene &curScene, const GameScene &prevScene, std::unordered_map<uint32_t, ModifiedBuffers> &workloadsModified, bool &tileInterpolationUsed, bool &lookAtInterpolationUsed);
+         void matchTransform(Workload &curWorkload, const Workload &prevWorkload, GameFrameMap::WorkloadMap &curWorkloadMap, const GameFrameMap::WorkloadMap *prevWorkloadMap, uint32_t curTransformIndex, uint32_t prevTransformIndex, ModifiedBuffers &modifiedBuffers);
+-        void buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::multimap<uint64_t, GameCallMap> &hashMap) const;
++        void buildCallHashMap(uint32_t sceneProjIndex, const Workload &workload, const Projection &proj, std::vector<std::pair<uint64_t, GameCallMap>> &hashMap) const;
+         void buildTransformIdMap(const Workload &workload, std::multimap<uint32_t, uint32_t> &idMap, std::vector<uint32_t> &ignoredIdVector) const;
+         uint64_t hashFromCall(const GameCall &call, uint32_t matrixIdHash) const;
+         bool isDebuggerCameraEnabled(const WorkloadQueue &workloadQueue);

@@ -17,6 +17,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <unordered_set>
@@ -80,6 +81,9 @@ struct Rdp {
     }
     uint32_t rd32(uint32_t p) const { return *reinterpret_cast<uint32_t*>(rdram + (p & (rdram_bytes - 4))); }
     uint8_t rd8(uint32_t p) const { return rdram[(p & (rdram_bytes - 1)) ^ 3]; }
+    static uint32_t byteswap32(uint32_t v) {
+        return (v >> 24) | ((v >> 8) & 0xFF00) | ((v << 8) & 0xFF0000) | (v << 24);
+    }
 
     // RT64's RDP::loadBlockOperation / loadToTMEMCommon for everything but 32-bit RGBA.
     void load_block(uint32_t t, uint32_t uls, uint32_t ult, uint32_t lrs, uint32_t dxt) {
@@ -101,11 +105,22 @@ struct Rdp {
         uint32_t dst = (tile.tmem << 3) & (tmem_bytes - 1);
         uint32_t stride = tile.line << 3;
         uint32_t xor_mask = 0, dxt_counter = 0;
+        // Every texture the frame loads comes through here, so a source on a word boundary (nearly all of them) is copied
+        // a word at a time. dst is a multiple of 8, so xor_mask (0 or 4) swaps the two words.
+        bool aligned = (src & 3) == 0;
         for (uint32_t w = 0; w < words && w < tmem_bytes / 8; w++) {
-            for (uint32_t i = 0; i < 8; i++) {
-                uint32_t a = ((dst + i) ^ xor_mask) & (tmem_bytes - 1);
-                tmem[a] = rd8(src + i);
-                tmem_known[a] = true;
+            if (aligned) {
+                uint32_t hi = byteswap32(rd32(src)), lo = byteswap32(rd32(src + 4));
+                memcpy(&tmem[dst ^ xor_mask], &hi, 4);
+                memcpy(&tmem[dst ^ xor_mask ^ 4], &lo, 4);
+                memset(&tmem_known[dst], 1, 8);
+            }
+            else {
+                for (uint32_t i = 0; i < 8; i++) {
+                    uint32_t a = ((dst + i) ^ xor_mask) & (tmem_bytes - 1);
+                    tmem[a] = rd8(src + i);
+                    tmem_known[a] = true;
+                }
             }
             dxt_counter += dxt;
             while (dxt_counter >= 0x800) {
