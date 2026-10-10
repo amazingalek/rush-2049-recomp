@@ -17,10 +17,8 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <vector>
@@ -60,8 +58,8 @@ constexpr Range not_saved[] = {
     { 0x8013FED0, 0x8013FED4 },
     { 0x801403C0, 0x80140414 },
     { 0x80142728, 0x80143CF8 },  // the sound thread, its queues, command pool and tables
-    { 0x80143F58, 0x80143F68 },  // the sound manager's free sounds
-    { 0x80143FFC, 0x80144E00 },  // its playing sounds, then the controllers and paks
+    { 0x80143F58, 0x80143F68 },  // the sound manager's table of sounds wanting a voice
+    { 0x80143FFC, 0x80144E00 },  // its lists of free, playing and waiting sounds, then the controllers and paks
     { 0x801460C8, 0x80146200 },  // queues
     { 0x80149438, 0x8014943C },  // display list pointer
     { 0x80149780, 0x80149870 },  // queues
@@ -104,7 +102,6 @@ bool rewind_held() {
 }
 
 void forget() {
-    fprintf(stderr, "[rewind dbg] forget, %zu frames\n", history.size());
     history.clear();
     history_bytes = 0;
     have_shadow = false;
@@ -169,78 +166,55 @@ void step_back(uint8_t* rdram) {
     frames_back++;
 }
 
+// The sound manager stays live, and the race knows its sounds only by the ID the manager handed out. A sound started
+// in the stretch that was rewound is one the race no longer knows of; most end by themselves (one-shots, and loops
+// whose owner handle dies), but a looping sound without an owner would play on for the rest of the race, and the race
+// starts another when it gets there again. So when Rewind is let go, each such sound whose ID is nowhere in the race's
+// memory is made one that times out, and the sound thread frees it at its next update. Only flags change, no links,
+// so it doesn't matter where the sound thread was stopped.
+int release_orphaned_sounds(uint8_t* rdram) {
+    constexpr uint32_t lists[] = { 0x80144028, 0x80144C58 };  // playing, and waiting for a voice
+    std::vector<uint32_t> nodes, ids;
+    for (uint32_t head : lists) {
+        for (uint32_t node = read_word(rdram, head), n = 0; node != 0 && n < 256; node = read_word(rdram, node), n++) {
+            bool loops = rdram[(node + 0x19 - 0x80000000u) ^ 3] != 0;
+            if (loops && read_word(rdram, node + 0x3C) == 0) {  // no owner
+                nodes.push_back(node);
+                ids.push_back(read_word(rdram, node + 0xC));
+            }
+        }
+    }
+    std::vector<bool> known(ids.size(), false);
+    for (Range r : saved) {
+        for (uint32_t p = r.lo; p < r.hi; p += 4) {
+            uint32_t w = *(const uint32_t*)(rdram + p);
+            for (size_t i = 0; i < ids.size(); i++) {
+                if (w == ids[i]) {
+                    known[i] = true;
+                }
+            }
+        }
+    }
+    int released = 0;
+    for (size_t i = 0; i < nodes.size(); i++) {
+        if (!known[i]) {
+            rdram[(nodes[i] + 0x19 - 0x80000000u) ^ 3] = 0;
+            const float expired = -100.0f;  // past the -10 at which the sound thread frees a sound that timed out
+            memcpy(rdram + (nodes[i] + 0x20 - 0x80000000u), &expired, 4);
+            released++;
+        }
+    }
+    return released;
+}
+
 }
 
 void rush2049::set_rewind(bool on) {
     enabled = on;
 }
 
-// DEBUG thread map: RW_MAP=<frames> marks each word with the OS threads that wrote it, diffing at every switch.
-extern void (*ultramodern_switch_hook)(uint8_t* rdram, int thread_id);
-namespace {
-std::vector<uint16_t> tm_marks;
-std::vector<uint8_t> tm_last;
-int tm_frames = -1;
-bool tm_started = false;
-constexpr Range tm_ranges[] = { { 0x0010FD80, 0x0017AEC0 }, { 0x0019D4C0, 0x001A6000 }, { 0x00216300, 0x00219000 }, { 0x002A0000, 0x002A5000 }, { 0x00356000, 0x00357000 }, { 0x00383000, 0x00385000 }, { 0x0041E000, 0x0041F000 }, { 0x00454000, 0x00455000 } };
-void tm_diff(uint8_t* rdram, int id) {
-    if (!tm_started) {
-        for (Range r : tm_ranges) memcpy(tm_last.data() + r.lo, rdram + r.lo, r.hi - r.lo);
-        tm_started = true;
-        return;
-    }
-    const uint32_t* a = (const uint32_t*)tm_last.data();
-    const uint32_t* b = (const uint32_t*)rdram;
-    for (Range r : tm_ranges) {
-        for (uint32_t blk = r.lo; blk < r.hi; blk += 1024) {
-            uint32_t n = std::min<uint32_t>(1024, r.hi - blk);
-            if (memcmp(rdram + blk, tm_last.data() + blk, n) == 0) continue;
-            for (uint32_t i = blk / 4; i < (blk + n) / 4; i++) if (a[i] != b[i]) tm_marks[i] |= 1u << id;
-            memcpy(tm_last.data() + blk, rdram + blk, n);
-        }
-    }
-}
-void tm_print() {
-    std::vector<uint16_t> kinds;
-    for (uint16_t m : tm_marks) if (m && std::find(kinds.begin(), kinds.end(), m) == kinds.end()) kinds.push_back(m);
-    std::sort(kinds.begin(), kinds.end());
-    for (uint16_t kind : kinds) {
-        fprintf(stderr, "[tmap] threads");
-        for (int t = 0; t < 16; t++) if (kind & (1 << t)) fprintf(stderr, " %d", t);
-        fprintf(stderr, ":\n");
-        uint32_t total = 0;
-        for (uint32_t i = 0; i < tm_marks.size();) {
-            if (tm_marks[i] != kind) { i++; continue; }
-            uint32_t start = i, end = i + 1, words = 0;
-            while (i < tm_marks.size() && i < end + 16) {
-                if (tm_marks[i] == kind) { end = i + 1; words++; }
-                i++;
-            }
-            total += words;
-            fprintf(stderr, "  %08X-%08X %u\n", 0x80000000u + start * 4, 0x80000000u + end * 4, words);
-        }
-        fprintf(stderr, "[tmap] total %u\n", total);
-    }
-}
-void tm_frame(uint8_t* rdram) {
-    if (tm_frames == -1) {
-        const char* env = getenv("RW_MAP");
-        tm_frames = env ? atoi(env) : 0;
-        if (tm_frames > 0) {
-            tm_marks.assign(0x800000 / 4, 0);
-            tm_last.resize(0x800000);
-            ultramodern_switch_hook = tm_diff;
-        }
-    }
-    if (tm_frames > 0 && --tm_frames == 0) {
-        ultramodern_switch_hook = nullptr;
-        tm_print();
-    }
-}
-}
-
 extern "C" void rush2049_rewind_tick_begin(uint8_t* rdram) {
-    tick_running = true; static uint32_t t; if (++t % 60 == 0 && frames_back) fprintf(stderr, "[rewind dbg] tick %u\n", t);
+    tick_running = true;
 }
 
 extern "C" void rush2049_rewind_tick_end(uint8_t* rdram) {
@@ -248,12 +222,6 @@ extern "C" void rush2049_rewind_tick_end(uint8_t* rdram) {
 }
 
 extern "C" void rush2049_rewind_frame_begin(uint8_t* rdram) {
-    { static uint32_t f; if (++f % 30 == 0 && frames_back) fprintf(stderr, "[rewind dbg] frame %u\n", f); }
-    static uint32_t last_state = 0;
-    if (read_word(rdram, game_state_addr) != last_state) {
-        last_state = read_word(rdram, game_state_addr);
-        fprintf(stderr, "[rewind dbg] state %08X\n", last_state);
-    }
     if (read_word(rdram, game_state_addr) != 0x00400000 && have_shadow) {
         forget();
     }
@@ -263,7 +231,6 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
     if (read_word(rdram, game_state_addr) != 0x00400000) {
         return;  // menus draw here too
     }
-    tm_frame(rdram);
     if (!enabled || rush2049::split_screen()) {
         if (have_shadow) {
             forget();
@@ -284,21 +251,6 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
                 saved.push_back({ lo - 0x80000000u, saved_hi - 0x80000000u });
             }
             shadow.resize(saved_hi - 0x80000000u);
-            if (const char* ex = getenv("RW_EX")) {  // DEBUG: "a-b,c-d" more not saved
-                uint32_t a, b; int used;
-                while (sscanf(ex, "%x-%x%n", &a, &b, &used) == 2) {
-                    a -= 0x80000000u; b -= 0x80000000u;
-                    std::vector<Range> next;
-                    for (Range r : saved) {
-                        if (r.hi <= a || r.lo >= b) { next.push_back(r); continue; }
-                        if (r.lo < a) next.push_back({ r.lo, a });
-                        if (r.hi > b) next.push_back({ b, r.hi });
-                    }
-                    saved = next;
-                    fprintf(stderr, "[rewind dbg] not saving %08X-%08X\n", a + 0x80000000u, b + 0x80000000u);
-                    ex += used; if (*ex == ',') ex++;
-                }
-            }
         }
         for (Range r : saved) {
             memcpy(shadow.data() + r.lo, rdram + r.lo, r.hi - r.lo);
@@ -309,29 +261,15 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
     if (read_word(rdram, race_clock_addr) == read_word(shadow.data(), race_clock_addr)) {
         return;  // no race time has passed
     }
-    static uint32_t n = 0; static double dbg_us = 0;
-    if (++n % 30 == 0) {
-        float clock; uint32_t w = read_word(rdram, race_clock_addr); memcpy(&clock, &w, 4);
-        fprintf(stderr, "[rewind dbg] clock %.2f held %d frames %zu bytes %zu\n", clock, rewind_held(), history.size(), history_bytes); fprintf(stderr, "[rewind dbg] avg %.0f us\n", dbg_us / 30);
-        for (uint32_t head : { 0x80144028u, 0x80144C58u, 0x80143F60u }) { int k = 0; for (uint32_t p = read_word(rdram, head); p && k < 500; p = read_word(rdram, p)) k++; fprintf(stderr, "[rewind dbg] sounds %08X: %d\n", head, k); } dbg_us = 0;
-        auto rb = [&](uint32_t a) { return rdram[(a - 0x80000000u) ^ 3]; };
-        for (uint32_t head : { 0x80144028u, 0x80144C58u }) { int k = 0; for (uint32_t p = read_word(rdram, head); p && k < 64; p = read_word(rdram, p), k++) {
-            float f20; uint32_t w20 = read_word(rdram, p + 0x20); memcpy(&f20, &w20, 4);
-            { uint32_t id = read_word(rdram, p + 0xC), refs = 0, first = 0; for (Range r : saved) for (uint32_t o = r.lo; o < r.hi; o += 4) if (*(uint32_t*)(rdram + o) == id) { if (!refs++) first = o + 0x80000000u; }
-              uint32_t sid = id & 0xFFFF, refs16 = 0, first16 = 0; for (Range r : saved) for (uint32_t o = r.lo; o < r.hi; o += 4) if (*(uint32_t*)(rdram + o) == sid) { if (!refs16++) first16 = o + 0x80000000u; }
-              fprintf(stderr, "[ref] %08X refs %u at %08X; low16 refs %u at %08X\n", id, refs, first, refs16, first16); }
-            fprintf(stderr, "[snd] %08X %08X c%08X st%u t%u b19 %u b1A %u f20 %.1f own %08X v %08X snd %u arg %08X\n", head, p, read_word(rdram, p + 0xC), read_word(rdram, p + 0x10), read_word(rdram, p + 0x14), rb(p + 0x19), rb(p + 0x1A), f20, read_word(rdram, p + 0x3C), read_word(rdram, p + 0x40), read_word(rdram, p + 0x34), read_word(rdram, p + 0x38)); } }
-    }
     if (rewind_held()) {
-        { float a, b; uint32_t w = read_word(rdram, race_clock_addr), v = read_word(shadow.data(), race_clock_addr); memcpy(&a, &w, 4); memcpy(&b, &v, 4);
-          fprintf(stderr, "[rewind dbg] step ram %.3f shadow %.3f\n", a, b); }
-        { auto t0 = std::chrono::steady_clock::now(); step_back(rdram); dbg_us += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count(); }
-    } else {
-        if (frames_back > 0) {
-            fprintf(stderr, "[rewind] back %u frames, %zu frames (%zu MB) left\n", frames_back, history.size(),
-                history_bytes >> 20);
-            frames_back = 0;
-        }
-        { auto t0 = std::chrono::steady_clock::now(); save_frame(rdram); dbg_us += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count(); }
+        step_back(rdram);
+        return;
     }
+    if (frames_back > 0) {
+        int released = release_orphaned_sounds(rdram);
+        fprintf(stderr, "[rewind] back %u frames, %zu frames (%zu MB) left, %d lost sounds released\n", frames_back,
+            history.size(), history_bytes >> 20, released);
+        frames_back = 0;
+    }
+    save_frame(rdram);
 }
