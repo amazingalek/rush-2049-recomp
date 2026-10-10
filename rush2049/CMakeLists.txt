@@ -62,12 +62,66 @@ file(GLOB FUNC_C_SOURCES ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.c)
 file(GLOB FUNC_CXX_SOURCES ${CMAKE_SOURCE_DIR}/RecompiledFuncs/*.cpp)
 target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
 
+# PatchesLib: the patches library (patches/), compiled for MIPS by patches/Makefile and recompiled by N64Recomp
+# (patches.toml). Its RECOMP_EXPORT functions are what mods import from "*". Needs a MIPS-capable clang and
+# ld.lld (PATCHES_C_COMPILER, PATCHES_LD; on Windows tools/env.sh's MIPS_CC and MIPS_LD) and N64Recomp (N64RECOMP).
+set(PATCHES_C_COMPILER clang CACHE STRING "clang with a MIPS backend, for patches/")
+set(PATCHES_LD ld.lld CACHE STRING "ld.lld, for patches/")
+set(N64RECOMP N64Recomp CACHE STRING "N64Recomp, for patches.toml")
+
+add_library(PatchesLib STATIC)
+
+target_compile_options(PatchesLib PRIVATE
+    -fno-strict-aliasing
+    -Wno-unused-variable
+    -Wno-implicit-function-declaration
+    -falign-functions=16
+)
+
+target_include_directories(PatchesLib PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/ultramodern/include
+    ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/librecomp/include
+    ${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime/N64Recomp/include
+)
+
+target_sources(PatchesLib PRIVATE
+    ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
+    ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
+)
+
+# make is incremental, so this runs every build and relinks only when a patch source changed.
+add_custom_target(PatchesBin
+    COMMAND ${CMAKE_COMMAND} -E env CC=${PATCHES_C_COMPILER} LD=${PATCHES_LD} make
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/patches
+    BYPRODUCTS ${CMAKE_SOURCE_DIR}/patches/patches.elf
+)
+
+add_custom_command(OUTPUT
+        ${CMAKE_SOURCE_DIR}/patches/patches.bin
+        ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c
+        ${CMAKE_SOURCE_DIR}/RecompiledPatches/recomp_overlays.inl
+        ${CMAKE_SOURCE_DIR}/RecompiledPatches/funcs.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/RecompiledPatches
+    COMMAND ${N64RECOMP} patches.toml
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf ${CMAKE_SOURCE_DIR}/patches.toml
+)
+
+add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
+    COMMAND file_to_c ${CMAKE_SOURCE_DIR}/patches/patches.bin rush2049_patches_bin
+        ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
+    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.bin
+)
+
 add_executable(Rush2049Recompiled)
 
 target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/main.cpp
     ${CMAKE_SOURCE_DIR}/src/config.cpp
     ${CMAKE_SOURCE_DIR}/src/register_overlays.cpp
+    ${CMAKE_SOURCE_DIR}/src/register_patches.cpp
+    ${CMAKE_SOURCE_DIR}/src/mod_exports.cpp
     ${CMAKE_SOURCE_DIR}/src/code_loading.cpp
     ${CMAKE_SOURCE_DIR}/src/libultra_extra.cpp
     ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
@@ -171,6 +225,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/lib/RecompFrontend)
 
 target_link_libraries(Rush2049Recompiled PRIVATE
     RecompiledFuncs
+    PatchesLib
     recompui
     recompinput
     librecomp

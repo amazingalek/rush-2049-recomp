@@ -1,13 +1,21 @@
 #ifndef RUSH2049_GAME_H
 #define RUSH2049_GAME_H
 
+#include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace rush2049 {
     inline const std::u8string program_id = u8"Rush2049Recompiled";
     inline const std::string program_name = "San Francisco Rush 2049: Recompiled";
 
     void register_overlays();
+    // Mods (docs/games/rush2049.md, "Mods"): the patches library (src/register_patches.cpp), the functions the
+    // executable exports to mods (src/mod_exports.cpp), and the recomp ROM rebuilt for hooking (src/code_loading.cpp).
+    void register_patches();
+    void register_mod_exports();
+    std::vector<uint8_t> build_recomp_rom(std::span<const uint8_t> rom);
     void init_config();
     // The accessory in every controller: a Controller Pak (saves) or a Rumble Pak (rumble, no saves).
     bool rumble_pak_selected();
