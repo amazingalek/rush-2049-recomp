@@ -6,9 +6,11 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cinttypes>
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
 #include <vector>
