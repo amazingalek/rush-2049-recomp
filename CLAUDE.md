@@ -106,7 +106,9 @@ bash tools/rush2049/iterate.sh 30
 
 Copying `rush2049/lib/` from another worktree on the same submodule commits is faster than cloning; run the
 submodule update after it anyway. Without `portable.txt` the game reads and writes the user's own settings in
-`%LOCALAPPDATA%\Rush2049Recompiled\`.
+`%LOCALAPPDATA%\Rush2049Recompiled\`. If `git status` then fails with `bad object HEAD` in a nested submodule, a
+fetch hit the path limit; repair it with
+`git -c core.longpaths=true submodule foreach --recursive 'git config core.longpaths true; git cat-file -e $sha1 || git fetch origin $sha1'`.
 
 **Running the game.** `iterate.sh <secs>` boots with `--boot --stacks` into `rush2049/run.log`, and
 `ninja -C rush2049/build Rush2049Recompiled` is enough after a source change. Other sessions run the game on
