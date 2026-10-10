@@ -59,8 +59,7 @@ constexpr Range not_saved[] = {
     { 0x80138A4C, 0x80138A5C },
     { 0x8013FED0, 0x8013FED4 },
     { 0x801403C0, 0x80140414 },
-    { 0x80142728, 0x80143300 },  // the sound thread, its queues and tables
-    { 0x801439D8, 0x80143CF8 },
+    { 0x80142728, 0x80143CF8 },  // the sound thread, its queues, command pool and tables
     { 0x80143F58, 0x80143F68 },  // the sound manager's free sounds
     { 0x80143FFC, 0x80144E00 },  // its playing sounds, then the controllers and paks
     { 0x801460C8, 0x80146200 },  // queues
@@ -315,6 +314,13 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
         float clock; uint32_t w = read_word(rdram, race_clock_addr); memcpy(&clock, &w, 4);
         fprintf(stderr, "[rewind dbg] clock %.2f held %d frames %zu bytes %zu\n", clock, rewind_held(), history.size(), history_bytes); fprintf(stderr, "[rewind dbg] avg %.0f us\n", dbg_us / 30);
         for (uint32_t head : { 0x80144028u, 0x80144C58u, 0x80143F60u }) { int k = 0; for (uint32_t p = read_word(rdram, head); p && k < 500; p = read_word(rdram, p)) k++; fprintf(stderr, "[rewind dbg] sounds %08X: %d\n", head, k); } dbg_us = 0;
+        auto rb = [&](uint32_t a) { return rdram[(a - 0x80000000u) ^ 3]; };
+        for (uint32_t head : { 0x80144028u, 0x80144C58u }) { int k = 0; for (uint32_t p = read_word(rdram, head); p && k < 64; p = read_word(rdram, p), k++) {
+            float f20; uint32_t w20 = read_word(rdram, p + 0x20); memcpy(&f20, &w20, 4);
+            { uint32_t id = read_word(rdram, p + 0xC), refs = 0, first = 0; for (Range r : saved) for (uint32_t o = r.lo; o < r.hi; o += 4) if (*(uint32_t*)(rdram + o) == id) { if (!refs++) first = o + 0x80000000u; }
+              uint32_t sid = id & 0xFFFF, refs16 = 0, first16 = 0; for (Range r : saved) for (uint32_t o = r.lo; o < r.hi; o += 4) if (*(uint32_t*)(rdram + o) == sid) { if (!refs16++) first16 = o + 0x80000000u; }
+              fprintf(stderr, "[ref] %08X refs %u at %08X; low16 refs %u at %08X\n", id, refs, first, refs16, first16); }
+            fprintf(stderr, "[snd] %08X %08X c%08X st%u t%u b19 %u b1A %u f20 %.1f own %08X v %08X snd %u arg %08X\n", head, p, read_word(rdram, p + 0xC), read_word(rdram, p + 0x10), read_word(rdram, p + 0x14), rb(p + 0x19), rb(p + 0x1A), f20, read_word(rdram, p + 0x3C), read_word(rdram, p + 0x40), read_word(rdram, p + 0x34), read_word(rdram, p + 0x38)); } }
     }
     if (rewind_held()) {
         { float a, b; uint32_t w = read_word(rdram, race_clock_addr), v = read_word(shadow.data(), race_clock_addr); memcpy(&a, &w, 4); memcpy(&b, &v, 4);
