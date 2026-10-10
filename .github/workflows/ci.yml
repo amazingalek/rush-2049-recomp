@@ -53,7 +53,7 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           git init -q
-          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"             fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
           git checkout -q FETCH_HEAD
       - name: Cache key
         id: key
@@ -99,6 +99,7 @@ jobs:
           mkdir -p rush2049/RecompiledFuncs rush2049/rsp
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      # No MSVC developer environment: clang-cl finds MSVC and the Windows SDK by itself.
       - name: Configure
         run: |
           clang-cl --version
