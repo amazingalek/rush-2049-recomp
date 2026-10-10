@@ -88,6 +88,9 @@ jobs:
           mkdir -p rush2049/RecompiledFuncs rush2049/rsp
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      - name: DIAG before configure
+        shell: bash
+        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
       - name: Configure
         run: |
           clang-cl --version
@@ -96,7 +99,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       - name: DIAG why ninja rebuilds
         shell: bash
-        run: ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -40
+        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -165,7 +168,7 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       - name: DIAG why ninja rebuilds
         shell: bash
-        run: ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -40
+        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
