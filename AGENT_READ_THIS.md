@@ -59,11 +59,8 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
     It applies to single-player races only; split screen and menus deliberately stay 4:3. The mechanism is in
     `docs/games/rush2049.md` under "Widescreen HUD". Verified at 1600x900 in 1P and 2P.
     RT64's "HUD Placement" option controls how far the HUD moves.
-- **Dev flags** are listed in `docs/games/rush2049.md` → "Developer flags". New since the last docs edit (WIP
-  commit 7eb79dd), not yet documented there:
-  - `--dump-ram <prefix> <t1,t2,..>` writes all of RDRAM big-endian to `<prefix>N.bin` at those seconds. Diffing
-    two dumps found the music-volume byte.
-  - `--hwwatch <vram>` sets an x86 hardware data breakpoint. **Broken**: see Known problems.
+- **Dev flags** are listed in `docs/games/rush2049.md` → "Developer flags", including `--dump-ram`
+  and `--hwwatch` from WIP commit 7eb79dd. Diffing two `--dump-ram` dumps found the music-volume byte.
 
 ## Work in progress
 
@@ -137,11 +134,10 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
 
 ## Known problems and gotchas
 
-- `--hwwatch` (`src/crash_handler.cpp`, `start_hw_watch`) makes the process exit silently right after boot.
-  Unknown why; suspects are the vectored handler running dbghelp on game threads, or the debug registers on
-  the audio/RT64 threads. Don't rely on it. To find who reads an address, grep the disassembly comments in
-  `RecompiledFuncs/*.c` for the base `lui`/`addiu` pair plus offset. That's how the 0x80146108 settings
-  struct was found.
+- To find who reads an address, use `--hwwatch`, or grep the disassembly comments in `RecompiledFuncs/*.c`
+  for the base `lui`/`addiu` pair plus offset. That's how the 0x80146108 settings struct was found.
+  (`--hwwatch` used to kill the process on its first hit: its handler read the watched byte, trapped again
+  and relocked its own mutex. Fixed.)
 - Editing C strings with `sed` or heredoc Python turns `\n` into real newlines, and the generated code breaks.
   Use a real editor. `RecompiledFuncs` files are compiled as C, so `std::` types aren't available there.
 - N64Recomp doesn't set `$ra` on calls. `MEM_W` is word-native, so halfwords sit at `addr ^ 2` and bytes at
