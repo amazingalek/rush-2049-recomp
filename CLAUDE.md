@@ -204,7 +204,17 @@ N64ModernRuntime-0003 and N64Recomp-0001:
 
 Measured on 2026-10-10 (title screen and attract races, 60 retraces and 30 display lists a second wanted, HQ mix):
 
-MEASUREMENTS
+```
+                          retraces/s  display lists/s  CPU, every thread   per display list
+native (clang-cl /O2)         60            30          1% of one core        0.3-0.5 ms
+node 24                       60            30          4-5%                  1.3-1.8 ms
+Chrome 154, headless          60            30          7% (whole browser)    2.3 ms
+--fps 120: native, node      120            60          1%, 5%                0.2, 0.9 ms
+```
+
+So wasm costs about 4 times the CPU of native, and a frame still uses a small part of its 16.7 ms: the CPU side
+keeps up. The host was 14-54% busy with other sessions; at 100% busy both builds fell to 36-54 retraces a second
+with their own CPU use unchanged, so what drops frames there is threads waiting for a core, not the work.
 
 **Still to do, each its own card:** graphics. RT64 and recompui draw through plume, which has D3D12, Vulkan and
 Metal backends only (`rt64/src/contrib/plume/`, `recompui/src/renderer/rt64_render_context.cpp`). WebGPU needs a
