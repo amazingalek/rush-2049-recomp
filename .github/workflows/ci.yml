@@ -92,9 +92,12 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         shell: bash
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
+        # so a file an older patch created would block the patch that creates it now: clean them.
         run: |
           for i in 1 2 3; do
-            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
+              git submodule foreach -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1
@@ -171,9 +174,12 @@ jobs:
       - name: Submodules
         if: steps.cache.outputs.cache-hit != 'true'
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
+        # so a file an older patch created would block the patch that creates it now: clean them.
         run: |
           for i in 1 2 3; do
-            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
+              git submodule foreach -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1
