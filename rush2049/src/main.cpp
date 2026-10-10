@@ -450,6 +450,10 @@ int main(int argc, char** argv) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
         }
+        if (strcmp(argv[i], "--profile") == 0 && i + 2 < argc) {
+            int after = atoi(argv[++i]);
+            rush2049::start_profiler(after, atoi(argv[++i]));
+        }
         if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
             load_input_script(argv[++i]);
         }

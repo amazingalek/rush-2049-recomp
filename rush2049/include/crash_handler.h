@@ -11,6 +11,9 @@ namespace rush2049 {
     // Development: every interval, print the bring-up probes and, if stacks, the game frames on every thread's
     // stack (suspends each thread briefly) to stderr.
     void start_stack_sampler(int interval_seconds, bool stacks);
+    // --profile: from after_seconds on, sample every thread that is running about once a millisecond for seconds,
+    // then print each busy thread's share of the time and its top functions (Windows only).
+    void start_profiler(int after_seconds, int seconds);
     // Development: spin on one RDRAM byte and dump every thread's game frames when it changes (first 6 changes).
     void start_byte_watch(uint32_t vram);
     // --hwwatch: print each instruction that reads or writes a byte of RDRAM, with its game stack.
