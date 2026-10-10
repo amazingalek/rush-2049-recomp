@@ -559,15 +559,13 @@ void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
         return;
     }
 
-    // A replaced texture is drawn with the rectangle's edge on texel coordinate (s, t) exactly, so a flipped strip's
-    // rows land one texel off from where the RDP puts them, and its last screen row is the texture's first row
-    // clamped (the original drawn by RT64 does the same). That row gets the middle of the screen row it fills.
+    // Each texel gets the part of the picture it covers on screen. A flipped strip needs RT64 to start its high
+    // resolution UV on the texel each pixel shows (rt64-0004-flipped-rect-high-res.patch), or it lands a row off.
     uint32_t out_w = width * title_scale, out_h = height * title_scale;
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
     for (uint32_t oy = 0; oy < out_h; oy++) {
         for (uint32_t ox = 0; ox < out_w; ox++) {
-            float u = (ox + 0.5f) / title_scale, v = (oy == 0 && dt < 0) ? -0.5f : (oy + 0.5f) / title_scale;
-            const uint8_t* p = pixel(ulx + (u - s0), uly + (v - t0) / dt);
+            const uint8_t* p = pixel(screen_x((ox + 0.5f) / title_scale), screen_y((oy + 0.5f) / title_scale));
             uint8_t* o = &rgba[((size_t)oy * out_w + ox) * 4];
             o[0] = p[0];
             o[1] = p[1];

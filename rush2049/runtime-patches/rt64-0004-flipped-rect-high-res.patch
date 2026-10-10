@@ -1,0 +1,39 @@
+diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
+index e7895c3..cea0403 100644
+--- a/src/shaders/RasterPS.hlsl
++++ b/src/shaders/RasterPS.hlsl
+@@ -119,7 +119,15 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+         screenPos.x += FbParams.horizontalMisalignment;
+         lowResUV -= fmod(screenPos.xy, FbParams.resolutionScale.yy) * float2(ddxVertexUV.x, ddyVertexUV.y);
+     }
+-    
++
++    // A high resolution tile is sampled at vertexUV, which on a rect drawn backwards (a negative dsdx or dtdy) runs
++    // one native pixel behind the texel the low resolution UV picks, so its last row or column samples outside the
++    // tile. Start each native pixel at the texel it shows instead.
++    float2 highResUV = vertexUV;
++    if (renderFlagRect(rp.flags) && !renderFlagUpscale2D(rp.flags)) {
++        highResUV -= min(float2(ddxVertexUV.x, ddyVertexUV.y), 0.0f) * FbParams.resolutionScale.yy;
++    }
++
+     int tileIndex0 = 0;
+     int tileIndex1 = 1;
+     float lodFraction;
+@@ -142,7 +150,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+         }
+         
+         const GPUTile gpuTile = GPUTiles[globalTileIndex];
+-        const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? vertexUV : lowResUV;
++        const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? highResUV : lowResUV;
+         texVal0 = sampleTexture(otherMode, rp.flags, textureUV, ddxVertexUV, ddyVertexUV, rdpTile, gpuTile, false);
+     }
+     
+@@ -157,7 +165,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+         }
+         
+         const GPUTile gpuTile = GPUTiles[globalTileIndex];
+-        const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? vertexUV : lowResUV;
++        const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? highResUV : lowResUV;
+         const uint nativeSampler = renderFlagNativeSampler1(rp.flags);
+         texVal1 = sampleTexture(otherMode, rp.flags, textureUV, ddxVertexUV, ddyVertexUV, rdpTile, gpuTile, oneCycleHardwareBug);
+     }
