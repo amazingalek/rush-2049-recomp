@@ -50,9 +50,10 @@ jobs:
       - name: Checkout
         shell: bash
         run: |
-          git init -q
-          git fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
-          git checkout -q FETCH_HEAD
+          pwd; ls -la
+          git init
+          git fetch --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git checkout FETCH_HEAD
       - name: Cache key
         id: key
         shell: bash
@@ -106,7 +107,7 @@ jobs:
       - name: DIAG why ninja rebuilds
         shell: bash
         run: |
-          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1 || true
           ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -8
           du -sh .git/modules rush2049/lib/* rush2049/build rush2049/build/* 2>/dev/null | sort -h | tail -12
       - name: Build runtime, renderer and frontend libraries
@@ -178,7 +179,7 @@ jobs:
       - name: DIAG why ninja rebuilds
         shell: bash
         run: |
-          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1 || true
           ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -8
           du -sh .git/modules rush2049/lib/* rush2049/build rush2049/build/* 2>/dev/null | sort -h | tail -12
       - name: Build runtime, renderer and frontend libraries
