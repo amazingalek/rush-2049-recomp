@@ -11,8 +11,11 @@ extern "C" {
 void rush2049_inflate_begin(uint8_t* rdram, recomp_context* ctx);
 void rush2049_inflate_end(uint8_t* rdram, recomp_context* ctx);
 
-/* Before the scheduler's swap throttle (us.toml): $t3 holds retraces since the last swap. */
-void rush2049_frame_pace(recomp_context* ctx);
+/* Before the scheduler's swap throttle (us.toml): retraces since the last swap, as the game should see them. */
+gpr rush2049_frame_pace(gpr retraces);
+/* On every retrace, before the scheduler forwards it to its clients (us.toml): sets the VI rate and keeps the
+   clients at 60 retraces a second. */
+void rush2049_retrace_clients(uint8_t* rdram, recomp_context* ctx);
 
 /* Widescreen race HUD (src/widescreen.cpp): around every texture rectangle, when the race timer is drawn, and
    before a graphics task starts (turns on RT64's extended GBI for that display list). */
