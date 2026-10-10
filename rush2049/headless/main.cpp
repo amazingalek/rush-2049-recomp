@@ -189,7 +189,13 @@ namespace {
         printf("[headless] %.0fs after boot: retraces/s %.1f  display lists/s %.1f  %s\n", wall,
                (last_retraces - start_retraces) / wall, dls / wall, cpu_text);
         fflush(stdout);
-        // Not std::exit: the game threads are still running, and destroying them at exit aborts.
+        // Not std::exit: the game threads are still running, and destroying them at exit aborts. In a web worker
+        // _Exit only ends the worker, so node is told to exit; a browser page just keeps running.
+#ifdef __EMSCRIPTEN__
+        MAIN_THREAD_EM_ASM({
+            if (typeof process !== 'undefined') process.exit(0);
+        });
+#endif
         std::_Exit(EXIT_SUCCESS);
     }
 }

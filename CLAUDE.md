@@ -69,7 +69,9 @@ The runtime patches, one line each (the why is in the code they touch):
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
 N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
-N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle
+N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
+                       thread names
+N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
 RecompFrontend-0001    built-in texture packs (the hi-res font)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -169,6 +171,50 @@ with the window instead) and about 50k of compute and uploads. No integrated GPU
   SAVE GHOST prompt needs a developer profile name). To skip a 47-second lap, write a bigger float into the
   track's time limit in the table at `0x80111754` before the race starts.
 - Every port reports a controller with a pak; a port nobody plays reads as a pad left alone.
+
+## The web target
+
+The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
+for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
+
+**Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
+N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
+prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
+
+```sh
+git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
+EMSDK_PYTHON=<python 3> <python 3> emsdk.py install latest && <python 3> emsdk.py activate latest
+source emsdk_env.sh                # then, with RecompiledFuncs/ and rsp/musyx.cpp generated:
+emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXE_LINKER_FLAGS="--preload-file <rom.z64>@/rom.z64"
+cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120
+```
+
+A browser needs the page served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy:
+require-corp` (threads need SharedArrayBuffer; on GitHub Pages that takes coi-serviceworker). What it took, besides
+N64ModernRuntime-0003 and N64Recomp-0001:
+
+- wasm-ld turns a call whose signature doesn't match the callee into a trap. The recompiler's C calls a few
+  functions it never declares, so `headless/recompiled_externs.h` declares them and Emscripten builds make an
+  implicit declaration an error. A new one shows up as that error, or as `unreachable` at run time.
+- WebAssembly only rounds to nearest and `fesetround` silently does nothing; without N64Recomp-0001 the game's
+  truncating float-to-int conversions round instead, and the attract race walks off RDRAM after 40 seconds.
+- Float to int out of range saturates in wasm and gives 0x80000000 on x86. Nothing has hit it yet.
+- RDRAM has no guard pages, so a stray access corrupts memory rather than faulting, unless it lands past the heap.
+
+Measured on 2026-10-10 (title screen and attract races, 60 retraces and 30 display lists a second wanted, HQ mix):
+
+MEASUREMENTS
+
+**Still to do, each its own card:** graphics. RT64 and recompui draw through plume, which has D3D12, Vulkan and
+Metal backends only (`rt64/src/contrib/plume/`, `recompui/src/renderer/rt64_render_context.cpp`). WebGPU needs a
+plume backend (Emdawnwebgpu), a redesign of the texture binding (the shaders index a bindless texture array,
+`shaders/TextureSampler.hlsli`, which core WebGPU lacks) and HLSL to WGSL; a WebGL renderer instead would lose the
+rt64 patches. Then the frontend: SDL2 audio and input exist in Emscripten; `_WIN32` branches are only in `main.cpp`,
+`music.cpp`, `rom_finder.cpp` and `crash_handler.cpp`; the ROM comes from a file picker and stays in IndexedDB,
+never hosted. Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
+have to emit and load wasm modules instead. No other N64
+recomp running in a browser was found to learn from.
 
 ## Ruled out, so don't retry
 
