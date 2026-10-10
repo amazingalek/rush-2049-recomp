@@ -24,6 +24,8 @@ option has an Original value that runs the game as it shipped.
 
 - **High resolution**: renders at the window's size, up to 4K and beyond, instead of 320×240, with 2× MSAA.
 - **Hi-res menu and HUD text**: the game's bitmap fonts are upscaled instead of drawn as 240p blocks.
+- **Hi-res title screen**: the title picture is drawn from a 4× AI upscale (Real-ESRGAN) instead of at 240p. The
+  repo ships only a patch, which the game applies to its own picture.
 - **60 fps and unlocked frame rates**: the game logic runs at 60 instead of 30, and on a high-refresh monitor
   RT64 interpolates between frames up to the display's refresh rate.
 - **Widescreen**: 3D widens to the window's aspect ratio, the race HUD moves out to the edges, two- and
@@ -56,6 +58,7 @@ closed. For the game exactly as it shipped, set every Original value:
 | Rendering resolution | Resolution | `graphics.json` `res_option` | `"Auto"` (window size) | `"Original"` (320×240) |
 | Anti-aliasing | MS Anti-Aliasing | `graphics.json` `msaa_option` | `"MSAA2X"` | `"None"` |
 | Hi-res menu and HUD text | Hi-res Font | `graphics.json` `hires_font` | `"On"` | `"Off"` |
+| Hi-res title screen | Hi-res Title Screen | `graphics.json` `hires_title` | `"On"` | `"Original"` (240p) |
 | Replacement music | Replacement Music | `sound.json` `music_replacement` | `"On"` (only songs that have a file) | `"Off"` |
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
@@ -243,5 +246,6 @@ cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes bui
 Built on [N64Recomp](https://github.com/N64Recomp/N64Recomp), [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime),
 [RecompFrontend](https://github.com/N64Recomp/RecompFrontend) and [RT64](https://github.com/rt64/rt64), by Wiseguy,
 Dario and the N64Recomp contributors; function signatures from [n64sym](https://github.com/shygoo/n64sym); MusyX
-audio through mupen64plus-rsp-hle's HLE (GPL-2.0-or-later). *San Francisco Rush 2049* belongs to its rights
-holders; this project ships none of it. The recomp in `rush2049/` is GPLv3, see [rush2049/COPYING](rush2049/COPYING).
+audio through mupen64plus-rsp-hle's HLE (GPL-2.0-or-later); the title screen upscaled with
+[Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN). *San Francisco Rush 2049* belongs to its rights holders; this
+project ships none of it. The recomp in `rush2049/` is GPLv3, see [rush2049/COPYING](rush2049/COPYING).

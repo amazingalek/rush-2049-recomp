@@ -31,7 +31,9 @@ here, and a finding that explains code goes beside that code.
 ## Rules
 
 - No ROMs, ROM-derived assets or extracted game data in git, CI, PRs or releases (`tools/ci/check_repo.py` checks).
-  The generated hi-res font pack (`rush2049/hires_font/`) is ROM-derived too.
+  The generated hi-res font pack (`rush2049/hires_font/`) and title pack (`rush2049/hires_title/`) are ROM-derived
+  too. `rush2049/assets/title.patch` is allowed (Alek's call): it describes an upscale in terms of the game's own
+  title and is noise without it. Make a new one with `tools/rush2049/title_patch.py`, never commit the picture.
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
   topic (General, Graphics, Sound, Controls), with a line in the README's list and a row in its settings table.
 - Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
@@ -72,12 +74,13 @@ N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI 
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
                        thread names
 N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
-RecompFrontend-0001    built-in texture packs (the hi-res font)
+RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
+rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
 ```
 
 ## This machine

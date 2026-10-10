@@ -247,6 +247,7 @@ target_link_libraries(Rush2049Recompiled PRIVATE
     librecomp
     ultramodern
     rt64
+    libzstd_static
     nfd
 )
 

@@ -73,6 +73,17 @@ namespace {
     };
     const std::string hires_font_option = "hires_font";
 
+    enum class HiresTitle {
+        Original,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> hires_title_options = {
+        {HiresTitle::Original, "Original", "Original"},
+        {HiresTitle::On, "On", "On"},
+    };
+    const std::string hires_title_option = "hires_title";
+
     enum class SplitScreenRatio {
         Expand,
         Original,
@@ -121,6 +132,24 @@ namespace {
     };
     const std::string musyx_mix_option = "musyx_mix";
     const std::string music_replacement_volume_option = "music_replacement_volume";
+}
+
+bool rush2049::split_screen_expand() {
+    return split_screen_ratio_setting.load(std::memory_order_relaxed) == SplitScreenRatio::Expand;
+}
+
+bool rush2049::menu_expand() {
+    return menu_ratio_setting.load(std::memory_order_relaxed) == MenuRatio::Expand;
+}
+
+bool rush2049::rumble_pak_selected() {
+    auto value = recompui::config::get_general_config().get_option_value(accessory_option);
+    return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
+}
+
+bool rush2049::large_controller_pak() {
+    auto value = recompui::config::get_general_config().get_option_value(pak_size_option);
+    return static_cast<PakSize>(std::get<uint32_t>(value)) == PakSize::Large;
 }
 
 // Keyboard defaults for driving. The stock defaults put the C buttons on the arrow keys, where a PC player
@@ -261,6 +290,21 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(hires_font_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_hires_font(static_cast<HiresFont>(std::get<uint32_t>(cur_value)) == HiresFont::On);
+        });
+
+    graphics.add_enum_option(
+        hires_title_option,
+        "Hi-res Title Screen",
+        "Draws the title screen from a 4x upscale of its picture (made with Real-ESRGAN) instead of the 240p original. "
+        "The game rebuilds the upscale from its own picture and a patch that ships with it."
+        "<br/>"
+        "Texture packs you enable take priority.",
+        hires_title_options,
+        HiresTitle::On
+    );
+    graphics.add_option_change_callback(hires_title_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_hires_title(static_cast<HiresTitle>(std::get<uint32_t>(cur_value)) == HiresTitle::On);
         });
 
     graphics.add_enum_option(
