@@ -34,7 +34,7 @@ jobs:
 
   # The patches library and the example mod are MIPS code: built with the distro's clang and lld, then recompiled by
   # N64Recomp and packed by RecompModTool, both built from the runtime's pinned N64Recomp. None of it needs the ROM.
-  # (The Windows job doesn't compile register_patches.cpp, which includes this job's output.)
+  # (The Windows and Linux jobs don't compile register_patches.cpp, which includes this job's output.)
   patches:
     runs-on: ubuntu-latest
     steps:
@@ -146,7 +146,7 @@ jobs:
       - name: Compile the game's own sources
         run: |
           objs=$(ninja -C rush2049/build -t targets all |
-            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|/rsp/')
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|register_patches|/rsp/')
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs
