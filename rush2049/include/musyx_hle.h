@@ -9,6 +9,7 @@
 namespace rush2049 {
     enum class MusyxMode {
         Hle,     // mupen64plus-rsp-hle's MusyX v1 (default)
+        Native,  // the same, without the high-quality mix whatever the Sound tab says
         Lle,     // the game's microcode, recompiled by RSPRecomp
         Compare, // run both on the same input for the first tasks, keep LLE's result, log the differences
     };
@@ -18,11 +19,13 @@ namespace rush2049 {
     RspUcodeFunc* get_musyx_ucode();
 
     // The high-quality mix: the HLE also renders every subframe at twice the game's rate, with a better
-    // interpolator, and the audio output plays that instead. On by default; `--musyx native` turns it off.
+    // interpolator, and the audio output plays that instead. The Sound tab's MusyX Mixing option, On by default;
+    // `--musyx native` overrides it.
     void set_musyx_hires(bool enabled);
     bool musyx_hires_enabled();
-    // Rewrites one AI buffer (s16 stereo, as the game queues it) at twice the rate into `out`.
-    void musyx_hires_buffer(const int16_t* samples, size_t sample_count, std::vector<int16_t>& out);
+    // Rewrites one AI buffer (s16 stereo, as the game queues it) at twice the rate into `out`: left, right, on the
+    // 16-bit scale but not clamped to it.
+    void musyx_hires_buffer(const int16_t* samples, size_t sample_count, std::vector<float>& out);
     // Frames played from the high-quality mix, and frames it had no match for (upsampled from the game's).
     void musyx_hires_counts(uint64_t& matched, uint64_t& fallback);
 }
