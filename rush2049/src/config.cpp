@@ -93,6 +93,19 @@ namespace {
     // Read on the game thread with every display list.
     std::atomic<SplitScreenRatio> split_screen_ratio_setting{ SplitScreenRatio::Expand };
 
+    enum class MenuRatio {
+        Expand,
+        Original,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> menu_ratio_options = {
+        {MenuRatio::Expand, "Expand", "Expand"},
+        {MenuRatio::Original, "Original", "Original"},
+    };
+    const std::string menu_ratio_option = "menu_ratio";
+    // Read on the game thread with every display list.
+    std::atomic<MenuRatio> menu_ratio_setting{ MenuRatio::Expand };
+
     enum class MusicReplacement {
         Off,
         On,
@@ -123,6 +136,10 @@ uint32_t rush2049::game_frame_rate() {
 
 bool rush2049::split_screen_expand() {
     return split_screen_ratio_setting.load(std::memory_order_relaxed) == SplitScreenRatio::Expand;
+}
+
+bool rush2049::menu_expand() {
+    return menu_ratio_setting.load(std::memory_order_relaxed) == MenuRatio::Expand;
 }
 
 bool rush2049::rumble_pak_selected() {
@@ -314,6 +331,22 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(split_screen_ratio_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             split_screen_ratio_setting = static_cast<SplitScreenRatio>(std::get<uint32_t>(cur_value));
+        });
+
+    graphics.add_enum_option(
+        menu_ratio_option,
+        "Menu Aspect Ratio",
+        "How the menus fit a wide window. The original game draws them on a 4:3 picture, so at 16:9 there are bars "
+        "at the sides."
+        "<br/>"
+        "<b>Expand:</b> the menu stays where it is and the background picture is mirrored out to the window's edges "
+        "(up to about 21:9). Needs <recomp-color primary>Aspect Ratio</recomp-color> at Expand.",
+        menu_ratio_options,
+        MenuRatio::Expand
+    );
+    graphics.add_option_change_callback(menu_ratio_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            menu_ratio_setting = static_cast<MenuRatio>(std::get<uint32_t>(cur_value));
         });
 
     recompui::config::create_controls_tab();

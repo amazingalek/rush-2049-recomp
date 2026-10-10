@@ -8,8 +8,8 @@
 // display lists reach RT64 as the game wrote them. Nothing is inserted: callers keep their own copies of the display
 // list pointer across the call, so extra commands would be overwritten.
 //
-// Menus use the same function and stay 4:3, so this only applies during a race, which is when the race timer is
-// drawn (func_8010761C). RT64 only reads extended commands after a gEXEnable in the same display list, and every
+// Menus use the same function, so this only applies during a race, which is when the race timer is drawn
+// (func_8010761C). RT64 only reads extended commands after a gEXEnable in the same display list, and every
 // frame's list starts by setting segment 0 to 0, which is already its value, so that command becomes gEXEnable.
 //
 // The two spinning coins beside the right-hand counters are 3D models, drawn among the world's objects with a matrix
@@ -29,6 +29,11 @@
 // The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
 // score boxes are fill rectangles in the HUD's list; each fill + sync pair is rewritten in place as RT64's extended
 // fill rectangle, anchored the same way.
+//
+// Menus. Their background is a 4:3 picture drawn as texture rectangles, and the menu sits on it, so the menu stays
+// where it is and the picture is extended: with "Menu Aspect Ratio" at Expand, each strip of it at the screen's left
+// or right edge becomes a call to a list that draws the strip and its mirror image across the edge, so the side bars
+// show the circuit-board pattern carried on rather than black.
 
 #include <algorithm>
 #include <cmath>
@@ -454,6 +459,72 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
     return true;
 }
 
+// Menus: the background picture (320x220) is texture rectangles, rows 256 pixels wide from the left edge and a column
+// 64 wide at the right edge. Each one at an edge is replaced by a call to a list that widens the scissor, draws it,
+// and draws its mirror image across the screen edge into the side bar.
+constexpr int menu_list_commands = 15;
+constexpr int menu_list_bytes = menu_list_commands * 8;
+constexpr int menu_lists_per_frame = 96;
+uint32_t menu_lists = 0;
+int menu_list_frame = 0;
+int menu_lists_used = 0;
+bool rect_menu = false;
+
+// The background's strips (draw_tex_rect's corners are inclusive). The title screen's picture is laid out the same way
+// but drawn in copy mode (4 texels a step in s); it's a picture rather than a pattern that carries on, so only strips
+// drawn one texel to a pixel are widened.
+bool is_menu_background(int x0, int y0, int x1, int y1) {
+    return ((x0 == 0 && x1 == 255) || (x0 == 256 && x1 == screen_width - 1)) && y1 - y0 < 32;
+}
+
+// Mirrored copies reach this far into each side bar, in pixels: 21:9 or so.
+constexpr int menu_bar_width = 128;
+
+// Replaces the texture rectangle triple at p, a strip of the menu background at the left or right edge of the 4:3
+// screen, with a call to a list at `list` that draws it and fills the side bar beside it.
+void widen_menu_rect(uint8_t* rdram, uint32_t p, uint32_t list) {
+    uint32_t w0 = read_word(rdram, p), w1 = read_word(rdram, p + 4);
+    int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;  // 10.2
+    int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
+    int tile = (w1 >> 24) & 7;
+    uint32_t st = read_word(rdram, p + 12), d = read_word(rdram, p + 20);
+    int s = (int16_t)(st >> 16), t = (int16_t)st;      // s10.5
+    int dsdx = (int16_t)(d >> 16), dtdy = (int16_t)d;  // s5.10 a pixel, so dsdx / 128 a quarter pixel in s
+    auto s_at = [&](int x) { return s + (x - ulx) * dsdx / 128; };
+
+    GfxCommand cmds[menu_list_commands]{};
+    GfxCommand* c = cmds;
+    gEXPushScissor(c++);
+    gEXSetScissor(c, 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, screen_height);
+    c += 2;
+    auto rect = [&](int x0, int x1, int s0, int ds) {
+        gEXTextureRectangle(c, G_EX_ORIGIN_NONE, G_EX_ORIGIN_NONE, x0, uly, x1, lry, tile, s0, t, ds, dtdy);
+        c += 3;
+    };
+    // The strip, its mirror image across the screen edge (starting from the texel at the edge), and, when the strip is
+    // narrower than the bar (the right-hand column), the strip again beyond that.
+    rect(ulx, lrx, s, dsdx);
+    int m = std::min(lrx - ulx, menu_bar_width * 4);
+    int pixel = dsdx / 32;
+    if (ulx == 0) {
+        rect(-m, 0, s_at(m) - pixel, -dsdx);
+        if (m < menu_bar_width * 4) {
+            rect(-2 * m, -m, s, dsdx);
+        }
+    } else {
+        rect(lrx, lrx + m, s_at(lrx) - pixel, -dsdx);
+        if (m < menu_bar_width * 4) {
+            rect(lrx + m, lrx + 2 * m, s_at(lrx - m), dsdx);
+        }
+    }
+    gEXPopScissor(c++);
+    c->values.word0 = 0xDF000000;  // gSPEndDisplayList
+    c->values.word1 = 0;
+    c++;
+    write_commands(rdram, list, cmds, (int)(c - cmds));
+    write_call(rdram, p, list);
+}
+
 } // namespace
 
 extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
@@ -464,11 +535,20 @@ extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
 extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     rect_origin = G_EX_ORIGIN_NONE;
     rect_tracked = false;
+    rect_menu = false;
+    int x0 = (int)ctx->r4;
+    int x1 = (int)ctx->r6;
+    int y0 = (int)ctx->r5;
+    int y1 = (int)ctx->r7;
+    if (rush2049::menu_expand() && split_view_count == 0 && !split_screen_last_frame &&
+        is_menu_background(x0, y0, x1, y1) && !single_player_race(rdram)) {
+        rect_menu = true;
+        rect_dl_start = read_word(rdram, dl_ptr_addr);
+        return;
+    }
     if (!hud_moves()) {
         return;
     }
-    int x0 = (int)ctx->r4;
-    int x1 = (int)ctx->r6;
     if (split_view_count > 0) {
         rect_origin = split_rect_origin(x0, x1);
         rect_tracked = true;
@@ -485,6 +565,24 @@ extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
+    if (rect_menu) {
+        rect_menu = false;
+        if (menu_lists == 0) {
+            menu_lists = alloc_lists(rdram, menu_list_bytes * menu_lists_per_frame * model_list_frames);
+        }
+        uint32_t end = read_word(rdram, dl_ptr_addr);
+        for (uint32_t p = rect_dl_start; menu_lists != 0 && p + 24 <= end; p += 8) {
+            if ((read_word(rdram, p) >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 ||
+                (read_word(rdram, p + 16) >> 24) != 0xF1 || (read_word(rdram, p + 20) >> 16) != 0x400 ||
+                menu_lists_used == menu_lists_per_frame) {
+                continue;
+            }
+            uint32_t list = menu_lists + (menu_list_frame * menu_lists_per_frame + menu_lists_used++) * menu_list_bytes;
+            widen_menu_rect(rdram, p, list);
+            p += 16;
+        }
+        return;
+    }
     if (rect_origin == G_EX_ORIGIN_NONE && !rect_tracked) {
         return;
     }
@@ -520,9 +618,12 @@ extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
 
 extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr) {
     gpr task = (gpr)(int32_t)task_addr;
-    if (!hud_moves() || MEM_W(0x00, task) != 1) {  // M_GFXTASK
+    bool menus = rush2049::menu_expand();
+    if (!(hud_moves() || menus) || MEM_W(0x00, task) != 1) {  // M_GFXTASK
         return;
     }
+    menu_list_frame = (menu_list_frame + 1) % model_list_frames;
+    menu_lists_used = 0;
     uint32_t dl = (uint32_t)MEM_W(0x30, task) | 0x80000000;
     if (read_word(rdram, dl) != 0xDB060000 || read_word(rdram, dl + 4) != 0) {  // gsSPSegment(0, 0)
         return;
@@ -531,6 +632,9 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     gEXEnable(&cmd);
     write_word(rdram, dl, cmd.values.word0);
     write_word(rdram, dl + 4, cmd.values.word1);
+    if (!hud_moves()) {
+        return;
+    }
 
     bool in_race = single_player_race(rdram);
 
