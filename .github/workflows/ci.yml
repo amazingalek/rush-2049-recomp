@@ -49,11 +49,12 @@ jobs:
       # Not actions/checkout: its cleanup walks every submodule the cache restored, ~15 s on Windows.
       - name: Checkout
         shell: bash
+        env:
+          TOKEN: ${{ github.token }}
         run: |
-          pwd; ls -la
-          git init
-          git fetch --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
-          git checkout FETCH_HEAD
+          git init -q
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"             fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
       - name: Cache key
         id: key
         shell: bash
