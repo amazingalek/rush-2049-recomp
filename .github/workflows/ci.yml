@@ -1,4 +1,5 @@
-# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact).
+# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact). Releases are
+# built on the PC with the ROM by tools/rush2049/release.sh (CLAUDE.md, "Releases").
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.

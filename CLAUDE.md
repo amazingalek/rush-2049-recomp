@@ -110,6 +110,14 @@ submodule update after it anyway. Without `portable.txt` the game reads and writ
 this machine too: stop only the PID you started (`taskkill //PID <pid> //F`), never by image name, and check
 `gpu.mjs` before you measure anything.
 
+## Releases
+
+Cut here, never in CI (no ROM, so no link). Bump `version_string` in `rush2049/src/main.cpp`, merge, then from a
+clean checkout of `origin/main` with a full setup: `bash tools/rush2049/release.sh` (`--dry-run` builds and zips
+only). It builds Release in `rush2049/build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
+and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
+no ROM.
+
 ## Developer flags
 
 ```
