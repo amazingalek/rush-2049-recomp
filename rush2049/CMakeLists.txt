@@ -134,6 +134,7 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/dl_dump.cpp
     ${CMAKE_SOURCE_DIR}/src/widescreen.cpp
     ${CMAKE_SOURCE_DIR}/src/hires_font.cpp
+    ${CMAKE_SOURCE_DIR}/src/rewind.cpp
     ${CMAKE_SOURCE_DIR}/src/music.cpp
     ${CMAKE_SOURCE_DIR}/src/audio_resampler.cpp
     ${CMAKE_SOURCE_DIR}/src/audio_limiter.cpp

@@ -88,6 +88,52 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 static bool log_input = false;
 static int fake_players = 0;
 
+// --input <file>: scripted port 1 input for unattended test runs. Each line is "<seconds> <buttons hex> [x y]",
+// seconds counted from the first input read, and the last line whose time has passed is held. Lines starting with #
+// are comments. Bit 0x10000, which is no N64 button, holds Rewind.
+struct ScriptedInput {
+    double at;
+    uint32_t buttons;
+    float x, y;
+};
+static std::vector<ScriptedInput> input_script;
+
+static void load_input_script(const char* path) {
+    FILE* f = fopen(path, "r");
+    if (f == nullptr) {
+        fprintf(stderr, "--input: can't open %s\n", path);
+        return;
+    }
+    char line[256];
+    while (fgets(line, sizeof(line), f) != nullptr) {
+        ScriptedInput in{};
+        if (line[0] != '#' && sscanf(line, "%lf %x %f %f", &in.at, &in.buttons, &in.x, &in.y) >= 2) {
+            input_script.push_back(in);
+        }
+    }
+    fclose(f);
+}
+
+static const ScriptedInput* scripted_input() {
+    if (input_script.empty()) {
+        return nullptr;
+    }
+    static const auto start = std::chrono::steady_clock::now();
+    double now = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    const ScriptedInput* current = nullptr;
+    for (const ScriptedInput& in : input_script) {
+        if (in.at <= now) {
+            current = &in;
+        }
+    }
+    return current;
+}
+
+bool rush2049::scripted_rewind() {
+    const ScriptedInput* in = scripted_input();
+    return in != nullptr && (in->buttons & 0x10000) != 0;
+}
+
 // Whether a player plays on this port. In single-player mode that's only port 1. --players N: ports 1..N, so split
 // screen can be tested with one pad (the extra ports get port 1's input).
 static bool port_has_player(int port) {
@@ -104,6 +150,12 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
         return true;
     }
     bool ret = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
+    if (const ScriptedInput* in = scripted_input(); in != nullptr && player_index == 0) {
+        *buttons_out = (uint16_t)in->buttons;
+        *x_out = in->x;
+        *y_out = in->y;
+        ret = true;
+    }
     if (log_input && player_index == 0) {
         rush2049::probe_input_reads++;
         static uint16_t last_buttons = 0;
@@ -397,6 +449,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--probes") == 0) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
+        }
+        if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
+            load_input_script(argv[++i]);
         }
         if (strcmp(argv[i], "--players") == 0 && i + 1 < argc) {
             fake_players = atoi(argv[++i]);

@@ -1,0 +1,275 @@
+// Rewind, as in Braid: hold the Rewind input in a single-player race and the race runs backwards, every car, the
+// clock, the laps and the ghost being recorded, until you let go and drive on from there.
+//
+// The race is saved in the frame loop (thread 7) just before it draws a race frame: there the frame's logic is done,
+// and thread 5 is between two ticks of the race (when it isn't, the frame is skipped). What is saved is RAM from the
+// end of the code up, minus the parts that belong to something other than the race: the OS's message queues, the
+// controller and pak state, the audio and music threads' memory, the scheduler and graphics tasks, the vertex
+// buffers, the Z-buffer and the framebuffers, and the timestamp the game measures each tick against. Those were found
+// by watching which part of a frame writes each word: the tick, the frame's logic, its drawing, or another thread.
+//
+// A copy of that memory (the shadow) holds it as of the last frame saved. Each frame, the 64-byte pieces that changed
+// since are stored with their old contents as that frame's record, and the shadow is updated. A frame while Rewind is
+// held first puts back everything that changed since the shadow (the tick that ran from the restored state), then
+// applies the newest record, which takes RAM and the shadow one frame further back. The records are capped at
+// history_cap bytes, the oldest dropped first. A frame in which no race time passed (paused, or no tick since the last
+// frame above 60 fps) is neither saved nor stepped back, so the race rewinds at the speed it was played.
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <deque>
+#include <vector>
+
+#include "recomp.h"
+#include "recompinput/profiles.h"
+#include "rush2049_game.h"
+#include "rush2049_hooks.h"
+
+namespace {
+
+constexpr uint32_t game_state_addr = 0x801174B4;  // the frame loop's state bits; 0x00400000 in a race
+constexpr uint32_t race_clock_addr = 0x801543CC;  // float, written by the tick
+constexpr uint32_t saved_lo = 0x8010FD80;         // the end of the main code segment
+constexpr uint32_t saved_hi = 0x80800000;
+constexpr size_t history_cap = 128 * 1024 * 1024;
+
+struct Range {
+    uint32_t lo, hi;
+};
+
+// Not the race's (see the top of the file), in address order.
+constexpr Range not_saved[] = {
+    { 0x80110240, 0x80110290 },  // music: the playing song
+    { 0x80111958, 0x80111968 },  // the retrace the last frame started at, the tick's timing
+    { 0x80114730, 0x80114734 },  // frames in flight
+    { 0x80116178, 0x8011617C },
+    { 0x801161CC, 0x801161D0 },
+    { 0x80118E30, 0x80118E34 },
+    { 0x8011EACC, 0x8011EAD0 },
+    { 0x80124EE0, 0x80124F90 },  // timing, with the tick's timestamp at 0x80124F70
+    { 0x80125338, 0x80126128 },  // matrices for the display list
+    { 0x8012A0E8, 0x8012AC28 },  // the same
+    { 0x8012E608, 0x8012E6D4 },
+    { 0x80130EA8, 0x80130EAC },
+    { 0x80138A4C, 0x80138A5C },
+    { 0x8013FED0, 0x8013FED4 },
+    { 0x801403C0, 0x80140414 },
+    { 0x80142728, 0x80143CF8 },  // the sound thread, its queues, command pool and tables
+    { 0x80143F58, 0x80143F68 },  // the sound manager's table of sounds wanting a voice
+    { 0x80143FFC, 0x80144E00 },  // its lists of free, playing and waiting sounds, then the controllers and paks
+    { 0x801460C8, 0x80146200 },  // queues
+    { 0x80149438, 0x8014943C },  // display list pointer
+    { 0x80149780, 0x80149870 },  // queues
+    { 0x80149B10, 0x80149DA4 },
+    { 0x8014A11C, 0x8014A128 },
+    { 0x8014A248, 0x8014A24C },
+    { 0x80150BA0, 0x80150BD0 },
+    { 0x80150F18, 0x80150F60 },  // boot queue messages
+    { 0x80151AE0, 0x80151AE4 },
+    { 0x80152730, 0x801527F0 },  // queues
+    { 0x80153E68, 0x80153F18 },  // queue
+    { 0x80154378, 0x80154390 },  // queue
+    { 0x8015439C, 0x801543A0 },  // its message
+    { 0x80155238, 0x80155290 },  // audio and OS settings
+    { 0x80156BA8, 0x80156D00 },  // thread 8's queue, the graphics task
+    { 0x8015B240, 0x8015B268 },  // graphics buffers
+    { 0x8015F72C, 0x8015F7A0 },
+    { 0x801613F0, 0x8017A640 },  // vertex buffers, queue
+    { 0x8017AEC0, 0x8019D4C0 },  // Z-buffer
+    { 0x801A6000, 0x80218A00 },  // audio, then the sound manager's sounds
+    { 0x807BB000, 0x80800000 },  // framebuffers
+};
+
+std::atomic<bool> enabled{ true };
+bool tick_running = false;     // thread 5 is inside a tick
+std::vector<Range> saved;      // what is saved, as offsets into RDRAM
+std::vector<uint8_t> shadow;   // the saved memory as of the last frame saved, indexed like RDRAM
+bool have_shadow = false;
+// Per frame, newest last: { offset, length, old contents } for each piece that changed.
+std::deque<std::vector<uint8_t>> history;
+size_t history_bytes = 0;
+uint32_t frames_back = 0;     // frames stepped back since Rewind was pressed
+
+uint32_t read_word(const uint8_t* mem, uint32_t addr) {
+    return *(const uint32_t*)(mem + (addr - 0x80000000u));
+}
+
+bool rewind_held() {
+    return recompinput::profiles::get_game_input_held(0, recompinput::GameInput::REWIND) || rush2049::scripted_rewind();
+}
+
+void forget() {
+    history.clear();
+    history_bytes = 0;
+    have_shadow = false;
+}
+
+// Calls f(offset, length) for each piece of saved memory that differs from the shadow.
+template <typename F>
+void for_each_change(const uint8_t* rdram, F f) {
+    constexpr uint32_t block = 4096, piece = 64;
+    for (Range r : saved) {
+        for (uint32_t p = r.lo; p < r.hi;) {
+            uint32_t end = std::min(p + block, r.hi);
+            if (memcmp(rdram + p, shadow.data() + p, end - p) == 0) {
+                p = end;
+                continue;
+            }
+            for (; p < end; p += piece) {
+                uint32_t n = std::min(piece, end - p);
+                if (memcmp(rdram + p, shadow.data() + p, n) != 0) {
+                    f(p, n);
+                }
+            }
+        }
+    }
+}
+
+void save_frame(uint8_t* rdram) {
+    std::vector<uint8_t> record;
+    for_each_change(rdram, [&](uint32_t p, uint32_t n) {
+        size_t at = record.size();
+        record.resize(at + 8 + n);
+        memcpy(record.data() + at, &p, 4);
+        memcpy(record.data() + at + 4, &n, 4);
+        memcpy(record.data() + at + 8, shadow.data() + p, n);
+        memcpy(shadow.data() + p, rdram + p, n);
+    });
+    record.shrink_to_fit();
+    history_bytes += record.size();
+    history.push_back(std::move(record));
+    while (history_bytes > history_cap) {
+        history_bytes -= history.front().size();
+        history.pop_front();
+    }
+}
+
+void step_back(uint8_t* rdram) {
+    for_each_change(rdram, [&](uint32_t p, uint32_t n) { memcpy(rdram + p, shadow.data() + p, n); });
+    if (history.empty()) {
+        return;  // as far back as it goes: stay there
+    }
+    const std::vector<uint8_t>& record = history.back();
+    for (size_t at = 0; at < record.size();) {
+        uint32_t p, n;
+        memcpy(&p, record.data() + at, 4);
+        memcpy(&n, record.data() + at + 4, 4);
+        memcpy(rdram + p, record.data() + at + 8, n);
+        memcpy(shadow.data() + p, record.data() + at + 8, n);
+        at += 8 + n;
+    }
+    history_bytes -= record.size();
+    history.pop_back();
+    frames_back++;
+}
+
+// The sound manager stays live, and the race knows its sounds only by the ID the manager handed out. A sound started
+// in the stretch that was rewound is one the race no longer knows of; most end by themselves (one-shots, and loops
+// whose owner handle dies), but a looping sound without an owner would play on for the rest of the race, and the race
+// starts another when it gets there again. So when Rewind is let go, each such sound whose ID is nowhere in the race's
+// memory is made one that times out, and the sound thread frees it at its next update. Only flags change, no links,
+// so it doesn't matter where the sound thread was stopped.
+int release_orphaned_sounds(uint8_t* rdram) {
+    constexpr uint32_t lists[] = { 0x80144028, 0x80144C58 };  // playing, and waiting for a voice
+    std::vector<uint32_t> nodes, ids;
+    for (uint32_t head : lists) {
+        for (uint32_t node = read_word(rdram, head), n = 0; node != 0 && n < 256; node = read_word(rdram, node), n++) {
+            bool loops = rdram[(node + 0x19 - 0x80000000u) ^ 3] != 0;
+            if (loops && read_word(rdram, node + 0x3C) == 0) {  // no owner
+                nodes.push_back(node);
+                ids.push_back(read_word(rdram, node + 0xC));
+            }
+        }
+    }
+    std::vector<bool> known(ids.size(), false);
+    for (Range r : saved) {
+        for (uint32_t p = r.lo; p < r.hi; p += 4) {
+            uint32_t w = *(const uint32_t*)(rdram + p);
+            for (size_t i = 0; i < ids.size(); i++) {
+                if (w == ids[i]) {
+                    known[i] = true;
+                }
+            }
+        }
+    }
+    int released = 0;
+    for (size_t i = 0; i < nodes.size(); i++) {
+        if (!known[i]) {
+            rdram[(nodes[i] + 0x19 - 0x80000000u) ^ 3] = 0;
+            const float expired = -100.0f;  // past the -10 at which the sound thread frees a sound that timed out
+            memcpy(rdram + (nodes[i] + 0x20 - 0x80000000u), &expired, 4);
+            released++;
+        }
+    }
+    return released;
+}
+
+}
+
+void rush2049::set_rewind(bool on) {
+    enabled = on;
+}
+
+extern "C" void rush2049_rewind_tick_begin(uint8_t* rdram) {
+    tick_running = true;
+}
+
+extern "C" void rush2049_rewind_tick_end(uint8_t* rdram) {
+    tick_running = false;
+}
+
+extern "C" void rush2049_rewind_frame_begin(uint8_t* rdram) {
+    if (read_word(rdram, game_state_addr) != 0x00400000 && have_shadow) {
+        forget();
+    }
+}
+
+extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
+    if (read_word(rdram, game_state_addr) != 0x00400000) {
+        return;  // menus draw here too
+    }
+    if (!enabled || rush2049::split_screen()) {
+        if (have_shadow) {
+            forget();
+        }
+        return;
+    }
+    if (tick_running) {
+        return;
+    }
+    if (!have_shadow) {
+        if (saved.empty()) {
+            uint32_t lo = saved_lo;
+            for (Range r : not_saved) {
+                saved.push_back({ lo - 0x80000000u, r.lo - 0x80000000u });
+                lo = r.hi;
+            }
+            if (lo < saved_hi) {
+                saved.push_back({ lo - 0x80000000u, saved_hi - 0x80000000u });
+            }
+            shadow.resize(saved_hi - 0x80000000u);
+        }
+        for (Range r : saved) {
+            memcpy(shadow.data() + r.lo, rdram + r.lo, r.hi - r.lo);
+        }
+        have_shadow = true;
+        return;
+    }
+    if (read_word(rdram, race_clock_addr) == read_word(shadow.data(), race_clock_addr)) {
+        return;  // no race time has passed
+    }
+    if (rewind_held()) {
+        step_back(rdram);
+        return;
+    }
+    if (frames_back > 0) {
+        int released = release_orphaned_sounds(rdram);
+        fprintf(stderr, "[rewind] back %u frames, %zu frames (%zu MB) left, %d lost sounds released\n", frames_back,
+            history.size(), history_bytes >> 20, released);
+        frames_back = 0;
+    }
+    save_frame(rdram);
+}

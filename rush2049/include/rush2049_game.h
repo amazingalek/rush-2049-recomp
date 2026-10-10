@@ -31,6 +31,12 @@ namespace rush2049 {
     void start_dl_dump(const char* path, double after_seconds);
     // --dump-ram: write all of RDRAM (big-endian) to <prefix>N.bin at each of the comma-separated times in seconds.
     void start_ram_dump(const char* prefix, const char* times);
+    // --input: whether the input script holds Rewind right now (src/main.cpp).
+    bool scripted_rewind();
+    // Rewind (src/rewind.cpp): the General tab's Rewind option.
+    void set_rewind(bool enabled);
+    // Whether the last frame the game drew was split screen (src/widescreen.cpp).
+    bool split_screen();
 
     // Hi-res font (src/hires_font.cpp): set up the generated texture pack in the app folder, then turn it on or off.
     void init_hires_font();

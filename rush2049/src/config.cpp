@@ -1,6 +1,6 @@
-// Config tabs: the stock tabs, plus the controller accessory and Controller Pak size options on the General tab, the
-// game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing and the music
-// replacement options on the Sound tab.
+// Config tabs: the stock tabs, plus the controller accessory, Controller Pak size and rewind options on the General
+// tab, the game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing and the
+// music replacement options on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -37,6 +37,17 @@ namespace {
         {PakSize::Large, "Large", "Large (1.9 MB)"},
     };
     const std::string pak_size_option = "pak_size";
+
+    enum class Rewind {
+        Off,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> rewind_options = {
+        {Rewind::Off, "Off", "Off"},
+        {Rewind::On, "On", "On"},
+    };
+    const std::string rewind_option = "rewind";
 
     enum class GameFrameRate {
         Original,
@@ -281,6 +292,20 @@ void rush2049::init_config() {
         pak_size_options,
         PakSize::Large
     );
+    general.add_enum_option(
+        rewind_option,
+        "Rewind",
+        "Hold <recomp-color primary>Rewind</recomp-color> (Controls tab) in a single-player race and the race runs "
+        "backwards: every car, the clock, the laps and the ghost. Let go to drive on from there. Goes back up to about "
+        "a minute, and uses up to 128 MB of memory for it.",
+        rewind_options,
+        Rewind::On
+    );
+    // Called on load too.
+    general.add_option_change_callback(rewind_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_rewind(static_cast<Rewind>(std::get<uint32_t>(cur_value)) == Rewind::On);
+        });
 
     recomp::config::Config& graphics = recompui::config::create_graphics_tab();
     graphics.add_enum_option(

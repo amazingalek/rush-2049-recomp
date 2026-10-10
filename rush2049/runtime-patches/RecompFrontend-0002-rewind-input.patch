@@ -1,0 +1,93 @@
+diff --git a/recompinput/include/recompinput/input_types.h b/recompinput/include/recompinput/input_types.h
+index f5ed6c0..8b0b68f 100644
+--- a/recompinput/include/recompinput/input_types.h
++++ b/recompinput/include/recompinput/input_types.h
+@@ -29,6 +29,10 @@ namespace recompinput {
+         DEFINE_INPUT(X_AXIS_NEG, 0, "Left") \
+         DEFINE_INPUT(X_AXIS_POS, 0, "Right") \
+ 
++    // Game actions that are no N64 button: the game reads them itself (profiles::get_game_input_held).
++    #define DEFINE_GAME_ACTION_INPUTS() \
++        DEFINE_INPUT(REWIND, 0, "Rewind")
++
+     #define DEFINE_RECOMP_UI_INPUTS() \
+         DEFINE_INPUT(TOGGLE_MENU, 0, "Toggle Menu") \
+         DEFINE_INPUT(ACCEPT_MENU, 0, "Accept (Menu)") \
+@@ -40,6 +44,7 @@ namespace recompinput {
+     #define DEFINE_ALL_INPUTS() \
+         DEFINE_N64_AXIS_INPUTS() \
+         DEFINE_N64_BUTTON_INPUTS() \
++        DEFINE_GAME_ACTION_INPUTS() \
+         DEFINE_RECOMP_UI_INPUTS()
+ 
+     #define DEFINE_INPUT(name, value, readable) name,
+diff --git a/recompinput/include/recompinput/profiles.h b/recompinput/include/recompinput/profiles.h
+index 45bedd1..5c03bb9 100644
+--- a/recompinput/include/recompinput/profiles.h
++++ b/recompinput/include/recompinput/profiles.h
+@@ -62,6 +62,8 @@ namespace recompinput {
+         int get_or_create_mp_keyboard_profile_index(int player_index);
+         std::string get_string_from_controller_guid(ControllerGUID guid);
+         bool get_n64_input(int player_index, uint16_t* buttons_out, float* x_out, float* y_out);
++        // Whether the player holds a game action input (DEFINE_GAME_ACTION_INPUTS) on their controller or keyboard.
++        bool get_game_input_held(int player_index, GameInput input);
+ 
+         bool load_controls_config(const std::filesystem::path& path);
+         bool save_controls_config(const std::filesystem::path& path);
+diff --git a/recompinput/src/input_mapping.cpp b/recompinput/src/input_mapping.cpp
+index bfcfef4..90d5ce8 100644
+--- a/recompinput/src/input_mapping.cpp
++++ b/recompinput/src/input_mapping.cpp
+@@ -25,6 +25,7 @@ namespace recompinput {
+         { GameInput::X_AXIS_POS,     { InputField::keyboard(SDL_SCANCODE_D) } },
+         { GameInput::Y_AXIS_POS,     { InputField::keyboard(SDL_SCANCODE_W) } },
+         { GameInput::Y_AXIS_NEG,     { InputField::keyboard(SDL_SCANCODE_S) } },
++        { GameInput::REWIND,         { InputField::keyboard(SDL_SCANCODE_BACKSPACE) } },
+ 
+         { GameInput::TOGGLE_MENU,    { InputField::keyboard(SDL_SCANCODE_ESCAPE) } },
+         { GameInput::ACCEPT_MENU,    { InputField::keyboard(SDL_SCANCODE_RETURN) } },
+@@ -53,6 +54,7 @@ namespace recompinput {
+         { GameInput::X_AXIS_POS,     { InputField::controller_analog( SDL_CONTROLLER_AXIS_LEFTX, true) } },
+         { GameInput::Y_AXIS_POS,     { InputField::controller_analog( SDL_CONTROLLER_AXIS_LEFTY, false) } },
+         { GameInput::Y_AXIS_NEG,     { InputField::controller_analog( SDL_CONTROLLER_AXIS_LEFTY, true) } },
++        { GameInput::REWIND,         { InputField::controller_digital(SDL_CONTROLLER_BUTTON_LEFTSTICK) } },
+ 
+         { GameInput::TOGGLE_MENU,    { InputField::controller_digital(SDL_CONTROLLER_BUTTON_BACK) } },
+         { GameInput::ACCEPT_MENU,    { InputField::controller_digital(SDL_CONTROLLER_BUTTON_SOUTH) } },
+diff --git a/recompinput/src/input_types.cpp b/recompinput/src/input_types.cpp
+index c6786e6..258a083 100644
+--- a/recompinput/src/input_types.cpp
++++ b/recompinput/src/input_types.cpp
+@@ -17,6 +17,7 @@ constexpr std::array<std::string, num_game_inputs> get_default_game_input_descri
+     std::array<std::string, num_game_inputs> descriptions = {
+         DEFINE_ALL_INPUTS()
+     };
++    descriptions[static_cast<size_t>(GameInput::REWIND)] = "Hold in a single-player race to run the race backwards. Needs Rewind on in the General settings.";
+     descriptions[static_cast<size_t>(GameInput::TOGGLE_MENU)] = "Open or close this configuration menu from in game.";
+     descriptions[static_cast<size_t>(GameInput::ACCEPT_MENU)] = "In the recomp interface, performs the action for the currently highlighted item. Like pressing a button, or toggling a switch.";
+     descriptions[static_cast<size_t>(GameInput::BACK_MENU)] = "In the recomp interface, returns to the header or backs out to a previous menu.";
+diff --git a/recompinput/src/profiles.cpp b/recompinput/src/profiles.cpp
+index c89956e..89cb184 100644
+--- a/recompinput/src/profiles.cpp
++++ b/recompinput/src/profiles.cpp
+@@ -414,6 +414,20 @@ namespace recompinput {
+         return true;
+     }
+ 
++    bool profiles::get_game_input_held(int player_index, GameInput input) {
++        if (recompinput::game_input_disabled()) {
++            return false;
++        }
++        int profile_index_cont = players::is_single_player_mode() ? profiles::get_sp_controller_profile_index() : players_input_profile_indices[player_index].first;
++        int profile_index_kb = players::is_single_player_mode() ? profiles::get_sp_keyboard_profile_index() : players_input_profile_indices[player_index].second;
++        for (int profile_index : { profile_index_cont, profile_index_kb }) {
++            if (profile_index >= 0 && recompinput::get_input_digital(player_index, input_profiles[profile_index].mappings[(size_t)input])) {
++                return true;
++            }
++        }
++        return false;
++    }
++
+     static void add_input_bindings(json& out, int profile_index, GameInput input) {
+         const std::string& input_name = recompinput::get_game_input_enum_name(input);
+         json& out_array = out[input_name];
