@@ -140,14 +140,16 @@ no ROM.
 
 GPU readings are wall time and the 2070's clock wanders 630–1620 MHz under light load, so compare in cycles (ms ×
 the clock `nvidia-smi` reports over the same run) and interleave runs. Check the host too: with its CPU busy the
-game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves.
+game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves. Separate
+runs at 240p still differ by ±15% in cycles, so for a change worth less than that, switch it on and off every few
+frames inside one run and time the two halves apart.
 
 Where a frame goes, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of cycles (Auto is
 the 1080p column):
 
 ```
 part                         240p   1080p
-render: draws                 116     754   ~500 calls, ~175 cycles each + 40k
+render: draws                 116     754   ~500 calls; ~90k of it stays with no pixels
         vertex compute         27      31
         uploads                25      35   was ~36 at 240p before rt64-0004
         barriers, resolves     13      21
@@ -157,8 +159,9 @@ present: VI pass               71      95   sized by the window: 37 in 1280x720
          UI                     6       6
 ```
 
-So what doesn't scale with resolution is the draw calls (their count, not their pixels), the VI pass (it scales
-with the window instead) and about 50k of compute and uploads. No integrated GPU has been measured.
+So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: see Ruled out), the
+VI pass (it scales with the window instead) and about 50k of compute and uploads. No integrated GPU has been
+measured.
 
 ## Testing in the game
 
@@ -176,8 +179,11 @@ with the window instead) and about 50k of compute and uploads. No integrated GPU
 - A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
 - A draw-distance unlock: the game draws to just short of its far plane already, and its fog sits beyond it.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
-- Cutting the 240p GPU floor further: it is the cost of starting ~500 draw calls a frame (fewer means RT64 merging
-  N64 draws) and a full-window VI pass (one textured triangle and a clear). Only the upload barriers were overhead.
+- Merging or batching RT64's draws to cut the 240p floor. Only ~5% of draws repeat the one before exactly; merging
+  every run that shares a pipeline (wrong textures, timing only) halves the ~500 calls and the draws part moves
+  less than ±4%. With a 1x1 viewport (no pixels) ~90k cycles stay, and the ubershader, which cuts pipeline binds
+  from 80% of draws to 7%, doesn't lower them; it doubles the draws part with pixels on. Draw calls and pipeline
+  binds are not the cost. The VI pass is one textured triangle and a clear. Only the upload barriers were overhead.
 - Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
   Rewrite commands in place instead.
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
