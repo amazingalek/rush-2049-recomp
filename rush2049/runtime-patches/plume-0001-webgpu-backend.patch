@@ -48,6 +48,331 @@ index 0789c20..a951384 100644
  if(PLUME_SDL_VULKAN_ENABLED)
      target_compile_definitions(plume PUBLIC PLUME_SDL_VULKAN_ENABLED)
      target_include_directories(plume PUBLIC ${SDL2_INCLUDE_DIRS})
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index a61f32b..784c336 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -5,9 +5,21 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+     set(PLUME_SDL_VULKAN_ENABLED ON CACHE BOOL "Enable SDL Vulkan integration" FORCE)
+ endif()
+ 
+-# Find or fetch SDL2 (required for examples)
+-include(${CMAKE_SOURCE_DIR}/examples/cmake/modules/PlumeSDL2.cmake)
+-plume_find_sdl2()
++if(EMSCRIPTEN)
++    # SDL2 from Emscripten's port, the page from its default shell (a canvas with id "canvas"), the WebGPU device
++    # from plume_webgpu_device.js, and ASYNCIFY so the examples' loops can yield to the browser every frame.
++    add_compile_options(-sUSE_SDL=2)
++    add_link_options(-sUSE_SDL=2 -sASYNCIFY -sALLOW_MEMORY_GROWTH
++        "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$addRunDependency,$removeRunDependency"
++        "--pre-js=${CMAKE_SOURCE_DIR}/plume_webgpu_device.js")
++    set(CMAKE_EXECUTABLE_SUFFIX ".html")
++    set(SDL2_INCLUDE_DIRS "")
++    set(SDL2_LIBRARIES "")
++else()
++    # Find or fetch SDL2 (required for examples)
++    include(${CMAKE_SOURCE_DIR}/examples/cmake/modules/PlumeSDL2.cmake)
++    plume_find_sdl2()
++endif()
+ 
+ # Initialize shader compilation
+ include(${CMAKE_SOURCE_DIR}/examples/cmake/PlumeShaders.cmake)
+diff --git a/examples/cmake/PlumeShaders.cmake b/examples/cmake/PlumeShaders.cmake
+index 85cd10e..ad696b9 100644
+--- a/examples/cmake/PlumeShaders.cmake
++++ b/examples/cmake/PlumeShaders.cmake
+@@ -8,7 +8,11 @@
+ #   plume_compile_vertex_shader(my_target shaders/main.vert.hlsl mainVert VSMain)
+ #   plume_compile_pixel_shader(my_target shaders/main.frag.hlsl mainFrag PSMain)
+ #   plume_compile_compute_shader(my_target shaders/compute.hlsl computeShader CSMain)
++#
++# With Emscripten, HLSL becomes WGSL only (<name>BlobWGSL): dxc to SPIR-V, then naga (PLUME_NAGA_EXECUTABLE) and
++# PlumeWGSL.cmake. dxc runs on the host, so PLUME_DXC_EXECUTABLE must be given.
+ 
++set(PLUME_SHADERS_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+ include("${CMAKE_CURRENT_LIST_DIR}/modules/PlumeFileToC.cmake")
+ include("${CMAKE_CURRENT_LIST_DIR}/modules/PlumeDXC.cmake")
+ include("${CMAKE_CURRENT_LIST_DIR}/modules/PlumeSpirvCross.cmake")
+@@ -32,6 +36,20 @@ function(_plume_embed TARGET_NAME INPUT_FILE VAR_NAME OUTPUT_C OUTPUT_H)
+ endfunction()
+ 
+ function(plume_shaders_init)
++    if(EMSCRIPTEN)
++        if(NOT DEFINED PLUME_DXC_EXECUTABLE)
++            message(FATAL_ERROR "Set PLUME_DXC_EXECUTABLE to a dxc that runs on this host.")
++        endif()
++
++        find_program(PLUME_NAGA_EXECUTABLE naga)
++        if(NOT PLUME_NAGA_EXECUTABLE)
++            message(FATAL_ERROR "naga not found: install naga-cli (cargo install naga-cli) or set PLUME_NAGA_EXECUTABLE.")
++        endif()
++
++        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/shaders")
++        return()
++    endif()
++
+     if(NOT DEFINED PLUME_DXC_EXECUTABLE)
+         plume_fetch_dxc()
+     endif()
+@@ -53,6 +71,10 @@ function(_plume_compile_hlsl_impl TARGET_NAME SHADER_SOURCE SHADER_TYPE OUTPUT_N
+         set(OUTPUT_EXT "spirv")
+         set(BLOB_SUFFIX "SPIRV")
+         set(FORMAT_FLAGS ${PLUME_DXC_SPV_OPTS})
++    elseif(OUTPUT_FORMAT STREQUAL "wgsl")
++        set(OUTPUT_EXT "wgsl.spirv")
++        set(BLOB_SUFFIX "WGSL")
++        set(FORMAT_FLAGS ${PLUME_DXC_SPV_OPTS})
+     elseif(OUTPUT_FORMAT STREQUAL "dxil")
+         set(OUTPUT_EXT "dxil")
+         set(BLOB_SUFFIX "DXIL")
+@@ -77,7 +99,9 @@ function(_plume_compile_hlsl_impl TARGET_NAME SHADER_SOURCE SHADER_TYPE OUTPUT_N
+     set(DXC_TYPE_ARGS "")
+     if(SHADER_TYPE STREQUAL "vertex")
+         set(PROFILE "vs_${SHADER_MODEL}")
+-        set(DXC_TYPE_ARGS "-fvk-invert-y")
++        if(NOT OUTPUT_FORMAT STREQUAL "wgsl")
++            set(DXC_TYPE_ARGS "-fvk-invert-y")
++        endif()
+     elseif(SHADER_TYPE STREQUAL "pixel" OR SHADER_TYPE STREQUAL "fragment")
+         set(PROFILE "ps_${SHADER_MODEL}")
+     elseif(SHADER_TYPE STREQUAL "compute")
+@@ -119,6 +143,25 @@ function(_plume_compile_hlsl_impl TARGET_NAME SHADER_SOURCE SHADER_TYPE OUTPUT_N
+         VERBATIM
+     )
+ 
++    if(OUTPUT_FORMAT STREQUAL "wgsl")
++        set(WGSL_OUTPUT "${OUT_DIR}/${OUTPUT_NAME}.hlsl.wgsl")
++        set(C_OUTPUT "${OUT_DIR}/${OUTPUT_NAME}.hlsl.wgsl.c")
++        set(H_OUTPUT "${OUT_DIR}/${OUTPUT_NAME}.hlsl.wgsl.h")
++        add_custom_command(
++            OUTPUT "${WGSL_OUTPUT}" "${C_OUTPUT}" "${H_OUTPUT}"
++            COMMAND "${CMAKE_COMMAND}" "-DNAGA=${PLUME_NAGA_EXECUTABLE}" "-DINPUT=${OUTPUT_FILE}" "-DOUTPUT=${WGSL_OUTPUT}"
++                "-DVAR_NAME=${OUTPUT_NAME}Blob${BLOB_SUFFIX}" "-DOUTPUT_C=${C_OUTPUT}" "-DOUTPUT_H=${H_OUTPUT}"
++                -P "${PLUME_SHADERS_MODULE_DIR}/modules/PlumeWGSL.cmake"
++            DEPENDS "${OUTPUT_FILE}" "${PLUME_SHADERS_MODULE_DIR}/modules/PlumeWGSL.cmake"
++            COMMENT "naga: ${OUTPUT_FILE} -> WGSL"
++            VERBATIM
++        )
++
++        target_sources(${TARGET_NAME} PRIVATE "${C_OUTPUT}")
++        target_include_directories(${TARGET_NAME} PRIVATE "${CMAKE_BINARY_DIR}")
++        return()
++    endif()
++
+     set(C_OUTPUT "${OUT_DIR}/${OUTPUT_NAME}.hlsl.${OUTPUT_EXT}.c")
+     set(H_OUTPUT "${OUT_DIR}/${OUTPUT_NAME}.hlsl.${OUTPUT_EXT}.h")
+     _plume_embed(${TARGET_NAME} "${OUTPUT_FILE}" "${OUTPUT_NAME}Blob${BLOB_SUFFIX}" "${C_OUTPUT}" "${H_OUTPUT}")
+@@ -243,6 +286,11 @@ function(plume_compile_shader TARGET_NAME SHADER_SOURCE SHADER_TYPE OUTPUT_NAME
+             set(OUT_DIR "${CMAKE_BINARY_DIR}/shaders")
+         endif()
+ 
++        if(EMSCRIPTEN)
++            _plume_compile_hlsl_impl(${TARGET_NAME} "${SHADER_SOURCE}" ${SHADER_TYPE} ${OUTPUT_NAME} "wgsl" ${ENTRY_POINT} ${IMPL_ARGS})
++            return()
++        endif()
++
+         _plume_compile_hlsl_impl(${TARGET_NAME} "${SHADER_SOURCE}" ${SHADER_TYPE} ${OUTPUT_NAME} "spirv" ${ENTRY_POINT} ${IMPL_ARGS})
+ 
+         if(WIN32 AND NOT ARG_SPEC_CONSTANTS)
+diff --git a/examples/cmake/modules/PlumeWGSL.cmake b/examples/cmake/modules/PlumeWGSL.cmake
+new file mode 100644
+index 0000000..13baeba
+--- /dev/null
++++ b/examples/cmake/modules/PlumeWGSL.cmake
+@@ -0,0 +1,39 @@
++# PlumeWGSL.cmake
++# Script mode (cmake -P): turns a SPIR-V shader into WGSL for plume's WebGPU backend and embeds it as C.
++#
++#   cmake -DNAGA=<naga> -DINPUT=<shader.spirv> -DOUTPUT=<shader.wgsl> -DVAR_NAME=<name>
++#         -DOUTPUT_C=<file.c> -DOUTPUT_H=<file.h> -P PlumeWGSL.cmake
++#
++# naga reads the SPIR-V that dxc writes for Vulkan. --keep-coordinate-space stops it negating the vertex position's y,
++# because the shader is compiled without -fvk-invert-y: WebGPU's clip space is D3D's. naga declares the push
++# constant block as var<immediate> (var<push_constant> before naga 30), which core WebGPU doesn't have, so the line
++# becomes the uniform buffer plume_webgpu.h puts push constants in, @group(3) @binding(0).
++
++foreach(ARG NAGA INPUT OUTPUT VAR_NAME OUTPUT_C OUTPUT_H)
++    if(NOT DEFINED ${ARG})
++        message(FATAL_ERROR "PlumeWGSL.cmake needs -D${ARG}=...")
++    endif()
++endforeach()
++
++execute_process(
++    COMMAND "${NAGA}" --input-kind spv --keep-coordinate-space "${INPUT}" "${OUTPUT}"
++    RESULT_VARIABLE NAGA_RESULT
++    OUTPUT_VARIABLE NAGA_OUTPUT
++    ERROR_VARIABLE NAGA_OUTPUT
++)
++if(NOT NAGA_RESULT EQUAL 0)
++    message(FATAL_ERROR "naga failed on ${INPUT}:\n${NAGA_OUTPUT}")
++endif()
++
++file(READ "${OUTPUT}" WGSL)
++string(REGEX REPLACE "var<(immediate|push_constant)>" "@group(3) @binding(0) var<uniform>" WGSL "${WGSL}")
++file(WRITE "${OUTPUT}" "${WGSL}")
++
++# The same layout as plume_file_to_c's, with the text zero-terminated.
++file(READ "${OUTPUT}" HEX HEX)
++string(LENGTH "${HEX}" HEX_LENGTH)
++math(EXPR SIZE "${HEX_LENGTH} / 2 + 1")
++string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," BYTES "${HEX}")
++string(REGEX REPLACE "((0x..,){32})" "\\1\n    " BYTES "${BYTES}")
++file(WRITE "${OUTPUT_C}" "// Auto-generated by PlumeWGSL.cmake - do not edit\n\n#include <stddef.h>\n\nconst char ${VAR_NAME}[${SIZE}] = {\n    ${BYTES}0x00\n};\n\nconst size_t ${VAR_NAME}_size = ${SIZE};\n")
++file(WRITE "${OUTPUT_H}" "// Auto-generated by PlumeWGSL.cmake - do not edit\n\n#pragma once\n\n#include <stddef.h>\n\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\nextern const char ${VAR_NAME}[${SIZE}];\nextern const size_t ${VAR_NAME}_size;\n\n#ifdef __cplusplus\n}\n#endif\n")
+diff --git a/examples/cube/main.cpp b/examples/cube/main.cpp
+index 9668fe5..517601d 100644
+--- a/examples/cube/main.cpp
++++ b/examples/cube/main.cpp
+@@ -21,8 +21,14 @@
+ #include "shaders/cubeVert.hlsl.dxil.h"
+ #include "shaders/cubeFrag.hlsl.dxil.h"
+ #endif
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>
++#include "shaders/cubeVert.hlsl.wgsl.h"
++#include "shaders/cubeFrag.hlsl.wgsl.h"
++#else
+ #include "shaders/cubeVert.hlsl.spirv.h"
+ #include "shaders/cubeFrag.hlsl.spirv.h"
++#endif
+ #ifdef __APPLE__
+ #include "shaders/cubeVert.hlsl.metal.h"
+ #include "shaders/cubeFrag.hlsl.metal.h"
+@@ -31,6 +37,7 @@
+ namespace plume {
+     extern std::unique_ptr<RenderInterface> CreateMetalInterface();
+     extern std::unique_ptr<RenderInterface> CreateD3D12Interface();
++    extern std::unique_ptr<RenderInterface> CreateWebGPUInterface();
+     #if PLUME_SDL_VULKAN_ENABLED
+     extern std::unique_ptr<RenderInterface> CreateVulkanInterface(RenderWindow sdlWindow);
+     #else
+@@ -370,10 +377,17 @@ namespace plume {
+                 fragmentShader = ctx.m_device->createShader(cubeFragBlobMSL, sizeof(cubeFragBlobMSL), "PSMain", shaderFormat);
+                 break;
+ #endif
++#ifdef __EMSCRIPTEN__
++            case RenderShaderFormat::WGSL:
++                vertexShader = ctx.m_device->createShader(cubeVertBlobWGSL, sizeof(cubeVertBlobWGSL), "VSMain", shaderFormat);
++                fragmentShader = ctx.m_device->createShader(cubeFragBlobWGSL, sizeof(cubeFragBlobWGSL), "PSMain", shaderFormat);
++                break;
++#else
+             case RenderShaderFormat::SPIRV:
+                 vertexShader = ctx.m_device->createShader(cubeVertBlobSPIRV, sizeof(cubeVertBlobSPIRV), "VSMain", shaderFormat);
+                 fragmentShader = ctx.m_device->createShader(cubeFragBlobSPIRV, sizeof(cubeFragBlobSPIRV), "PSMain", shaderFormat);
+                 break;
++#endif
+ #ifdef _WIN64
+             case RenderShaderFormat::DXIL:
+                 vertexShader = ctx.m_device->createShader(cubeVertBlobDXIL, sizeof(cubeVertBlobDXIL), "VSMain", shaderFormat);
+@@ -512,7 +526,9 @@ namespace plume {
+         SDL_SetWindowTitle(window, windowTitle.c_str());
+ 
+         CubeContext ctx;
+-#if PLUME_SDL_VULKAN_ENABLED
++#if defined(__EMSCRIPTEN__)
++        createContext(ctx, renderInterface, "#canvas", apiName);
++#elif PLUME_SDL_VULKAN_ENABLED
+         createContext(ctx, renderInterface, window, apiName);
+ #elif defined(__linux__)
+         SDL_SysWMinfo wmInfo;
+@@ -549,6 +565,10 @@ namespace plume {
+             }
+ 
+             render(ctx);
++#ifdef __EMSCRIPTEN__
++            // The browser shows the frame once control is back in its event loop.
++            emscripten_sleep(0);
++#endif
+         }
+ 
+         // Cleanup
+@@ -598,6 +618,9 @@ std::unique_ptr<plume::RenderInterface> CreateRenderInterface(SDL_Window* window
+         apiName = "Metal";
+         return plume::CreateMetalInterface();
+     }
++#elif defined(__EMSCRIPTEN__)
++    apiName = "WebGPU";
++    return plume::CreateWebGPUInterface();
+ #else
+     apiName = "Vulkan";
+ #if PLUME_SDL_VULKAN_ENABLED
+diff --git a/examples/triangle/main.cpp b/examples/triangle/main.cpp
+index fc34404..b82d099 100644
+--- a/examples/triangle/main.cpp
++++ b/examples/triangle/main.cpp
+@@ -19,8 +19,14 @@
+ #include "shaders/triangleVert.hlsl.dxil.h"
+ #include "shaders/triangleFrag.hlsl.dxil.h"
+ #endif
++#ifdef __EMSCRIPTEN__
++#include <emscripten.h>
++#include "shaders/triangleVert.hlsl.wgsl.h"
++#include "shaders/triangleFrag.hlsl.wgsl.h"
++#else
+ #include "shaders/triangleVert.hlsl.spirv.h"
+ #include "shaders/triangleFrag.hlsl.spirv.h"
++#endif
+ #ifdef __APPLE__
+ #include "shaders/triangleVert.hlsl.metal.h"
+ #include "shaders/triangleFrag.hlsl.metal.h"
+@@ -30,6 +36,7 @@
+ namespace plume {
+     extern std::unique_ptr<RenderInterface> CreateMetalInterface();
+     extern std::unique_ptr<RenderInterface> CreateD3D12Interface();
++    extern std::unique_ptr<RenderInterface> CreateWebGPUInterface();
+     #if PLUME_SDL_VULKAN_ENABLED
+     extern std::unique_ptr<RenderInterface> CreateVulkanInterface(RenderWindow sdlWindow);
+     #else
+@@ -102,10 +109,17 @@ namespace plume {
+                 fragmentShader = ctx.m_device->createShader(triangleFragBlobMSL, sizeof(triangleFragBlobMSL), "PSMain", shaderFormat);
+                 break;
+ #endif
++#ifdef __EMSCRIPTEN__
++            case RenderShaderFormat::WGSL:
++                vertexShader = ctx.m_device->createShader(triangleVertBlobWGSL, sizeof(triangleVertBlobWGSL), "VSMain", shaderFormat);
++                fragmentShader = ctx.m_device->createShader(triangleFragBlobWGSL, sizeof(triangleFragBlobWGSL), "PSMain", shaderFormat);
++                break;
++#else
+             case RenderShaderFormat::SPIRV:
+                 vertexShader = ctx.m_device->createShader(triangleVertBlobSPIRV, sizeof(triangleVertBlobSPIRV), "VSMain", shaderFormat);
+                 fragmentShader = ctx.m_device->createShader(triangleFragBlobSPIRV, sizeof(triangleFragBlobSPIRV), "PSMain", shaderFormat);
+                 break;
++#endif
+ #ifdef _WIN64
+             case RenderShaderFormat::DXIL:
+                 vertexShader = ctx.m_device->createShader(triangleVertBlobDXIL, sizeof(triangleVertBlobDXIL), "VSMain", shaderFormat);
+@@ -298,7 +312,9 @@ namespace plume {
+         SDL_SetWindowTitle(window, windowTitle.c_str());
+ 
+         TestContext ctx;
+-#if PLUME_SDL_VULKAN_ENABLED
++#if defined(__EMSCRIPTEN__)
++        createContext(ctx, renderInterface, "#canvas", apiName);
++#elif PLUME_SDL_VULKAN_ENABLED
+         createContext(ctx, renderInterface, window, apiName);
+ #elif defined(__linux__)
+         SDL_SysWMinfo wmInfo;
+@@ -338,6 +354,10 @@ namespace plume {
+             }
+ 
+             render(ctx);
++#ifdef __EMSCRIPTEN__
++            // The browser shows the frame once control is back in its event loop.
++            emscripten_sleep(0);
++#endif
+         }
+ 
+         // Transition the active swap chain render target out of the present state to avoid live references to the resource
+@@ -388,6 +408,9 @@ std::unique_ptr<plume::RenderInterface> CreateRenderInterface(SDL_Window* window
+         apiName = "Metal";
+         return plume::CreateMetalInterface();
+     }
++#elif defined(__EMSCRIPTEN__)
++    apiName = "WebGPU";
++    return plume::CreateWebGPUInterface();
+ #else
+     apiName = "Vulkan";
+ #if PLUME_SDL_VULKAN_ENABLED
 diff --git a/plume_render_interface_types.h b/plume_render_interface_types.h
 index 9dcfedf..db1c810 100644
 --- a/plume_render_interface_types.h
@@ -74,10 +399,10 @@ index 9dcfedf..db1c810 100644
      enum class RenderRaytracingPipelineLibrarySymbolType {
 diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
 new file mode 100644
-index 0000000..e77ea41
+index 0000000..1efef41
 --- /dev/null
 +++ b/plume_webgpu.cpp
-@@ -0,0 +1,2177 @@
+@@ -0,0 +1,2167 @@
 +//
 +// plume
 +//
@@ -681,6 +1006,23 @@ index 0000000..e77ea41
 +        wgpuShaderModuleSetLabel(module, toStringView(name));
 +    }
 +
++    // WebGPUShaderStage
++
++    WebGPUShaderStage::WebGPUShaderStage(const RenderShader *shader) {
++        const WebGPUShader *webgpuShader = static_cast<const WebGPUShader *>(shader);
++        if (webgpuShader != nullptr) {
++            module = webgpuShader->module;
++            wgpuShaderModuleAddRef(module);
++            entryPointName = webgpuShader->entryPointName;
++        }
++    }
++
++    WebGPUShaderStage::~WebGPUShaderStage() {
++        if (module != nullptr) {
++            wgpuShaderModuleRelease(module);
++        }
++    }
++
 +    // WebGPUDescriptorSet
 +
 +    WebGPUDescriptorSet::WebGPUDescriptorSet(WebGPUDevice *device, const RenderDescriptorSetDesc &desc) {
@@ -924,8 +1266,9 @@ index 0000000..e77ea41
 +
 +    // WebGPUComputePipeline
 +
-+    WebGPUComputePipeline::WebGPUComputePipeline(WebGPUDevice *device, const RenderComputePipelineDesc &desc) : WebGPUPipeline(device, Type::Compute) {
++    WebGPUComputePipeline::WebGPUComputePipeline(WebGPUDevice *device, const RenderComputePipelineDesc &desc) : WebGPUPipeline(device, Type::Compute), computeStage(desc.computeShader) {
 +        this->desc = desc;
++        this->desc.computeShader = nullptr;
 +        specConstants.assign(desc.specConstants, desc.specConstants + desc.specConstantsCount);
 +        this->desc.specConstants = nullptr;
 +    }
@@ -942,13 +1285,12 @@ index 0000000..e77ea41
 +            return it->second;
 +        }
 +
-+        const WebGPUShader *shader = static_cast<const WebGPUShader *>(desc.computeShader);
 +        std::vector<std::string> keys;
 +        std::vector<WGPUConstantEntry> constants = toConstantEntries(specConstants, keys);
 +        WGPUComputePipelineDescriptor pipelineDesc = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
 +        pipelineDesc.layout = layout;
-+        pipelineDesc.compute.module = shader->module;
-+        pipelineDesc.compute.entryPoint = toStringView(shader->entryPointName);
++        pipelineDesc.compute.module = computeStage.module;
++        pipelineDesc.compute.entryPoint = toStringView(computeStage.entryPointName);
 +        pipelineDesc.compute.constantCount = constants.size();
 +        pipelineDesc.compute.constants = constants.data();
 +        WGPUComputePipeline pipeline = wgpuDeviceCreateComputePipeline(device->device, &pipelineDesc);
@@ -958,7 +1300,7 @@ index 0000000..e77ea41
 +
 +    // WebGPUGraphicsPipeline
 +
-+    WebGPUGraphicsPipeline::WebGPUGraphicsPipeline(WebGPUDevice *device, const RenderGraphicsPipelineDesc &desc) : WebGPUPipeline(device, Type::Graphics) {
++    WebGPUGraphicsPipeline::WebGPUGraphicsPipeline(WebGPUDevice *device, const RenderGraphicsPipelineDesc &desc) : WebGPUPipeline(device, Type::Graphics), vertexStage(desc.vertexShader), pixelStage(desc.pixelShader) {
 +        if (desc.geometryShader != nullptr) {
 +            PLUME_WEBGPU_UNSUPPORTED("geometry shaders are ignored");
 +        }
@@ -974,6 +1316,9 @@ index 0000000..e77ea41
 +        this->desc.inputSlots = nullptr;
 +        this->desc.inputElements = nullptr;
 +        this->desc.specConstants = nullptr;
++        this->desc.vertexShader = nullptr;
++        this->desc.geometryShader = nullptr;
++        this->desc.pixelShader = nullptr;
 +    }
 +
 +    WebGPUGraphicsPipeline::~WebGPUGraphicsPipeline() {
@@ -1003,7 +1348,8 @@ index 0000000..e77ea41
 +        attributes.resize(maxSlotIndex);
 +        for (WGPUVertexBufferLayout &bufferLayout : bufferLayouts) {
 +            bufferLayout = WGPU_VERTEX_BUFFER_LAYOUT_INIT;
-+            bufferLayout.stepMode = WGPUVertexStepMode_VertexBufferNotUsed;
++            // A slot no input uses stays Undefined with no attributes, which leaves it out.
++            bufferLayout.stepMode = WGPUVertexStepMode_Undefined;
 +        }
 +
 +        for (const RenderInputSlot &slot : inputSlots) {
@@ -1026,12 +1372,10 @@ index 0000000..e77ea41
 +            bufferLayouts[i].attributes = attributes[i].data();
 +        }
 +
-+        const WebGPUShader *vertexShader = static_cast<const WebGPUShader *>(desc.vertexShader);
-+        const WebGPUShader *pixelShader = static_cast<const WebGPUShader *>(desc.pixelShader);
 +        WGPURenderPipelineDescriptor pipelineDesc = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
 +        pipelineDesc.layout = layout;
-+        pipelineDesc.vertex.module = vertexShader->module;
-+        pipelineDesc.vertex.entryPoint = toStringView(vertexShader->entryPointName);
++        pipelineDesc.vertex.module = vertexStage.module;
++        pipelineDesc.vertex.entryPoint = toStringView(vertexStage.entryPointName);
 +        pipelineDesc.vertex.constantCount = constants.size();
 +        pipelineDesc.vertex.constants = constants.data();
 +        pipelineDesc.vertex.bufferCount = bufferLayouts.size();
@@ -1081,9 +1425,9 @@ index 0000000..e77ea41
 +        }
 +
 +        WGPUFragmentState fragment = WGPU_FRAGMENT_STATE_INIT;
-+        if (pixelShader != nullptr) {
-+            fragment.module = pixelShader->module;
-+            fragment.entryPoint = toStringView(pixelShader->entryPointName);
++        if (pixelStage.module != nullptr) {
++            fragment.module = pixelStage.module;
++            fragment.entryPoint = toStringView(pixelStage.entryPointName);
 +            fragment.constantCount = constants.size();
 +            fragment.constants = constants.data();
 +            fragment.targetCount = desc.renderTargetCount;
@@ -1109,22 +1453,11 @@ index 0000000..e77ea41
 +            PLUME_WEBGPU_UNSUPPORTED("root descriptors are ignored");
 +        }
 +
-+        if (!pushConstantRanges.empty()) {
-+            std::vector<WGPUBindGroupLayoutEntry> entries;
-+            std::string key = "pc;";
-+            for (uint32_t i = 0; i < pushConstantRanges.size(); i++) {
-+                WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
-+                entry.binding = i;
-+                entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
-+                entry.buffer.type = WGPUBufferBindingType_Uniform;
-+                entry.buffer.hasDynamicOffset = true;
-+                entry.buffer.minBindingSize = 0;
-+                entries.emplace_back(entry);
-+                key += std::to_string(i) + ";";
-+            }
-+
-+            pushConstantsLayout = device->getBindGroupLayout(key, entries);
++        for (const RenderPushConstantRange &range : pushConstantRanges) {
++            pushConstantsSize = std::max(pushConstantsSize, range.offset + range.size);
 +        }
++
++        assert(((pushConstantsSize == 0) || (descriptorSetCount <= PushConstantsGroup)) && "Push constants take bind group 3, so a layout with them can have 3 descriptor sets at most.");
 +    }
 +
 +    WebGPUPipelineLayout::~WebGPUPipelineLayout() { }
@@ -1324,8 +1657,8 @@ index 0000000..e77ea41
 +        }
 +
 +        for (PushConstantsChunk &chunk : pushConstantsChunks) {
-+            if (chunk.bindGroup != nullptr) {
-+                wgpuBindGroupRelease(chunk.bindGroup);
++            for (auto &it : chunk.bindGroups) {
++                wgpuBindGroupRelease(it.second);
 +            }
 +
 +            wgpuBufferDestroy(chunk.buffer);
@@ -1398,7 +1731,7 @@ index 0000000..e77ea41
 +        assert(false && "WebGPU has no raytracing.");
 +    }
 +
-+    // The bind group layouts of the bound descriptor sets, and push constants after them, make the pipeline layout.
++    // The bind group layouts of the bound descriptor sets, and the push constants in group 3, make the pipeline layout.
 +    WGPUPipelineLayout WebGPUCommandList::resolveBindings(BindState &state) {
 +        assert(state.layout != nullptr);
 +
@@ -1410,57 +1743,50 @@ index 0000000..e77ea41
 +                layouts.emplace_back(descriptorSet->layout);
 +            }
 +            else {
-+                layouts.emplace_back(device->getBindGroupLayout("", {}));
++                layouts.emplace_back(device->emptyLayout);
 +            }
 +        }
 +
-+        if (state.layout->pushConstantsLayout != nullptr) {
-+            layouts.emplace_back(state.layout->pushConstantsLayout);
++        if (state.layout->pushConstantsSize > 0) {
++            while (layouts.size() < PushConstantsGroup) {
++                layouts.emplace_back(device->emptyLayout);
++            }
++
++            layouts.emplace_back(device->pushConstantsLayout);
 +        }
 +
 +        return device->getPipelineLayout(layouts);
 +    }
 +
 +    void WebGPUCommandList::bindGroups(BindState &state, WGPURenderPassEncoder renderPass, WGPUComputePassEncoder computePass) {
++        auto setBindGroup = [&](uint32_t groupIndex, WGPUBindGroup bindGroup, uint32_t offsetCount, const uint32_t *offsets) {
++            if (renderPass != nullptr) {
++                wgpuRenderPassEncoderSetBindGroup(renderPass, groupIndex, bindGroup, offsetCount, offsets);
++            }
++            else {
++                wgpuComputePassEncoderSetBindGroup(computePass, groupIndex, bindGroup, offsetCount, offsets);
++            }
++        };
++
++        // An unbound set still needs a group in its slot.
 +        for (uint32_t i = 0; i < state.layout->descriptorSetCount; i++) {
 +            WebGPUDescriptorSet *descriptorSet = state.descriptorSets[i];
-+            WGPUBindGroup bindGroup = nullptr;
-+            if (descriptorSet != nullptr) {
-+                bindGroup = descriptorSet->bindGroup;
-+            }
-+            else {
-+                // An unbound set still needs a group in its slot.
-+                static WGPUBindGroup emptyGroup = nullptr;
-+                if (emptyGroup == nullptr) {
-+                    WGPUBindGroupDescriptor groupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
-+                    groupDesc.layout = device->getBindGroupLayout("", {});
-+                    emptyGroup = wgpuDeviceCreateBindGroup(device->device, &groupDesc);
-+                }
-+
-+                bindGroup = emptyGroup;
-+            }
-+
-+            if (renderPass != nullptr) {
-+                wgpuRenderPassEncoderSetBindGroup(renderPass, i, bindGroup, 0, nullptr);
-+            }
-+            else {
-+                wgpuComputePassEncoderSetBindGroup(computePass, i, bindGroup, 0, nullptr);
-+            }
++            setBindGroup(i, (descriptorSet != nullptr) ? descriptorSet->bindGroup : device->emptyBindGroup, 0, nullptr);
 +        }
 +
-+        const std::vector<RenderPushConstantRange> &ranges = state.layout->pushConstantRanges;
-+        if (ranges.empty()) {
++        const uint32_t pushConstantsSize = state.layout->pushConstantsSize;
++        if (pushConstantsSize == 0) {
 +            return;
 +        }
 +
-+        // Every range of the layout is written into the ring as one block, one aligned slot per range.
-+        uint32_t blockSize = 0;
-+        for (const RenderPushConstantRange &range : ranges) {
-+            blockSize += uint32_t(alignUp(range.size, PushConstantsAlignment));
++        for (uint32_t i = state.layout->descriptorSetCount; i < PushConstantsGroup; i++) {
++            setBindGroup(i, device->emptyBindGroup, 0, nullptr);
 +        }
 +
-+        assert(blockSize <= PushConstantsChunkSize);
-+        if ((pushConstantsChunkIndex < pushConstantsChunks.size()) && (pushConstantsChunks[pushConstantsChunkIndex].used + blockSize > PushConstantsChunkSize)) {
++        // Every draw or dispatch gets its own copy of the block in the ring.
++        const uint32_t slotSize = uint32_t(alignUp(pushConstantsSize, PushConstantsAlignment));
++        assert(slotSize <= PushConstantsChunkSize);
++        if ((pushConstantsChunkIndex < pushConstantsChunks.size()) && (pushConstantsChunks[pushConstantsChunkIndex].used + slotSize > PushConstantsChunkSize)) {
 +            pushConstantsChunkIndex++;
 +        }
 +
@@ -1474,48 +1800,28 @@ index 0000000..e77ea41
 +            pushConstantsChunks.emplace_back(std::move(chunk));
 +        }
 +
++        // The binding's size is part of the bind group, so a chunk keeps one group per block size.
 +        PushConstantsChunk &chunk = pushConstantsChunks[pushConstantsChunkIndex];
-+        if (chunk.bindGroupLayout != state.layout->pushConstantsLayout) {
-+            if (chunk.bindGroup != nullptr) {
-+                wgpuBindGroupRelease(chunk.bindGroup);
-+            }
-+
-+            std::vector<WGPUBindGroupEntry> entries;
-+            for (uint32_t i = 0; i < ranges.size(); i++) {
-+                WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
-+                entry.binding = i;
-+                entry.buffer = chunk.buffer;
-+                entry.offset = 0;
-+                entry.size = alignUp(ranges[i].size, 16);
-+                entries.emplace_back(entry);
-+            }
-+
++        const uint32_t bindingSize = uint32_t(alignUp(pushConstantsSize, 16));
++        WGPUBindGroup &bindGroup = chunk.bindGroups[bindingSize];
++        if (bindGroup == nullptr) {
++            WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
++            entry.binding = 0;
++            entry.buffer = chunk.buffer;
++            entry.offset = 0;
++            entry.size = bindingSize;
 +            WGPUBindGroupDescriptor groupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
-+            groupDesc.layout = state.layout->pushConstantsLayout;
-+            groupDesc.entryCount = entries.size();
-+            groupDesc.entries = entries.data();
-+            chunk.bindGroup = wgpuDeviceCreateBindGroup(device->device, &groupDesc);
-+            chunk.bindGroupLayout = state.layout->pushConstantsLayout;
++            groupDesc.layout = device->pushConstantsLayout;
++            groupDesc.entryCount = 1;
++            groupDesc.entries = &entry;
++            bindGroup = wgpuDeviceCreateBindGroup(device->device, &groupDesc);
 +        }
 +
-+        std::vector<uint32_t> offsets;
-+        for (uint32_t i = 0; i < ranges.size(); i++) {
-+            offsets.emplace_back(chunk.used);
-+            if (i < state.pushConstants.size()) {
-+                memcpy(chunk.data.data() + chunk.used, state.pushConstants[i].data(), std::min<size_t>(state.pushConstants[i].size(), ranges[i].size));
-+            }
-+
-+            chunk.used += uint32_t(alignUp(ranges[i].size, PushConstantsAlignment));
-+        }
-+
-+        const uint32_t groupIndex = state.layout->descriptorSetCount;
-+        if (renderPass != nullptr) {
-+            wgpuRenderPassEncoderSetBindGroup(renderPass, groupIndex, chunk.bindGroup, offsets.size(), offsets.data());
-+        }
-+        else {
-+            wgpuComputePassEncoderSetBindGroup(computePass, groupIndex, chunk.bindGroup, offsets.size(), offsets.data());
-+        }
-+
++        const uint32_t offset = chunk.used;
++        state.pushConstants.resize(pushConstantsSize, 0);
++        memcpy(chunk.data.data() + offset, state.pushConstants.data(), pushConstantsSize);
++        chunk.used += slotSize;
++        setBindGroup(PushConstantsGroup, bindGroup, 1, &offset);
 +        state.pushConstantsDirty = false;
 +    }
 +
@@ -1658,7 +1964,6 @@ index 0000000..e77ea41
 +
 +    void WebGPUCommandList::setComputePipelineLayout(const RenderPipelineLayout *pipelineLayout) {
 +        compute.layout = static_cast<const WebGPUPipelineLayout *>(pipelineLayout);
-+        compute.pushConstants.clear();
 +    }
 +
 +    void WebGPUCommandList::setPushConstants(BindState &state, uint32_t rangeIndex, const void *data, uint32_t offset, uint32_t size) {
@@ -1666,15 +1971,10 @@ index 0000000..e77ea41
 +        assert(rangeIndex < state.layout->pushConstantRanges.size());
 +
 +        const RenderPushConstantRange &range = state.layout->pushConstantRanges[rangeIndex];
-+        if (state.pushConstants.size() < state.layout->pushConstantRanges.size()) {
-+            state.pushConstants.resize(state.layout->pushConstantRanges.size());
-+        }
-+
-+        std::vector<uint8_t> &values = state.pushConstants[rangeIndex];
-+        values.resize(range.size, 0);
 +        const uint32_t copySize = (size == 0) ? range.size : size;
 +        assert(offset + copySize <= range.size);
-+        memcpy(values.data() + offset, data, copySize);
++        state.pushConstants.resize(state.layout->pushConstantsSize, 0);
++        memcpy(state.pushConstants.data() + range.offset + offset, data, copySize);
 +        state.pushConstantsDirty = true;
 +    }
 +
@@ -1689,7 +1989,6 @@ index 0000000..e77ea41
 +
 +    void WebGPUCommandList::setGraphicsPipelineLayout(const RenderPipelineLayout *pipelineLayout) {
 +        graphics.layout = static_cast<const WebGPUPipelineLayout *>(pipelineLayout);
-+        graphics.pushConstants.clear();
 +    }
 +
 +    void WebGPUCommandList::setGraphicsPushConstants(uint32_t rangeIndex, const void *data, uint32_t offset, uint32_t size) {
@@ -2067,6 +2366,18 @@ index 0000000..e77ea41
 +        WGPULimits limits = WGPU_LIMITS_INIT;
 +        wgpuDeviceGetLimits(device, &limits);
 +        capabilities.maxTextureSize = limits.maxTextureDimension2D;
++
++        emptyLayout = getBindGroupLayout("", {});
++        WGPUBindGroupDescriptor emptyGroupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
++        emptyGroupDesc.layout = emptyLayout;
++        emptyBindGroup = wgpuDeviceCreateBindGroup(device, &emptyGroupDesc);
++
++        WGPUBindGroupLayoutEntry pushConstantsEntry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
++        pushConstantsEntry.binding = 0;
++        pushConstantsEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
++        pushConstantsEntry.buffer.type = WGPUBufferBindingType_Uniform;
++        pushConstantsEntry.buffer.hasDynamicOffset = true;
++        pushConstantsLayout = getBindGroupLayout("pushConstants", { pushConstantsEntry });
 +        capabilities.triangleFan = false;
 +        capabilities.dynamicDepthBias = false;
 +        capabilities.queryPools = false;
@@ -2074,6 +2385,10 @@ index 0000000..e77ea41
 +    }
 +
 +    WebGPUDevice::~WebGPUDevice() {
++        if (emptyBindGroup != nullptr) {
++            wgpuBindGroupRelease(emptyBindGroup);
++        }
++
 +        for (auto &it : pipelineLayouts) {
 +            wgpuPipelineLayoutRelease(it.second);
 +        }
@@ -2257,10 +2572,10 @@ index 0000000..e77ea41
 +};
 diff --git a/plume_webgpu.h b/plume_webgpu.h
 new file mode 100644
-index 0000000..d58f8b5
+index 0000000..fd13cf6
 --- /dev/null
 +++ b/plume_webgpu.h
-@@ -0,0 +1,425 @@
+@@ -0,0 +1,453 @@
 +//
 +// plume
 +//
@@ -2271,10 +2586,11 @@ index 0000000..d58f8b5
 +// WebGPU backend, for the browser through Emscripten and Emdawnwebgpu (--use-port=emdawnwebgpu).
 +//
 +// What core WebGPU lacks, and what this backend does instead:
-+// - Push constants: each range is a uniform buffer at @group(<the layout's descriptor set count>) @binding(<range
-+//   index>), written into a per command list ring and bound with a dynamic offset. WGSL made from SPIR-V by naga
-+//   declares them as var<immediate> (var<push_constant> before naga 30); plume_wgsl_fixup.cmake rewrites that
-+//   declaration to match.
++// - Push constants: a shader has one push constant block, as in Vulkan, with each range at its offset in it. Here
++//   the block is a uniform buffer at @group(3) @binding(0) (PushConstantsGroup: the last of the 4 bind groups WebGPU
++//   guarantees, so a layout can have up to 3 descriptor sets), written into a per command list ring and bound with
++//   a dynamic offset. Groups between the layout's sets and it are bound empty. WGSL made from SPIR-V by naga
++//   declares the block as var<immediate> (var<push_constant> before naga 30); PlumeWGSL.cmake rewrites that line.
 +// - Bind group layouts need each texture's sample type and each sampler's filtering, which plume's descriptor
 +//   ranges don't carry. So a descriptor set derives its layout from what is bound in it, and a pipeline is created
 +//   at draw time for the layouts of the sets bound then, and cached per pipeline layout.
@@ -2289,10 +2605,17 @@ index 0000000..d58f8b5
 +//   logic ops and dynamic depth bias are not supported.
 +// - Fences and semaphores are no-ops: WebGPU orders submissions and writeBuffer() calls on its one queue, and the
 +//   browser presents the canvas when the calling thread returns to its event loop.
-+// - Every call must come from the thread that owns the device's JavaScript object.
++// - Every call must come from the thread that owns the device's JavaScript object: WebGPU objects can't be shared
++//   between workers.
++// - Shaders are WGSL text (RenderShaderFormat::WGSL). Specialization constants are WGSL overrides named by their id.
 +//
 +// The device is created by the page before the module starts (Module.preinitializedWebGPUDevice, see
-+// plume_webgpu_device.js), because requesting one is asynchronous. RenderWindow is the CSS selector of the canvas.
++// plume_webgpu_device.js), because requesting one is asynchronous. Emdawnwebgpu marks emscripten_webgpu_get_device(),
++// which returns it, as deprecated; the replacement, requesting the adapter and device here and waiting with
++// wgpuInstanceWaitAny(), needs ASYNCIFY or JSPI. RenderWindow is the CSS selector of the canvas, such as "#canvas".
++//
++// The examples build for the browser with emcmake and -DPLUME_BUILD_EXAMPLES=ON, given PLUME_DXC_EXECUTABLE (a dxc
++// for the host) and naga-cli on the PATH or as PLUME_NAGA_EXECUTABLE; see examples/cmake/modules/PlumeWGSL.cmake.
 +
 +#pragma once
 +
@@ -2304,6 +2627,8 @@ index 0000000..d58f8b5
 +#include <webgpu/webgpu.h>
 +
 +namespace plume {
++    static const uint32_t PushConstantsGroup = 3;
++
 +    struct WebGPUBuffer;
 +    struct WebGPUCommandQueue;
 +    struct WebGPUDevice;
@@ -2407,6 +2732,19 @@ index 0000000..d58f8b5
 +        void update();
 +    };
 +
++    // A pipeline is created when it is first drawn with, after the RenderShader may be gone, so it keeps its own
++    // reference to the module.
++    struct WebGPUShaderStage {
++        WGPUShaderModule module = nullptr;
++        std::string entryPointName;
++
++        WebGPUShaderStage() = default;
++        WebGPUShaderStage(const RenderShader *shader);
++        WebGPUShaderStage(const WebGPUShaderStage &) = delete;
++        WebGPUShaderStage &operator=(const WebGPUShaderStage &) = delete;
++        ~WebGPUShaderStage();
++    };
++
 +    struct WebGPUPipeline : RenderPipeline {
 +        enum class Type {
 +            Unknown,
@@ -2425,6 +2763,7 @@ index 0000000..d58f8b5
 +
 +    struct WebGPUComputePipeline : WebGPUPipeline {
 +        RenderComputePipelineDesc desc;
++        WebGPUShaderStage computeStage;
 +        std::vector<RenderSpecConstant> specConstants;
 +        std::map<WGPUPipelineLayout, WGPUComputePipeline> pipelines;
 +
@@ -2435,6 +2774,8 @@ index 0000000..d58f8b5
 +
 +    struct WebGPUGraphicsPipeline : WebGPUPipeline {
 +        RenderGraphicsPipelineDesc desc;
++        WebGPUShaderStage vertexStage;
++        WebGPUShaderStage pixelStage;
 +        std::vector<RenderInputSlot> inputSlots;
 +        std::vector<RenderInputElement> inputElements;
 +        std::vector<RenderSpecConstant> specConstants;
@@ -2449,7 +2790,7 @@ index 0000000..d58f8b5
 +        WebGPUDevice *device = nullptr;
 +        uint32_t descriptorSetCount = 0;
 +        std::vector<RenderPushConstantRange> pushConstantRanges;
-+        WGPUBindGroupLayout pushConstantsLayout = nullptr;
++        uint32_t pushConstantsSize = 0;
 +
 +        WebGPUPipelineLayout(WebGPUDevice *device, const RenderPipelineLayoutDesc &desc);
 +        ~WebGPUPipelineLayout() override;
@@ -2513,8 +2854,7 @@ index 0000000..d58f8b5
 +
 +        struct PushConstantsChunk {
 +            WGPUBuffer buffer = nullptr;
-+            WGPUBindGroup bindGroup = nullptr;
-+            WGPUBindGroupLayout bindGroupLayout = nullptr;
++            std::map<uint32_t, WGPUBindGroup> bindGroups;
 +            std::vector<uint8_t> data;
 +            uint32_t used = 0;
 +        };
@@ -2522,7 +2862,7 @@ index 0000000..d58f8b5
 +        struct BindState {
 +            const WebGPUPipelineLayout *layout = nullptr;
 +            WebGPUDescriptorSet *descriptorSets[MaxDescriptorSets] = {};
-+            std::vector<std::vector<uint8_t>> pushConstants;
++            std::vector<uint8_t> pushConstants;
 +            bool pushConstantsDirty = false;
 +        };
 +
@@ -2637,6 +2977,9 @@ index 0000000..d58f8b5
 +        RenderDeviceDescription description;
 +        bool float32Filterable = false;
 +        bool depthClipControl = false;
++        WGPUBindGroupLayout emptyLayout = nullptr;
++        WGPUBindGroup emptyBindGroup = nullptr;
++        WGPUBindGroupLayout pushConstantsLayout = nullptr;
 +        std::unordered_map<std::string, WGPUBindGroupLayout> bindGroupLayouts;
 +        std::map<std::vector<WGPUBindGroupLayout>, WGPUPipelineLayout> pipelineLayouts;
 +        std::vector<WebGPUBuffer *> mappedBuffers;
@@ -2686,3 +3029,38 @@ index 0000000..d58f8b5
 +
 +    extern std::unique_ptr<RenderInterface> CreateWebGPUInterface();
 +};
+diff --git a/plume_webgpu_device.js b/plume_webgpu_device.js
+new file mode 100644
+index 0000000..d308c62
+--- /dev/null
++++ b/plume_webgpu_device.js
+@@ -0,0 +1,29 @@
++// Link with --pre-js for plume's WebGPU backend. Requesting a WebGPU device is asynchronous, so this does it before
++// main() runs and hands the device over as Module.preinitializedWebGPUDevice, which emscripten_webgpu_get_device()
++// returns. Optional features plume can use are asked for when the adapter has them. Validation errors and a lost
++// device are logged to the console.
++Module['preRun'] = [].concat(Module['preRun'] || []);
++Module['preRun'].push(() => {
++  addRunDependency('plume-webgpu-device');
++  (async () => {
++    if (!navigator.gpu) {
++      throw new Error('This browser has no WebGPU (navigator.gpu is missing; the page must be a secure context).');
++    }
++
++    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
++    if (!adapter) {
++      throw new Error('No WebGPU adapter.');
++    }
++
++    const optionalFeatures = ['float32-filterable', 'depth-clip-control', 'dual-source-blending', 'texture-compression-bc', 'timestamp-query'];
++    const requiredFeatures = optionalFeatures.filter((feature) => adapter.features.has(feature));
++    const device = await adapter.requestDevice({ requiredFeatures });
++    device.addEventListener('uncapturederror', (event) => console.error('WebGPU error: ' + event.error.message));
++    device.lost.then((info) => console.error('WebGPU device lost: ' + info.message));
++    Module['preinitializedWebGPUDevice'] = device;
++    removeRunDependency('plume-webgpu-device');
++  })().catch((error) => {
++    console.error(error);
++    abort(error);
++  });
++});
