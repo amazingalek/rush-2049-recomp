@@ -8,7 +8,7 @@
 
 namespace rush2049 {
     // Stereo-linked look-ahead peak limiter (1.0 = device full scale). Everything below the threshold passes untouched;
-    // a peak above it is bent softly toward the ceiling, which it never reaches. The gain eases down over the 3 ms
+    // a peak above it is bent softly toward the ceiling, which it never passes. The gain eases down over the 3 ms
     // before a peak and recovers over ~60 ms.
     class Limiter {
     public:

@@ -3,6 +3,7 @@
 // Structure follows BanjoRecomp's src/main/main.cpp (GPL-3.0), trimmed to what this project uses so far:
 // no custom launcher. Mod support (patches library, exports) is in register_patches.cpp and mod_exports.cpp.
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cinttypes>
@@ -175,6 +176,11 @@ void update_gfx(void*) {
 // first swapped for the same audio rendered at twice the game's rate. At the device rate it is halved and then limited
 // (rush2049::Limiter), since that mix isn't clamped to 16 bits and its peaks reach about twice the game's full scale.
 // The replacement music is added after that, and the sum goes through a second, higher limiter.
+//
+// The game is fed by the runtime's VI clock and the device plays on its own, so what SDL holds drifts, and swings by
+// tens of ms as the game queues its 8.7 ms buffers in bursts. Rather than throwing samples away when it runs long,
+// the resampler plays up to 1% faster or slower (17 cents, too little to hear as pitch) to keep it near
+// audio_queue_target_ms: a long queue drains and a short one refills without a seam.
 
 static rush2049::Resampler resampler;
 static uint32_t resampler_input_rate = 0;
@@ -183,6 +189,9 @@ static uint32_t sample_rate = 48000;
 static uint32_t output_sample_rate = 48000;
 static uint32_t output_channels = 2;
 constexpr uint32_t bytes_per_frame = 2 * sizeof(float);
+constexpr double audio_queue_target_ms = 40.0;
+constexpr double audio_speed_ppm_per_ms = 200.0;  // 1% at 50 ms off target
+constexpr double audio_max_speed_ppm = 10000.0;
 
 // The rate the samples reach the converter at.
 static uint32_t input_sample_rate() {
@@ -213,6 +222,15 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     }
     rush2049::probe_audio(input.data(), input.size() / 2);
 
+    // Real time queued on the device, smoothed over about 30 buffers (a quarter of a second).
+    uint32_t queued_us = uint32_t(uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / output_sample_rate);
+    static double queued_ms = audio_queue_target_ms;
+    queued_ms += (queued_us / 1000.0 - queued_ms) / 32.0;
+    double speed_ppm = std::clamp((queued_ms - audio_queue_target_ms) * audio_speed_ppm_per_ms, -audio_max_speed_ppm,
+                                  audio_max_speed_ppm);
+    resampler.set_speed((int32_t)speed_ppm);
+    rush2049::probe_audio_queue(queued_us, speed_ppm > 0.0);
+
     static std::vector<float> output;
     output.clear();
     resampler.process(input.data(), input.size() / 2, output);
@@ -224,27 +242,12 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     }
     rush2049::output_limiter.process(output.data(), output.size() / 2);
 
-    uint64_t cur_queued_microseconds = uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / sample_rate;
-    uint32_t num_bytes_to_queue = uint32_t(output.size() * sizeof(float));
-    float* samples_to_queue = output.data();
-
-    // Skip samples when too much is already queued, so latency doesn't build up.
-    uint32_t skip_factor = cur_queued_microseconds / 100000;
-    if (skip_factor != 0) {
-        uint32_t skip_ratio = 1 << skip_factor;
-        num_bytes_to_queue /= skip_ratio;
-        for (size_t i = 0; i < num_bytes_to_queue / bytes_per_frame; i++) {
-            samples_to_queue[2 * i + 0] = samples_to_queue[2 * skip_ratio * i + 0];
-            samples_to_queue[2 * i + 1] = samples_to_queue[2 * skip_ratio * i + 1];
-        }
-    }
-
-    rush2049::music_mix(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_channels, output_sample_rate,
-                        main_volume);
+    size_t frames = output.size() / 2;
+    rush2049::music_mix(output.data(), frames, output_channels, output_sample_rate, main_volume);
     // A loud hit over a loud bar of music still sums past 1.0.
-    rush2049::mix_limiter.process(samples_to_queue, num_bytes_to_queue / bytes_per_frame);
-    rush2049::probe_output(samples_to_queue, num_bytes_to_queue / bytes_per_frame, output_sample_rate);
-    SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
+    rush2049::mix_limiter.process(output.data(), frames);
+    rush2049::probe_output(output.data(), frames, output_sample_rate);
+    SDL_QueueAudio(audio_device, output.data(), uint32_t(frames * bytes_per_frame));
 }
 
 size_t get_frames_remaining() {
