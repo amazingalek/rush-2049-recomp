@@ -442,17 +442,22 @@ static void start_gpu_profiler(int after_seconds, int seconds) {
         RT64::GPUTimings& timings = RT64::gpuTimings;
         {
             std::scoped_lock lock(timings.mutex);
-            timings.render.clear();
-            timings.present.clear();
+            timings.clear();
             timings.enabled = true;
         }
         std::this_thread::sleep_for(std::chrono::seconds(seconds));
         std::vector<double> render, present;
+        double render_parts[RT64::GPUTimings::RenderPartCount], present_parts[RT64::GPUTimings::PresentPartCount];
+        uint64_t framebuffers, draw_calls;
         {
             std::scoped_lock lock(timings.mutex);
             timings.enabled = false;
             render.swap(timings.render);
             present.swap(timings.present);
+            std::copy(std::begin(timings.renderParts), std::end(timings.renderParts), render_parts);
+            std::copy(std::begin(timings.presentParts), std::end(timings.presentParts), present_parts);
+            framebuffers = timings.framebuffers;
+            draw_calls = timings.drawCalls;
         }
         double busy_ms = 0.0;
         auto report = [&](const char* name, std::vector<double>& ms) {
@@ -470,7 +475,22 @@ static void start_gpu_profiler(int after_seconds, int seconds) {
                 ms.size() / double(seconds), sum / ms.size(), ms[ms.size() / 2], ms[ms.size() * 95 / 100], ms.back());
         };
         report("render", render);
+        if (!render.empty()) {
+            const double n = double(render.size());
+            printf("[gpuprofile] render parts, mean ms: uploads %.3f, vertices %.3f, setup %.3f, framebuffer operations %.3f,"
+                " draws %.3f, resolves %.3f; %.1f framebuffers and %.0f draw calls a frame\n",
+                render_parts[RT64::GPUTimings::RenderUploads] / n, render_parts[RT64::GPUTimings::RenderVertices] / n,
+                render_parts[RT64::GPUTimings::RenderSetup] / n,
+                render_parts[RT64::GPUTimings::RenderFbOperations] / n, render_parts[RT64::GPUTimings::RenderDraws] / n,
+                render_parts[RT64::GPUTimings::RenderResolves] / n, framebuffers / n, draw_calls / n);
+        }
         report("present", present);
+        if (!present.empty()) {
+            const double n = double(present.size());
+            printf("[gpuprofile] present parts, mean ms: resolve %.3f, VI %.3f, UI %.3f\n",
+                present_parts[RT64::GPUTimings::PresentResolve] / n, present_parts[RT64::GPUTimings::PresentVI] / n,
+                present_parts[RT64::GPUTimings::PresentUI] / n);
+        }
         printf("[gpuprofile] GPU busy %.1f%% of %d s\n", busy_ms / (seconds * 10.0), seconds);
         fflush(stdout);
     }).detach();
