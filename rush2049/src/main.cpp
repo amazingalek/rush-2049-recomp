@@ -120,7 +120,7 @@ static void set_rumble_logged(int controller_num, bool rumble) {
     recompinput::set_rumble(controller_num, rumble);
 }
 
-ultramodern::input::connected_device_info_t get_connected_device_info(int controller_num) {
+ultramodern::input::connected_device_info_t get_connected_device_info(int) {
     // All four ports always have a controller with the accessory picked in the config plugged in, so every port's
     // Controller Pak (src/controller_pak.cpp) can be loaded from and saved to. A port nobody plays on reads as a
     // controller left alone (get_n64_input_logged). osPfsInitPak fails for a Rumble Pak, and the runtime's
