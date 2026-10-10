@@ -75,7 +75,7 @@ EXTRA_FUNCTION_STARTS = {0x8000C990, 0x8000CF90}
 # through tables) and coefficient tables inside the code. N64Recomp can't translate them, so only their
 # entry points are kept as symbols (each spanning to the next entry) and the runtime reimplements them.
 ASM_ISLANDS = [
-    # Q15 fixed-point DSP on halfword buffers, called from func_80026xxx (audio-side, see docs).
+    # Q15 fixed-point DSP on halfword buffers, called from func_80026xxx (audio-side, see src/gsm_decoder.cpp).
     (0x800277D0, 0x80027DD0, (0x800277D0, 0x800278C4, 0x80027B44)),
 ]
 

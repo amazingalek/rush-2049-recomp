@@ -11,7 +11,7 @@ namespace rush2049 {
     inline const std::string program_name = "San Francisco Rush 2049: Recompiled";
 
     void register_overlays();
-    // Mods (docs/games/rush2049.md, "Mods"): the patches library (src/register_patches.cpp), the functions the
+    // Mods (README, "Mods"): the patches library (src/register_patches.cpp), the functions the
     // executable exports to mods (src/mod_exports.cpp), and the recomp ROM rebuilt for hooking (src/code_loading.cpp).
     void register_patches();
     void register_mod_exports();

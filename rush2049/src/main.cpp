@@ -399,7 +399,7 @@ std::vector<recomp::GameEntry> supported_games = {
 };
 
 // --boot (development): start the game on the launcher's first frame, as its "Start Game" option does, so
-// bring-up runs don't need someone at the window. Needs the ROM already stored (see docs/games/rush2049.md).
+// bring-up runs don't need someone at the window. Needs the ROM already stored (src/rom_finder.cpp).
 static bool autoboot = false;
 
 void on_launcher_update(recompui::LauncherMenu*) {
@@ -434,7 +434,8 @@ void on_launcher_init(recompui::LauncherMenu* menu) {
 }
 
 // --gpu-profile: from `after` seconds on, collect RT64's GPU time for every frame for `seconds` seconds, then print
-// count, rate, mean, median, 95th percentile and max for the rendered frames and for the present pass, and the
+// count, rate, mean, median, 95th percentile and max for the rendered frames and for the present pass, the mean time
+// of each part of both (RT64::GPUTimings::RenderPart, PresentPart) with framebuffers and draw calls a frame, and the
 // share of the window the GPU spent on both.
 static void start_gpu_profiler(int after_seconds, int seconds) {
     std::thread([after_seconds, seconds]() {
