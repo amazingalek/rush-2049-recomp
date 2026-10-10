@@ -32,38 +32,6 @@ jobs:
           bash tools/rush2049/apply_runtime_patches.sh
           bash tools/rush2049/apply_runtime_patches.sh | grep -q "already applied"
 
-  # The patches library and the example mod are MIPS code: built with the distro's clang and lld, then recompiled by
-  # N64Recomp and packed by RecompModTool, both built from the runtime's pinned N64Recomp. None of it needs the ROM.
-  # (The Windows and Linux jobs don't compile register_patches.cpp, which includes this job's output.)
-  patches:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Fetch N64Recomp
-        run: |
-          git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
-          git -C rush2049/lib/N64ModernRuntime submodule update --init --recursive --depth 1 N64Recomp
-      - name: Install clang and lld
-        run: sudo apt-get update -q && sudo apt-get install -y -q clang lld ninja-build
-      - name: Build N64Recomp and RecompModTool
-        run: |
-          cmake -S rush2049/lib/N64ModernRuntime/N64Recomp -B n64recomp -G Ninja -DCMAKE_BUILD_TYPE=Release
-          ninja -C n64recomp N64RecompCLI RecompModTool
-      - name: Patches library (patches.elf, then N64Recomp into RecompiledPatches/)
-        run: |
-          make -C rush2049/patches CC=clang LD=ld.lld
-          cd rush2049 && ../n64recomp/N64Recomp patches.toml
-          grep -q '"recomp_printf"' RecompiledPatches/recomp_overlays.inl
-      - name: Example mod (mod_template)
-        run: |
-          make -C rush2049/mod_template CC=clang LD=ld.lld
-          cd rush2049/mod_template && ../../n64recomp/RecompModTool mod.toml build
-          test -s build/rush2049_hello_mod.nrm
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rush2049_hello_mod
-          path: rush2049/mod_template/build/rush2049_hello_mod.nrm
-
   build:
     runs-on: windows-2025
     timeout-minutes: 90
@@ -89,19 +57,21 @@ jobs:
           mkdir -p rush2049/RecompiledFuncs rush2049/rsp
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      # No MIPS clang here (the llvm.org build has no MIPS backend), so no patches library: build-linux builds it.
       - name: Configure
         run: |
           clang-cl --version
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DRUSH2049_PATCHES=OFF
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
         shell: bash
         run: |
           objs=$(ninja -C rush2049/build -t targets all |
-            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.obj' | grep -vE 'register_overlays|register_patches|/rsp/')
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.obj' | grep -vE 'register_overlays|/rsp/')
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs
@@ -146,10 +116,22 @@ jobs:
       - name: Compile the game's own sources
         run: |
           objs=$(ninja -C rush2049/build -t targets all |
-            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|register_patches|/rsp/')
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|/rsp/')
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs
+      # The objects above include register_patches.cpp, so the patches library (patches/, N64Recomp) is built too.
+      # The example mod checks the mod toolchain end to end; its .nrm is kept as an artifact.
+      - name: Example mod (mod_template)
+        run: |
+          ninja -C rush2049/build PatchesLib RecompModTool
+          make -C rush2049/mod_template
+          cd rush2049/mod_template && ../build/RecompModTool mod.toml build
+          test -s build/rush2049_hello_mod.nrm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rush2049_hello_mod
+          path: rush2049/mod_template/build/rush2049_hello_mod.nrm
       - name: sccache stats
         if: always()
         run: sccache --show-stats
