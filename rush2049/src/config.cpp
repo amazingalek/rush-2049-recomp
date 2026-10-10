@@ -1,5 +1,6 @@
-// Config tabs: the stock tabs, plus the controller accessory and rewind options on the General tab, the game frame rate
-// and hi-res font on the Graphics tab, and the music replacement options on the Sound tab.
+// Config tabs: the stock tabs, plus the controller accessory, Controller Pak size and rewind options on the General
+// tab, the game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing and the
+// music replacement options on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -7,6 +8,7 @@
 
 #include "rush2049_game.h"
 #include "rush2049_hooks.h"
+#include "musyx_hle.h"
 #include "librecomp/config.hpp"
 #include "recompinput/input_mapping.h"
 #include "recompui/config.h"
@@ -24,6 +26,17 @@ namespace {
         {Accessory::RumblePak, "Rumble Pak"},
     };
     const std::string accessory_option = "accessory";
+
+    enum class PakSize {
+        Original,
+        Large,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> pak_size_options = {
+        {PakSize::Original, "Original", "Original (32 KiB)"},
+        {PakSize::Large, "Large", "Large (1.9 MB)"},
+    };
+    const std::string pak_size_option = "pak_size";
 
     enum class Rewind {
         Off,
@@ -78,6 +91,19 @@ namespace {
     };
     const std::string hires_font_option = "hires_font";
 
+    enum class SplitScreenRatio {
+        Expand,
+        Original,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> split_screen_ratio_options = {
+        {SplitScreenRatio::Expand, "Expand", "Expand"},
+        {SplitScreenRatio::Original, "Original", "Original"},
+    };
+    const std::string split_screen_ratio_option = "split_screen_ratio";
+    // Read on the game thread with every display list.
+    std::atomic<SplitScreenRatio> split_screen_ratio_setting{ SplitScreenRatio::Expand };
+
     enum class MusicReplacement {
         Off,
         On,
@@ -88,6 +114,17 @@ namespace {
         {MusicReplacement::On, "On", "On"},
     };
     const std::string music_replacement_option = "music_replacement";
+
+    enum class MusyxMix {
+        Original,
+        HighQuality,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> musyx_mix_options = {
+        {MusyxMix::Original, "Original", "Original"},
+        {MusyxMix::HighQuality, "HighQuality", "High Quality"},
+    };
+    const std::string musyx_mix_option = "musyx_mix";
     const std::string music_replacement_volume_option = "music_replacement_volume";
 }
 
@@ -95,9 +132,18 @@ uint32_t rush2049::game_frame_rate() {
     return game_fps.load(std::memory_order_relaxed);
 }
 
+bool rush2049::split_screen_expand() {
+    return split_screen_ratio_setting.load(std::memory_order_relaxed) == SplitScreenRatio::Expand;
+}
+
 bool rush2049::rumble_pak_selected() {
     auto value = recompui::config::get_general_config().get_option_value(accessory_option);
     return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
+}
+
+bool rush2049::large_controller_pak() {
+    auto value = recompui::config::get_general_config().get_option_value(pak_size_option);
+    return static_cast<PakSize>(std::get<uint32_t>(value)) == PakSize::Large;
 }
 
 extern "C" gpr rush2049_frame_pace(gpr retraces) {
@@ -215,6 +261,21 @@ void rush2049::init_config() {
         Accessory::ControllerPak
     );
     general.add_enum_option(
+        pak_size_option,
+        "Controller Pak Size",
+        "How much each Controller Pak holds. A player profile takes 9 of a pak's pages, and a pak holds 16 files "
+        "whatever its size."
+        "<br/>"
+        "<b>Original:</b> Nintendo's 32 KiB pak, 123 pages, about 13 profiles. "
+        "<b>Large:</b> 62 banks, 7748 pages, the most libultra can address, so it never fills up. "
+        "Emulators that only take 32 KiB paks can't read it."
+        "<br/>"
+        "Saves are moved to the new size the next time the game starts. A pak whose saves don't fit in 32 KiB "
+        "stays large.",
+        pak_size_options,
+        PakSize::Large
+    );
+    general.add_enum_option(
         rewind_option,
         "Rewind",
         "Hold <recomp-color primary>Rewind</recomp-color> (Controls tab) in a single-player race and the race runs "
@@ -263,9 +324,40 @@ void rush2049::init_config() {
             rush2049::set_hires_font(static_cast<HiresFont>(std::get<uint32_t>(cur_value)) == HiresFont::On);
         });
 
+    graphics.add_enum_option(
+        split_screen_ratio_option,
+        "Split-Screen Aspect Ratio",
+        "How the 2- and 4-player views fit a wide window. The original game splits a 4:3 screen, so at 16:9 the "
+        "views sit inside a 4:3 area with bars at the sides."
+        "<br/>"
+        "<b>Expand:</b> each view widens to fill its share of the window, and its HUD moves with it. Needs "
+        "<recomp-color primary>Aspect Ratio</recomp-color> at Expand and "
+        "<recomp-color primary>HUD Placement</recomp-color> at something other than Original.",
+        split_screen_ratio_options,
+        SplitScreenRatio::Expand
+    );
+    graphics.add_option_change_callback(split_screen_ratio_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            split_screen_ratio_setting = static_cast<SplitScreenRatio>(std::get<uint32_t>(cur_value));
+        });
+
     recompui::config::create_controls_tab();
 
     recomp::config::Config& sound = recompui::config::create_sound_tab();
+    sound.add_enum_option(
+        musyx_mix_option,
+        "MusyX Mixing",
+        "<b>High Quality</b> mixes the game's music and sound effects at 44.1 kHz with a sharper interpolator, so "
+        "sounds played above their recorded pitch keep their treble and loud passages don't clip. "
+        "<b>Original</b> plays the game's own 22 kHz mix.",
+        musyx_mix_options,
+        MusyxMix::HighQuality
+    );
+    // Called on load too.
+    sound.add_option_change_callback(musyx_mix_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_musyx_hires(static_cast<MusyxMix>(std::get<uint32_t>(cur_value)) == MusyxMix::HighQuality);
+        });
     sound.add_enum_option(
         music_replacement_option,
         "Replacement Music",

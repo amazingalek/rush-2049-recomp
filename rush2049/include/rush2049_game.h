@@ -1,18 +1,30 @@
 #ifndef RUSH2049_GAME_H
 #define RUSH2049_GAME_H
 
+#include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace rush2049 {
     inline const std::u8string program_id = u8"Rush2049Recompiled";
     inline const std::string program_name = "San Francisco Rush 2049: Recompiled";
 
     void register_overlays();
+    // Mods (docs/games/rush2049.md, "Mods"): the patches library (src/register_patches.cpp), the functions the
+    // executable exports to mods (src/mod_exports.cpp), and the recomp ROM rebuilt for hooking (src/code_loading.cpp).
+    void register_patches();
+    void register_mod_exports();
+    std::vector<uint8_t> build_recomp_rom(std::span<const uint8_t> rom);
     void init_config();
     // The accessory in every controller: a Controller Pak (saves) or a Rumble Pak (rumble, no saves).
     bool rumble_pak_selected();
+    // The "Controller Pak Size" setting: 62 banks (about 1.9 MB) rather than the original 32 KiB.
+    bool large_controller_pak();
     // Frames a second the game draws at the "Game Frame Rate" setting: 30, 60, or more with Match Framerate.
     uint32_t game_frame_rate();
+    // Whether 2- and 4-player views widen with the window ("Split-Screen Aspect Ratio" at Expand).
+    bool split_screen_expand();
     // --dump-dl: write the first display list the game submits after the given number of seconds (src/dl_dump.cpp).
     void start_dl_dump(const char* path, double after_seconds);
     // --dump-ram: write all of RDRAM (big-endian) to <prefix>N.bin at each of the comma-separated times in seconds.

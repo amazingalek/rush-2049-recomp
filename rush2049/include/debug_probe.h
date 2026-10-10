@@ -8,11 +8,12 @@ namespace rush2049 {
     // Controller reads by the game (input callback calls for player 1).
     extern std::atomic<uint32_t> probe_input_reads;
 
-    // Audio buffers the game hands to the AI (osAiSetNextBuffer): counts, sample totals, peak level.
-    void probe_audio(const int16_t* samples, size_t count);
+    // Audio buffers the game hands to the AI (osAiSetNextBuffer), as they reach the output (the high-quality mix in
+    // place of the game's when it is on; left, right, 1.0 = 16-bit full scale): counts, sample totals, peak level.
+    void probe_audio(const float* samples, size_t frames);
     void probe_audio_frequency(uint32_t freq);
 
-    // --dump-audio <file.wav>: also write the game's audio output (as the AI receives it) to a WAV file.
+    // --dump-audio <file.wav>: also write that audio, before resampling and volume, to a 32-bit float WAV file.
     void start_audio_dump(const char* path);
 
     // --dump-output <file.wav>: write what is queued on the audio device (the game's audio plus the replacement

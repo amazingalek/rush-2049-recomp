@@ -9,11 +9,17 @@
 //
 // Both overlays inflate to 0x8038A400, so whichever is loaded there is unloaded first.
 
+#include <algorithm>
 #include <cstdio>
+#include <span>
+#include <vector>
+
+#include "miniz.h"
 
 #include "recomp.h"
 #include "librecomp/overlays.hpp"
 #include "rush2049_hooks.h"
+#include "rush2049_game.h"
 
 namespace {
 
@@ -60,4 +66,24 @@ extern "C" void rush2049_inflate_end(uint8_t* rdram, recomp_context* ctx) {
         break;
     }
     inflate_src_rom = 0;
+}
+
+// GameEntry::decompression_routine: the recomp ROM tools/rush2049/extract.py writes, rebuilt from the stored ROM.
+// The runtime reads code from it when a mod hooks or patches a game function (it recompiles the function again), so
+// without it only the boot segment, which is plain in ROM, could be hooked.
+std::vector<uint8_t> rush2049::build_recomp_rom(std::span<const uint8_t> rom) {
+    constexpr size_t recomp_rom_size = 0x010E0000;
+    std::vector<uint8_t> out(recomp_rom_size, 0);
+    std::copy(rom.begin(), rom.begin() + std::min(rom.size(), recomp_rom_size), out.begin());
+
+    for (const CodeSegment& seg : code_segments) {
+        size_t avail = (seg.original_rom < rom.size()) ? rom.size() - seg.original_rom : 0;
+        size_t written = tinfl_decompress_mem_to_mem(out.data() + seg.recomp_rom, recomp_rom_size - seg.recomp_rom,
+            rom.data() + seg.original_rom, avail, 0);
+        if (written == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED || written < seg.size) {
+            fprintf(stderr, "[rush2049] couldn't inflate the %s code for mods (rom 0x%08X)\n", seg.name, seg.original_rom);
+            return {};
+        }
+    }
+    return out;
 }

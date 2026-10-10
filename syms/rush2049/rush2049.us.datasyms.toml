@@ -1,0 +1,26 @@
+# Game variables mods and the patches library can use by name (`extern s32 current_song;`). Written by hand, from
+# what the runtime's own hooks read (rush2049/src). Addresses are fixed for this ROM, so every section is absolute
+# (no rom field). Same rule as names.toml: adding is free, renaming breaks mods.
+
+[[section]]
+name = "boot_data"
+vram = 0x8002B000
+size = 0x5BA50
+
+symbols = [
+    { name = "overlay_rom_table", vram = 0x8002B020 },  # u32[2]: ROM addresses of the ovl1 and ovl2 deflate streams
+    { name = "sched", vram = 0x8002E8E8 },              # the scheduler; +0x274 current task, +0x27C retrace count
+    { name = "gfx_tasks_pending", vram = 0x8002EB70 },  # s16: graphics tasks submitted and not yet done
+    { name = "main_thread_queue", vram = 0x8002ECF8 },  # OSMesgQueue the main thread waits on for retraces
+]
+
+[[section]]
+name = "main_data"
+vram = 0x8010FD80
+size = 0x6A8C0
+
+symbols = [
+    { name = "current_song", vram = 0x80110240 },       # s32: the song the music thread is playing, -1 for none
+    { name = "music_cmd_queue", vram = 0x801427A8 },    # OSMesgQueue of commands to music_thread_main
+    { name = "dl_head", vram = 0x80149438 },            # Gfx*: where draw_tex_rect appends its commands
+]

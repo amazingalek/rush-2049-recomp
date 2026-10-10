@@ -9,9 +9,7 @@
 // list pointer across the call, so extra commands would be overwritten.
 //
 // Menus use the same function and stay 4:3, so this only applies during a race, which is when the race timer is
-// drawn (func_8010761C). Split screen stays 4:3 too: its views don't span the screen, so RT64 doesn't widen them,
-// and the HUD has to stay next to them. A frame whose display list sets a viewport narrower than the screen is split
-// screen, and the next frame's HUD is left alone. RT64 only reads extended commands after a gEXEnable in the same display list, and every
+// drawn (func_8010761C). RT64 only reads extended commands after a gEXEnable in the same display list, and every
 // frame's list starts by setting segment 0 to 0, which is already its value, so that command becomes gEXEnable.
 //
 // The two spinning coins beside the right-hand counters are 3D models, drawn among the world's objects with a matrix
@@ -19,8 +17,21 @@
 // Each is a top-level matrix + display list call + pop, and that triple is replaced by a call to a list of our own
 // (in the recomp heap, above the game's 8 MB, so RT64 reads it in extended RDRAM mode) that draws the coin under a
 // viewport anchored to the same edge as the counters. RT64 slides an anchored viewport as far as it slides the HUD.
+//
+// Split screen. RT64 only widens a viewport that spans the screen, so the 2- and 4-player views stay 4:3. Each view
+// is a top-level viewport + pipe sync + scissor, and with "Split-Screen Aspect Ratio" at Expand that triple becomes a
+// call to a list that sets the same viewport with its left and right edges anchored to origins (a patch to RT64,
+// runtime-patches/rt64-0001-viewport-edge-origins.patch) and the scissor anchored the same way. An edge in the left
+// quarter of the screen follows the window's left edge, one in the right quarter its right edge, and one in between
+// the centre, so the two 2-player views reach both sides of the window and the four 4-player views meet in the middle.
+// RT64 widens the projection with the view. The HUD moves with the views: a rectangle in a view anchors to the view's
+// left edge, right edge or centre, whichever it's nearest, and a rectangle outside the views to the nearest view edge.
+// The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
+// score boxes are fill rectangles in the HUD's list; each fill + sync pair is rewritten in place as RT64's extended
+// fill rectangle, anchored the same way.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "recomp.h"
@@ -42,15 +53,29 @@ constexpr uint32_t dl_ptr_addr = 0x80149438;    // where func_80087110 appends c
 constexpr int left_hud_max_x = 58;
 constexpr int right_hud_min_x = 232;
 constexpr int screen_width = 320;
+constexpr int screen_height = 220;
 
 uint32_t race_timer_retrace = 0;
 bool race_timer_seen = false;
 // Whether the last display list submitted had a viewport narrower than the screen (split screen).
 bool split_screen_last_frame = false;
 
+// The split-screen views of the last display list submitted, when they were widened; none otherwise.
+struct View {
+    int x0, x1;         // screen pixels
+    int left, right;    // the origins their edges follow
+};
+constexpr int max_views = 4;
+View split_views[max_views];
+int split_view_count = 0;
+// Where func_80087110 has appended commands since split screen started: the HUD's list.
+uint32_t hud_list_lo = 0;
+uint32_t hud_list_hi = 0;
+
 // Set at func_80087110's entry for its exit.
 int rect_origin = G_EX_ORIGIN_NONE;
 uint32_t rect_dl_start = 0;
+bool rect_tracked = false;
 
 uint32_t retrace_count(uint8_t* rdram) {
     return (uint32_t)MEM_W(0x27C, (gpr)(int32_t)sched_addr);
@@ -72,6 +97,98 @@ bool single_player_race(uint8_t* rdram) {
     // 8 retraces at 60 Hz; above 60 fps the VI runs at the frame rate.
     uint32_t window = 8 * std::max<uint32_t>(60, rush2049::game_frame_rate()) / 60;
     return race_timer_seen && retrace_count(rdram) - race_timer_retrace <= window && !split_screen_last_frame;
+}
+
+// Where an origin sits on the 4:3 screen, in pixels, and the offset that makes a 10.2 coordinate relative to it.
+int origin_x(int origin) {
+    return origin * screen_width / G_EX_ORIGIN_RIGHT;
+}
+
+int origin_offset(int origin) {
+    return -origin * screen_width * 4 / G_EX_ORIGIN_RIGHT;
+}
+
+// The origin a view edge at x follows.
+int edge_origin(int x) {
+    return x <= screen_width / 4 ? G_EX_ORIGIN_LEFT
+         : x >= screen_width * 3 / 4 ? G_EX_ORIGIN_RIGHT
+                                     : G_EX_ORIGIN_CENTER;
+}
+
+// The origin something at x in a view follows: its left edge's, its right edge's, or in the middle third the view's
+// centre (halfway between them).
+int view_origin(const View& v, double x) {
+    double t = (x - v.x0) / (v.x1 - v.x0);
+    return t < 0.3 ? v.left : t > 0.7 ? v.right : (v.left + v.right) / 2;
+}
+
+const View* view_holding(int x0, int x1) {
+    for (int i = 0; i < split_view_count; i++) {
+        if (x0 >= split_views[i].x0 - 2 && x1 <= split_views[i].x1 + 2) {
+            return &split_views[i];
+        }
+    }
+    return nullptr;
+}
+
+// The origin a split-screen HUD rectangle from x0 to x1 (pixels) follows. One across the whole screen stays put.
+int split_rect_origin(int x0, int x1) {
+    if (x0 <= 2 && x1 >= screen_width - 2) {
+        return G_EX_ORIGIN_NONE;
+    }
+    double cx = (x0 + x1) / 2.0;
+    if (const View* v = view_holding(x0, x1)) {
+        return view_origin(*v, cx);
+    }
+    // Outside the views: beyond them on either side, or by the nearest view edge (the 4-player timer sits on the
+    // line between the views).
+    int lo = screen_width, hi = 0;
+    int nearest = G_EX_ORIGIN_NONE;
+    double nearest_distance = screen_width;
+    for (int i = 0; i < split_view_count; i++) {
+        const View& v = split_views[i];
+        lo = std::min(lo, v.x0);
+        hi = std::max(hi, v.x1);
+        for (int side = 0; side < 2; side++) {
+            double d = std::abs(cx - (side ? v.x1 : v.x0));
+            if (d < nearest_distance) {
+                nearest_distance = d;
+                nearest = side ? v.right : v.left;
+            }
+        }
+    }
+    return cx >= hi ? G_EX_ORIGIN_RIGHT : cx <= lo ? G_EX_ORIGIN_LEFT : nearest;
+}
+
+// Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
+// view it fills, or edge by edge when it's outside the views (the borders between them).
+void anchor_fill_rect(uint8_t* rdram, uint32_t p) {
+    uint32_t w0 = read_word(rdram, p);
+    uint32_t w1 = read_word(rdram, p + 4);
+    int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
+    int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
+    int x0 = ulx / 4, x1 = lrx / 4 + 1;
+    int left, right;
+    if (const View* v = view_holding(x0, x1)) {
+        if (x1 - x0 >= (v->x1 - v->x0) * 9 / 10) {
+            left = v->left;
+            right = v->right;
+        } else {
+            left = right = view_origin(*v, (x0 + x1) / 2.0);
+        }
+    } else {
+        left = edge_origin(x0);
+        right = edge_origin(x1);
+    }
+    write_word(rdram, p, PARAM(RT64_EXTENDED_OPCODE, 8, 24) | PARAM(G_EX_FILLRECT_V1, 24, 0));
+    write_word(rdram, p + 4, PARAM(left, 12, 0) | PARAM(right, 12, 12));
+    write_word(rdram, p + 8, PARAM(ulx + origin_offset(left), 16, 16) | PARAM(uly, 16, 0));
+    write_word(rdram, p + 12, PARAM(lrx + origin_offset(right), 16, 16) | PARAM(lry, 16, 0));
+}
+
+bool fill_rect_pair(uint8_t* rdram, uint32_t p) {
+    return (read_word(rdram, p) >> 24) == 0xF6 && read_word(rdram, p + 8) == 0xE7000000 &&
+           read_word(rdram, p + 12) == 0;
 }
 
 // A display list matrix (s15.16: the 16 integer halves, then the 16 fraction halves).
@@ -103,18 +220,39 @@ Matrix multiply(const Matrix& a, const Matrix& b) {
 }
 
 // Each anchored model gets a list of 15 commands; lists rotate over a few frames so RT64 can still be reading the
-// previous ones.
+// previous ones. Split screen uses one more list per frame, for the views and the borders between them.
 constexpr int model_list_bytes = 15 * 8;
-constexpr int models_per_frame = 4;
+constexpr int models_per_frame = 8;  // two coins in each of four views
 constexpr int model_list_frames = 4;
 uint32_t model_lists = 0;
 uint32_t model_list_frame = 0;
+constexpr int view_list_commands = 8;
+constexpr int max_border_commands = 32;
+constexpr int split_list_bytes = (max_views * view_list_commands + max_border_commands + 5) * 8;
+uint32_t split_lists = 0;
+uint32_t split_list_frame = 0;
+
+uint32_t alloc_lists(uint8_t* rdram, int bytes) {
+    void* lists = recomp::alloc(rdram, bytes);
+    return lists ? (uint32_t)((uint8_t*)lists - rdram) + 0x80000000 : 0;
+}
 
 void write_commands(uint8_t* rdram, uint32_t addr, const GfxCommand* cmds, int count) {
     for (int i = 0; i < count; i++) {
         write_word(rdram, addr + i * 8, cmds[i].values.word0);
         write_word(rdram, addr + i * 8 + 4, cmds[i].values.word1);
     }
+}
+
+// Writes a call to the list at `list` at p, in the place of 3 commands.
+void write_call(uint8_t* rdram, uint32_t p, uint32_t list) {
+    // Addresses with the top bit set are read unmasked only in extended mode, so it's on just for the call.
+    GfxCommand call[3]{};
+    gEXSetRDRAMExtended(&call[0], 1);
+    call[1].values.word0 = 0xDE000000;  // gSPDisplayList
+    call[1].values.word1 = list;
+    gEXSetRDRAMExtended(&call[2], 0);
+    write_commands(rdram, p, call, 3);
 }
 
 // Replaces the matrix + call + pop at p with a call to a list at `list` that draws them under the viewport at
@@ -124,12 +262,12 @@ void anchor_model(uint8_t* rdram, uint32_t p, uint32_t list, uint32_t viewport, 
     GfxCommand* c = cmds;
     gEXPushViewport(c++);
     gEXPushScissor(c++);
-    gEXSetViewportAlign(c, origin, origin == G_EX_ORIGIN_RIGHT ? -screen_width * 4 : 0, 0);
+    gEXSetViewportAlign(c, origin, origin_offset(origin), 0);
     c += 2;
     c->values.word0 = 0xDC080008;  // gSPViewport
     c->values.word1 = viewport;
     c++;
-    gEXSetScissor(c, 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, 220);
+    gEXSetScissor(c, 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, screen_height);
     c += 2;
     for (int i = 0; i < 3; i++, c++) {
         c->values.word0 = read_word(rdram, p + i * 8);
@@ -142,14 +280,178 @@ void anchor_model(uint8_t* rdram, uint32_t p, uint32_t list, uint32_t viewport, 
     c->values.word0 = 0xDF000000;  // gSPEndDisplayList
     c->values.word1 = 0;
     write_commands(rdram, list, cmds, 15);
+    write_call(rdram, p, list);
+}
 
-    // Addresses with the top bit set are read unmasked only in extended mode, so it's on just for the call.
-    GfxCommand call[3]{};
-    gEXSetRDRAMExtended(&call[0], 1);
-    call[1].values.word0 = 0xDE000000;  // gSPDisplayList
-    call[1].values.word1 = list;
-    gEXSetRDRAMExtended(&call[2], 0);
-    write_commands(rdram, p, call, 3);
+// What a walk over a frame's top-level display list found.
+struct FrameScan {
+    uint32_t hud_scissor = 0;
+    uint32_t first_pipe_sync = 0;
+    bool split_screen = false;
+    // Each view's viewport + pipe sync + scissor.
+    struct ViewTriple {
+        uint32_t p, viewport;
+    } views[max_views + 1];
+    int view_count = 0;
+    // The first and last fill + pipe sync pairs before the first view: the borders between the views.
+    uint32_t first_fill = 0, last_fill = 0;
+    // The lists called after the HUD scissor.
+    uint32_t hud_calls[16];
+    int hud_call_count = 0;
+    // The HUD's 3D models (the coins): where they are, under which viewport, and where they land across it (-1 to 1).
+    struct HudModel {
+        uint32_t p, viewport;
+        double x;
+    } models[models_per_frame];
+    int model_count = 0;
+};
+
+// Widens the split-screen views, their borders and their HUD. False if the views aren't a layout this knows.
+bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
+    View views[max_views];
+    int count = scan.view_count;
+    if (count < 2 || count > max_views) {
+        return false;
+    }
+    int lo = screen_width, hi = 0;
+    bool stretched = false;
+    for (int i = 0; i < count; i++) {
+        uint32_t vp = scan.views[i].viewport;
+        int sx = (int16_t)(read_word(rdram, vp) >> 16), sy = (int16_t)read_word(rdram, vp);
+        int tx = (int16_t)(read_word(rdram, vp + 8) >> 16);
+        int x0 = (tx - sx) / 4, x1 = (tx + sx) / 4;
+        if (x1 - x0 < 150 || 2 * sy / 4 < 100) {
+            return false;
+        }
+        views[i] = { x0, x1, edge_origin(x0), edge_origin(x1) };
+        lo = std::min(lo, x0);
+        hi = std::max(hi, x1);
+        stretched |= views[i].left != views[i].right;
+    }
+    if (lo > 4 || hi < screen_width * 3 / 4 || !stretched) {
+        return false;
+    }
+    std::copy(views, views + count, split_views);
+    split_view_count = count;
+
+    if (split_lists == 0) {
+        split_lists = alloc_lists(rdram, split_list_bytes * model_list_frames);
+        if (split_lists == 0) {
+            return true;
+        }
+    }
+    uint32_t list = split_lists + split_list_frame * split_list_bytes;
+    split_list_frame = (split_list_frame + 1) % model_list_frames;
+
+    // Each view: its viewport with both edges anchored, then its scissor anchored the same way.
+    for (int i = 0; i < count; i++, list += view_list_commands * 8) {
+        const View& v = views[i];
+        uint32_t p = scan.views[i].p;
+        uint32_t sc0 = read_word(rdram, p + 16), sc1 = read_word(rdram, p + 20);
+        GfxCommand cmds[view_list_commands]{};
+        GfxCommand* c = cmds;
+        gEXSetViewportAlignEdges(c, v.left, v.right, origin_offset(v.left), 0);
+        c += 2;
+        c->values.word0 = 0xDC080008;  // gSPViewport
+        c->values.word1 = scan.views[i].viewport;
+        c++;
+        gEXSetViewportAlign(c, G_EX_ORIGIN_NONE, 0, 0);
+        c += 2;
+        gEXSetScissor(c, (sc1 >> 24) & 3, v.left, v.right,
+                      (int)((sc0 >> 12) & 0xFFF) / 4 - origin_x(v.left), (int)(sc0 & 0xFFF) / 4,
+                      (int)((sc1 >> 12) & 0xFFF) / 4 - origin_x(v.right), (int)(sc1 & 0xFFF) / 4);
+        c += 2;
+        c->values.word0 = 0xDF000000;  // gSPEndDisplayList
+        c->values.word1 = 0;
+        write_commands(rdram, list, cmds, view_list_commands);
+        write_call(rdram, p, list);
+    }
+
+    // The borders: fills with the screen-wide scissor that's set at the start of the frame, which would clip them to
+    // the 4:3 area. The commands from the first fill to the last are copied into a list with a scissor across the
+    // window and their fills anchored; a call to it takes their place, and pipe syncs the rest.
+    if (scan.first_fill != 0 && scan.last_fill >= scan.first_fill) {
+        int n = (int)(scan.last_fill - scan.first_fill) / 8 + 2;
+        bool simple = n >= 3 && n <= max_border_commands &&
+                      !(scan.first_pipe_sync >= scan.first_fill && scan.first_pipe_sync <= scan.last_fill + 8);
+        for (int i = 0; simple && i < n; i++) {
+            switch (read_word(rdram, scan.first_fill + i * 8) >> 24) {
+                case 0xF6: case 0xE7: case 0xF7: case 0xFF: case 0xFE: case 0xE3: case 0xE2: case 0xD9:
+                case 0xFA: case 0xF9: case 0xF8: case 0xFC: case 0xE6: case 0xE8: case 0xE9:
+                    break;
+                default:
+                    simple = false;
+            }
+        }
+        if (simple) {
+            GfxCommand head[3]{};
+            gEXPushScissor(&head[0]);
+            gEXSetScissor(&head[1], 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0,
+                          screen_height);
+            write_commands(rdram, list, head, 3);
+            uint32_t body = list + 3 * 8;
+            for (int i = 0; i < n; i++) {
+                write_word(rdram, body + i * 8, read_word(rdram, scan.first_fill + i * 8));
+                write_word(rdram, body + i * 8 + 4, read_word(rdram, scan.first_fill + i * 8 + 4));
+            }
+            for (int i = 0; i + 1 < n; i++) {
+                if (fill_rect_pair(rdram, body + i * 8)) {
+                    anchor_fill_rect(rdram, body + i * 8);
+                    i++;
+                }
+            }
+            GfxCommand tail[2]{};
+            gEXPopScissor(&tail[0]);
+            tail[1].values.word0 = 0xDF000000;  // gSPEndDisplayList
+            write_commands(rdram, body + n * 8, tail, 2);
+            write_call(rdram, scan.first_fill, list);
+            for (int i = 3; i < n; i++) {
+                write_word(rdram, scan.first_fill + i * 8, 0xE7000000);
+                write_word(rdram, scan.first_fill + i * 8 + 4, 0);
+            }
+        }
+    }
+
+    // The HUD's fills (the 4-player score boxes), in the lists it calls, as far as func_80087110 has written.
+    for (int i = 0; i < scan.hud_call_count && hud_list_lo != 0; i++) {
+        uint32_t p = scan.hud_calls[i];
+        for (int n = 0; n < 8000; n++, p += 8) {
+            uint32_t w0 = read_word(rdram, p);
+            if ((w0 >> 24) == 0xDF) {
+                break;
+            }
+            if ((w0 >> 24) == 0xDE && (w0 & 0x00010000)) {
+                p = (read_word(rdram, p + 4) | 0x80000000) - 8;
+                continue;
+            }
+            if (p >= hud_list_lo && p + 16 <= hud_list_hi && fill_rect_pair(rdram, p)) {
+                anchor_fill_rect(rdram, p);
+                p += 8;
+            }
+        }
+    }
+
+    // The coins: anchored like the HUD beside them, in their own view.
+    if (scan.model_count > 0 && model_lists == 0) {
+        model_lists = alloc_lists(rdram, model_list_bytes * models_per_frame * model_list_frames);
+    }
+    if (model_lists != 0) {
+        uint32_t frame_lists = model_lists + model_list_frame * model_list_bytes * models_per_frame;
+        model_list_frame = (model_list_frame + 1) % model_list_frames;
+        for (int i = 0; i < scan.model_count; i++) {
+            const FrameScan::HudModel& m = scan.models[i];
+            for (int j = 0; j < count; j++) {
+                if (scan.views[j].viewport == m.viewport) {
+                    int sx = (int16_t)(read_word(rdram, m.viewport) >> 16);
+                    int tx = (int16_t)(read_word(rdram, m.viewport + 8) >> 16);
+                    double x = (tx + sx * m.x) / 4;
+                    anchor_model(rdram, m.p, frame_lists + i * model_list_bytes, m.viewport, view_origin(views[j], x));
+                    break;
+                }
+            }
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -165,12 +467,18 @@ extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
 
 extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     rect_origin = G_EX_ORIGIN_NONE;
-    if (!hud_moves() || !single_player_race(rdram)) {
+    rect_tracked = false;
+    if (!hud_moves()) {
         return;
     }
     int x0 = (int)ctx->r4;
     int x1 = (int)ctx->r6;
-    if (x1 <= left_hud_max_x) {
+    if (split_view_count > 0) {
+        rect_origin = split_rect_origin(x0, x1);
+        rect_tracked = true;
+    } else if (!single_player_race(rdram)) {
+        return;
+    } else if (x1 <= left_hud_max_x) {
         rect_origin = G_EX_ORIGIN_LEFT;
     } else if (x0 >= right_hud_min_x) {
         rect_origin = G_EX_ORIGIN_RIGHT;
@@ -181,11 +489,19 @@ extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
 }
 
 extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
-    if (rect_origin == G_EX_ORIGIN_NONE) {
+    if (rect_origin == G_EX_ORIGIN_NONE && !rect_tracked) {
         return;
     }
     uint32_t end = read_word(rdram, dl_ptr_addr);
-    int x_offset = rect_origin == G_EX_ORIGIN_RIGHT ? -screen_width * 4 : 0;
+    if (rect_tracked) {
+        hud_list_lo = hud_list_lo == 0 ? rect_dl_start : std::min(hud_list_lo, rect_dl_start);
+        hud_list_hi = std::max(hud_list_hi, end);
+        rect_tracked = false;
+    }
+    if (rect_origin == G_EX_ORIGIN_NONE) {
+        return;
+    }
+    int x_offset = origin_offset(rect_origin);
     for (uint32_t p = rect_dl_start; p + 24 <= end; p += 8) {
         uint32_t w0 = read_word(rdram, p);
         if ((w0 >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 || (read_word(rdram, p + 16) >> 24) != 0xF1) {
@@ -200,10 +516,7 @@ extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
         GfxCommand cmds[3]{};
         gEXTextureRectangle(cmds, rect_origin, rect_origin, ulx + x_offset, uly, lrx + x_offset, lry, tile,
                             st >> 16, st & 0xFFFF, dsdxdtdy >> 16, dsdxdtdy & 0xFFFF);
-        for (int i = 0; i < 3; i++) {
-            write_word(rdram, p + i * 8, cmds[i].values.word0);
-            write_word(rdram, p + i * 8 + 4, cmds[i].values.word1);
-        }
+        write_commands(rdram, p, cmds, 3);
         p += 16;
     }
     rect_origin = G_EX_ORIGIN_NONE;
@@ -230,17 +543,10 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     // The HUD is drawn after the frame's last full-screen scissor, (0,0)-(320,220), which would clip the moved
     // rectangles to the 4:3 area. That scissor follows a pipe sync (nothing to RT64), so the pair makes room for an
     // extended scissor from the window's left edge to its right edge. The list is walked at its top level only.
-    uint32_t hud_scissor = 0;
-    uint32_t first_pipe_sync = 0;
-    bool split_screen = false;
+    FrameScan scan;
     // The world's projection and view so far, to find which edge a HUD model sits by.
     Matrix proj{}, view{};
     uint32_t viewport = 0;
-    struct HudModel {
-        uint32_t p, viewport;
-        int origin;
-    } models[models_per_frame];
-    int model_count = 0;
     uint32_t p = dl + 8;
     for (int n = 0; n < 20000; n++, p += 8) {
         uint32_t w0 = read_word(rdram, p);
@@ -252,12 +558,25 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
             p = (w1 | 0x80000000) - 8;
             continue;
         }
+        if ((w0 >> 24) == 0xDE && scan.hud_scissor != 0 && scan.hud_call_count < 16) {
+            scan.hud_calls[scan.hud_call_count++] = w1 | 0x80000000;
+        }
         if (w0 == 0xDC080008 && (w1 >> 24) == 0x80) {  // gSPViewport with a direct address
             int16_t half_width = (int16_t)(read_word(rdram, w1) >> 16) / 4;
             if (half_width < screen_width / 2) {
-                split_screen = true;
+                scan.split_screen = true;
             }
             viewport = w1;
+            if (read_word(rdram, p + 8) == 0xE7000000 && read_word(rdram, p + 12) == 0 &&
+                (read_word(rdram, p + 16) >> 24) == 0xED && scan.view_count <= max_views) {
+                scan.views[scan.view_count++] = { p, w1 };
+            }
+        }
+        if (scan.view_count == 0 && fill_rect_pair(rdram, p)) {
+            if (scan.first_fill == 0) {
+                scan.first_fill = p;
+            }
+            scan.last_fill = p;
         }
         if ((w0 & 0xFFFFFF00) == 0xDA380000 && (w1 >> 24) == 0x80) {  // gSPMatrix with a direct address
             uint32_t params = (w0 & 0xFF) ^ 1;  // G_MTX_PUSH is inverted in F3DEX2
@@ -265,63 +584,71 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
                 proj = (params & 2) ? read_matrix(rdram, w1) : multiply(read_matrix(rdram, w1), proj);
             } else if (params & 2) {  // G_MTX_LOAD
                 view = read_matrix(rdram, w1);
-            } else if (params == 1 && model_count < models_per_frame && viewport != 0 &&
+            } else if (params == 1 && scan.model_count < models_per_frame && viewport != 0 &&
                        read_word(rdram, p + 8) == 0xDE000000 && read_word(rdram, p + 16) == 0xD8380002 &&
                        read_word(rdram, p + 20) == 0x40) {  // pushed, then a call and a pop
                 Matrix model = read_matrix(rdram, w1);
                 if (model.m[3][3] == 10.0) {
                     Matrix clip = multiply(multiply(model, view), proj);
                     double w = clip.m[3][3];
-                    double x = screen_width / 2 * (1 + clip.m[3][0] / w);
-                    int origin = x >= right_hud_min_x ? G_EX_ORIGIN_RIGHT
-                               : x <= left_hud_max_x  ? G_EX_ORIGIN_LEFT
-                                                      : G_EX_ORIGIN_NONE;
-                    if (w > 0 && origin != G_EX_ORIGIN_NONE) {
-                        models[model_count++] = { p, viewport, origin };
+                    if (w > 0) {
+                        scan.models[scan.model_count++] = { p, viewport, clip.m[3][0] / w };
                     }
                 }
             }
         }
         if (w0 == 0xE7000000 && w1 == 0 && read_word(rdram, p + 8) == 0xED000000 &&
             read_word(rdram, p + 12) == 0x00500370) {
-            hud_scissor = p;
+            scan.hud_scissor = p;
+            scan.hud_call_count = 0;
         }
-        if (w0 == 0xE7000000 && w1 == 0 && first_pipe_sync == 0 && (read_word(rdram, p + 8) >> 24) != 0xED) {
-            first_pipe_sync = p;
+        if (w0 == 0xE7000000 && w1 == 0 && scan.first_pipe_sync == 0 && (read_word(rdram, p + 8) >> 24) != 0xED) {
+            scan.first_pipe_sync = p;
         }
     }
     // RT64 works out the game's frame rate from how often the framebuffer changes, counting retraces at 60 Hz. Above
     // 60 fps the VI is faster than that, so the list says the rate instead, in the place of a pipe sync. Otherwise
     // RT64 would take it for 60 fps and, when its Framerate is above 60, interpolate frames it doesn't need.
     uint32_t fps = rush2049::game_frame_rate();
-    if (extended && fps > 60 && first_pipe_sync != 0) {
+    if (extended && fps > 60 && scan.first_pipe_sync != 0) {
         GfxCommand rate{};
         gEXSetRefreshRate(&rate, fps);
-        write_word(rdram, first_pipe_sync, rate.values.word0);
-        write_word(rdram, first_pipe_sync + 4, rate.values.word1);
+        write_word(rdram, scan.first_pipe_sync, rate.values.word0);
+        write_word(rdram, scan.first_pipe_sync + 4, rate.values.word1);
     }
-    split_screen_last_frame = split_screen;
-    if (!extended || !in_race || split_screen) {
+    split_screen_last_frame = scan.split_screen;
+    if (!extended) {
         return;
     }
-    if (model_count > 0 && model_lists == 0) {
-        void* lists = recomp::alloc(rdram, model_list_bytes * models_per_frame * model_list_frames);
-        model_lists = lists ? (uint32_t)((uint8_t*)lists - rdram) + 0x80000000 : 0;
-    }
-    if (model_count > 0 && model_lists != 0) {
-        uint32_t frame_lists = model_lists + model_list_frame * model_list_bytes * models_per_frame;
-        model_list_frame = (model_list_frame + 1) % model_list_frames;
-        for (int i = 0; i < model_count; i++) {
-            anchor_model(rdram, models[i].p, frame_lists + i * model_list_bytes, models[i].viewport, models[i].origin);
+    bool widened = scan.split_screen && rush2049::split_screen_expand() && widen_split_screen(rdram, scan);
+    if (!widened) {
+        split_view_count = 0;
+        hud_list_lo = hud_list_hi = 0;
+        if (scan.split_screen || !in_race) {
+            return;
+        }
+        if (scan.model_count > 0 && model_lists == 0) {
+            model_lists = alloc_lists(rdram, model_list_bytes * models_per_frame * model_list_frames);
+        }
+        if (scan.model_count > 0 && model_lists != 0) {
+            uint32_t frame_lists = model_lists + model_list_frame * model_list_bytes * models_per_frame;
+            model_list_frame = (model_list_frame + 1) % model_list_frames;
+            for (int i = 0; i < scan.model_count; i++) {
+                const FrameScan::HudModel& m = scan.models[i];
+                double x = screen_width / 2 * (1 + m.x);
+                int origin = x >= right_hud_min_x ? G_EX_ORIGIN_RIGHT
+                           : x <= left_hud_max_x  ? G_EX_ORIGIN_LEFT
+                                                  : G_EX_ORIGIN_NONE;
+                if (origin != G_EX_ORIGIN_NONE) {
+                    anchor_model(rdram, m.p, frame_lists + i * model_list_bytes, m.viewport, origin);
+                }
+            }
         }
     }
-    if (hud_scissor == 0) {
+    if (scan.hud_scissor == 0) {
         return;
     }
     GfxCommand cmds[2]{};
-    gEXSetScissor(cmds, 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, 220);
-    for (int i = 0; i < 2; i++) {
-        write_word(rdram, hud_scissor + i * 8, cmds[i].values.word0);
-        write_word(rdram, hud_scissor + i * 8 + 4, cmds[i].values.word1);
-    }
+    gEXSetScissor(cmds, 0 /* G_SC_NON_INTERLACE */, G_EX_ORIGIN_LEFT, G_EX_ORIGIN_RIGHT, 0, 0, 0, screen_height);
+    write_commands(rdram, scan.hud_scissor, cmds, 2);
 }

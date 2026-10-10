@@ -27,12 +27,12 @@ stubs = [
 # swap, and game logic scales with measured time (a race clock tracks wall time at either rate). At the 60 fps
 # setting the hook turns a delta of 1 into 2, so a frame swaps on the next retrace; a delta of 0 still waits.
 [[patches.hook]]
-func = "func_80000C54"
+func = "sched_on_rdp_done"
 before_vram = 0x80000CFC
 text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
 
 [[patches.hook]]
-func = "func_80000880"
+func = "sched_on_retrace"
 before_vram = 0x800008C8
 text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
 
@@ -49,31 +49,31 @@ text = "    ctx->r10 = rush2049_frame_pace(ctx->r10);"
 # branch). The hook sends them itself and empties $t8: every retrace to the main thread, which starts a frame on
 # one, and 60 a second to the others (src/config.cpp).
 [[patches.hook]]
-func = "func_80000880"
+func = "sched_on_retrace"
 before_vram = 0x8000090C
 text = "    rush2049_retrace_clients(rdram, ctx);"
 
 # Widescreen race HUD (src/widescreen.cpp): func_80087110(x0, y0, x1, y1, ...) draws every texture rectangle and
 # returns through 0x800877FC; func_8010761C draws the race timer, so it marks a race in progress.
 [[patches.hook]]
-func = "func_80087110"
+func = "draw_tex_rect"
 before_vram = 0x80087110
 text = "    rush2049_hud_rect_begin(rdram, ctx);"
 
 [[patches.hook]]
-func = "func_80087110"
+func = "draw_tex_rect"
 before_vram = 0x800877FC
 text = "    rush2049_hud_rect_end(rdram);"
 
 [[patches.hook]]
-func = "func_8010761C"
+func = "hud_draw_race_timer"
 before_vram = 0x8010761C
 text = "    rush2049_hud_race_mark(rdram);"
 
 # The music thread (func_800992AC) has received a command ($s5) and is about to switch on its type
 # (src/music.cpp).
 [[patches.hook]]
-func = "func_800992AC"
+func = "music_thread_main"
 before_vram = 0x80099390
 text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
 
@@ -81,7 +81,7 @@ text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
 # for a graphics task (src/widescreen.cpp), upscale new font textures (src/hires_font.cpp), and write it out for
 # --dump-dl (src/dl_dump.cpp).
 [[patches.hook]]
-func = "func_80000E20"
+func = "sched_start_task"
 before_vram = 0x80000EE0
 text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_hires_font_scan(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_dump_task(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10);"
 
@@ -89,13 +89,13 @@ text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) 
 # and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
 # (src/code_loading.cpp maps the original ROM address to the extracted section).
 [[patches.hook]]
-func = "func_80006814"
+func = "inflate_rom"
 before_vram = 0x80006814
 text = "    rush2049_inflate_begin(rdram, ctx);"
 
 # After osInvalICache over the output; dst is still in the caller's arg slot at 0x4C($sp).
 [[patches.hook]]
-func = "func_80006814"
+func = "inflate_rom"
 before_vram = 0x80006954
 text = "    rush2049_inflate_end(rdram, ctx);"
 
@@ -108,7 +108,7 @@ value = 0x00000000
 # Boot main reads 16 words from cart address 0xFFB000 (past the end of the 12 MiB ROM) into a stack buffer it
 # never uses. Skip the read.
 [[patches.instruction]]
-func = "func_800020F0"
+func = "boot_main"
 vram = 0x80002124
 value = 0x00000000
 
@@ -186,7 +186,7 @@ text = "    if (ctx->r15 != 0) yield_self_1ms(rdram);"
 # 0x8002AFA0 before running its audio frame. The scheduler only advances on an RDP-done message, which ultramodern
 # delivers inside OS calls, so the spin would hang the game at boot when it catches a graphics task in flight.
 [[patches.hook]]
-func = "func_8008AA40"
+func = "audio_thread_main"
 before_vram = 0x8008AB44
 text = "    if (MEM_W(0x274, ctx->r16) == ctx->r2) yield_self_1ms(rdram);"
 

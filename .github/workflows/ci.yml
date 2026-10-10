@@ -1,7 +1,13 @@
-# Build and checks only; nothing is deployed or released.
+# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact).
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.
+#
+# The submodules and the build directory are cached together, keyed on the runner image, the submodule commits and the
+# runtime patches. On an exact hit nothing is cloned and ninja finds the libraries up to date (the cache keeps mtimes,
+# so every submodule source is older than what was built from it); only the game's own sources compile, and sccache
+# serves the ones the PR didn't touch. Otherwise the newest cache for the OS is restored, the submodules are updated in
+# place and ninja rebuilds what changed.
 name: CI
 
 on:
@@ -21,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -38,9 +46,44 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v4
+      # Not actions/checkout: its cleanup walks every submodule the cache restored, ~15 s on Windows.
+      - name: Checkout
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          git init -q
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
+      - name: Cache key
+        id: key
+        shell: bash
+        run: |
+          prefix="build-v3-$ImageOS-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
         with:
-          submodules: recursive
+          path: |
+            .git/modules
+            rush2049/lib/N64ModernRuntime
+            rush2049/lib/RecompFrontend
+            rush2049/lib/rt64
+            rush2049/build
+          key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
+      # In parallel: actions/checkout's submodules option clones the ~30 nested repos one at a time (~90 s).
+      - name: Submodules
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: bash
+        # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        run: |
+          for i in 1 2 3; do
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            echo "attempt $i failed"; sleep $((i * 15))
+          done
+          exit 1
       - name: Apply runtime patches
         shell: bash
         run: bash tools/rush2049/apply_runtime_patches.sh
@@ -49,7 +92,6 @@ jobs:
         with:
           cmakeVersion: "~3.31.0"
           ninjaVersion: "^1.13.0"
-      - uses: ilammy/msvc-dev-cmd@v1
       - uses: mozilla-actions/sccache-action@v0.0.9
       - name: Stand in for the ROM-generated sources
         shell: bash
@@ -57,12 +99,20 @@ jobs:
           mkdir -p rush2049/RecompiledFuncs rush2049/rsp
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      # No MSVC developer environment: clang-cl finds MSVC and the Windows SDK by itself.
+      # No MIPS clang here (the llvm.org build has no MIPS backend), so no patches library: build-linux builds it.
       - name: Configure
         run: |
           clang-cl --version
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DRUSH2049_PATCHES=OFF
+      # A first configure writes backslashed paths into the compile commands and every later one forward slashes, so a
+      # build cached straight after a first configure would see every command line change on the next run and rebuild.
+      - name: Configure again before a build that gets cached
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake rush2049/build
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -73,6 +123,89 @@ jobs:
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
+
+  # Same build as above, on Linux with clang (what a Steam Deck build would be).
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Cache key
+        id: key
+        run: |
+          prefix="build-v3-$ImageOS-"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            .git/modules
+            rush2049/lib/N64ModernRuntime
+            rush2049/lib/RecompFrontend
+            rush2049/lib/rt64
+            rush2049/build
+          key: ${{ steps.key.outputs.key }}
+          restore-keys: ${{ steps.key.outputs.prefix }}
+      - name: Submodules
+        if: steps.cache.outputs.cache-hit != 'true'
+        # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
+        run: |
+          for i in 1 2 3; do
+            git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 && exit 0
+            echo "attempt $i failed"; sleep $((i * 15))
+          done
+          exit 1
+      - name: Apply runtime patches
+        run: bash tools/rush2049/apply_runtime_patches.sh
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang lld libsdl2-dev libgtk-3-dev libfreetype-dev
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.0"
+          ninjaVersion: "^1.13.0"
+      - uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Stand in for the ROM-generated sources
+        run: |
+          mkdir -p rush2049/RecompiledFuncs rush2049/rsp
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
+          echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
+      - name: Configure
+        run: |
+          clang --version
+          cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: Build runtime, renderer and frontend libraries
+        run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
+      - name: Compile the game's own sources
+        run: |
+          objs=$(ninja -C rush2049/build -t targets all |
+            grep -oE '^CMakeFiles/Rush2049Recompiled\.dir/[^:]+\.o' | grep -vE 'register_overlays|/rsp/')
+          [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
+          echo "$objs"
+          ninja -C rush2049/build $objs
+      # The objects above include register_patches.cpp, so the patches library (patches/, N64Recomp) is built too.
+      # The example mod checks the mod toolchain end to end; its .nrm is kept as an artifact.
+      - name: Example mod (mod_template)
+        run: |
+          ninja -C rush2049/build PatchesLib RecompModTool
+          make -C rush2049/mod_template
+          cd rush2049/mod_template && ../build/RecompModTool mod.toml build
+          test -s build/rush2049_hello_mod.nrm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rush2049_hello_mod
+          path: rush2049/mod_template/build/rush2049_hello_mod.nrm
       - name: sccache stats
         if: always()
         run: sccache --show-stats
