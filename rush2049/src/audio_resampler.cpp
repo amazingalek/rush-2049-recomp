@@ -29,6 +29,7 @@ void rush2049::Resampler::reset(uint32_t new_in_rate, uint32_t new_out_rate) {
     in_rate = new_in_rate / g;
     out_rate = new_out_rate / g;
     phase = 0;
+    step = (uint64_t)in_rate * (ppm_scale + speed_ppm);
     input.assign((half - 1) * 2, 0.0f);
 
     // Cutoff in cycles per input frame, centred in the transition band below the lower of the two Nyquist frequencies.
@@ -51,16 +52,18 @@ void rush2049::Resampler::reset(uint32_t new_in_rate, uint32_t new_out_rate) {
     }
 }
 
+void rush2049::Resampler::set_speed(int32_t ppm) {
+    speed_ppm = ppm;
+    step = (uint64_t)in_rate * (ppm_scale + speed_ppm);
+}
+
 void rush2049::Resampler::process(const float* in, size_t frames, std::vector<float>& out) {
-    if (in_rate == out_rate) {
-        out.insert(out.end(), in, in + frames * 2);
-        return;
-    }
+    const uint64_t period = (uint64_t)out_rate * ppm_scale;
     input.insert(input.end(), in, in + frames * 2);
     size_t available = input.size() / 2;
     size_t start = 0;  // the first input frame the next output reads
     while (start + taps <= available) {
-        float pos = (float)phase * phases / out_rate;
+        float pos = (float)((double)phase * phases / period);
         int row = std::min((int)pos, phases - 1);
         float t = pos - row;
         const float* a = &kernel[row * taps];
@@ -74,9 +77,9 @@ void rush2049::Resampler::process(const float* in, size_t frames, std::vector<fl
         }
         out.push_back(l);
         out.push_back(r);
-        phase += in_rate;
-        start += phase / out_rate;
-        phase %= out_rate;
+        phase += step;
+        start += phase / period;
+        phase %= period;
     }
     input.erase(input.begin(), input.begin() + start * 2);
 }
