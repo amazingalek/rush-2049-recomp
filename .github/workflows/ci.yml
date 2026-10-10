@@ -1,4 +1,4 @@
-# Build and checks only; nothing is deployed or released.
+# Build and checks only; nothing is deployed or released (the example mod is kept as a run artifact).
 # The game ROM is user-supplied and never in git or CI, so RecompiledFuncs/ and rsp/musyx.cpp (both generated from it)
 # don't exist here: CI builds every library and every object file of the exe except the two that include that output,
 # and stops short of linking.
@@ -105,12 +105,14 @@ jobs:
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
       # No MSVC developer environment: clang-cl finds MSVC and the Windows SDK by itself.
+      # No MIPS clang here (the llvm.org build has no MIPS backend), so no patches library: build-linux builds it.
       - name: Configure
         run: |
           clang-cl --version
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache `
+            -DRUSH2049_PATCHES=OFF
       # A first configure writes backslashed paths into the compile commands and every later one forward slashes, so a
       # build cached straight after a first configure would see every command line change on the next run and rebuild.
       - name: Configure again before a build that gets cached
@@ -197,6 +199,18 @@ jobs:
           [ -n "$objs" ] || { echo "no object targets found"; exit 1; }
           echo "$objs"
           ninja -C rush2049/build $objs
+      # The objects above include register_patches.cpp, so the patches library (patches/, N64Recomp) is built too.
+      # The example mod checks the mod toolchain end to end; its .nrm is kept as an artifact.
+      - name: Example mod (mod_template)
+        run: |
+          ninja -C rush2049/build PatchesLib RecompModTool
+          make -C rush2049/mod_template
+          cd rush2049/mod_template && ../build/RecompModTool mod.toml build
+          test -s build/rush2049_hello_mod.nrm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rush2049_hello_mod
+          path: rush2049/mod_template/build/rush2049_hello_mod.nrm
       - name: sccache stats
         if: always()
         run: sccache --show-stats

@@ -1,7 +1,7 @@
 // San Francisco Rush 2049: Recompiled - entry point.
 //
 // Structure follows BanjoRecomp's src/main/main.cpp (GPL-3.0), trimmed to what this project uses so far:
-// no mod exports, no patches library, no custom launcher.
+// no custom launcher. Mod support (patches library, exports) is in register_patches.cpp and mod_exports.cpp.
 
 #include <algorithm>
 #include <array>
@@ -46,6 +46,7 @@
 
 #include "rush2049_game.h"
 #include "crash_handler.h"
+#include "audio_limiter.h"
 #include "audio_resampler.h"
 #include "debug_probe.h"
 #include "musyx_hle.h"
@@ -172,7 +173,8 @@ void update_gfx(void*) {
 
 // Audio output: the game's samples (s16 stereo, channels swapped by the runtime's address xor) are converted to
 // float and resampled to the device rate (rush2049::Resampler). With the high-quality MusyX mix on, each buffer is
-// first swapped for the same audio rendered at twice the game's rate.
+// first swapped for the same audio rendered at twice the game's rate. At the device rate it is halved and then limited
+// (rush2049::Limiter), since that mix isn't clamped to 16 bits and its peaks reach about twice the game's full scale.
 //
 // The game is fed by the runtime's VI clock and the device plays on its own, so what SDL holds drifts, and swings by
 // tens of ms as the game queues its 8.7 ms buffers in bursts. Rather than throwing samples away when it runs long,
@@ -231,11 +233,13 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     static std::vector<float> output;
     output.clear();
     resampler.process(input.data(), input.size() / 2, output);
-    // Halved, so the game's full scale (and the high-quality mix's peaks above it) doesn't clip on the device.
+    // Halved, so the game's full scale doesn't clip on the device, and limited, so neither do the high-quality mix's
+    // peaks above it.
     float main_volume = static_cast<float>(recompui::config::sound::get_main_volume()) / 100.0f;
     for (float& v : output) {
         v *= 0.5f * main_volume;
     }
+    rush2049::output_limiter.process(output.data(), output.size() / 2);
 
     size_t frames = output.size() / 2;
     rush2049::music_mix(output.data(), frames, output_channels, output_sample_rate, main_volume);
@@ -291,6 +295,7 @@ bool reset_audio(uint32_t output_freq) {
 
     SDL_PauseAudioDevice(audio_device, 0);
     output_sample_rate = output_freq;
+    rush2049::output_limiter.reset(output_sample_rate);
     update_audio_converter();
     return true;
 }
@@ -321,7 +326,10 @@ std::vector<recomp::GameEntry> supported_games = {
         // Saves go to the Controller Pak, which the runtime doesn't emulate yet.
         .save_type = recomp::SaveType::None,
         .is_enabled = false,
-        .has_compressed_code = false,
+        // Not compressed for the game itself (it inflates its own code), but the runtime needs the inflated code to
+        // recompile a function a mod hooks: see build_recomp_rom.
+        .decompression_routine = rush2049::build_recomp_rom,
+        .has_compressed_code = true,
         .entrypoint_address = get_entrypoint_address(),
         .entrypoint = recomp_entrypoint,
     },
@@ -469,6 +477,8 @@ int main(int argc, char** argv) {
     }
 
     rush2049::register_overlays();
+    rush2049::register_patches();
+    rush2049::register_mod_exports();
 
     recompinput::players::set_single_player_mode(true);
 

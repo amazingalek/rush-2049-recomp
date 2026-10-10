@@ -35,3 +35,9 @@
 # Generated at runtime from the ROM by the hi-res font (src/hires_font.cpp)
 /rush2049/hires_font/
 __pycache__/
+/rush2049/RecompiledPatches/
+/rush2049/patches/*.o
+/rush2049/patches/*.d
+/rush2049/patches/patches.map
+/rush2049/mod_template/build/
+*.nrm

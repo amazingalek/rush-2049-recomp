@@ -10,6 +10,7 @@
 #include "recomp.h"
 #include "rush2049_hooks.h"
 #include "debug_probe.h"
+#include "audio_limiter.h"
 #include "musyx_hle.h"
 
 namespace {
@@ -160,6 +161,13 @@ void rush2049::print_probes() {
             queue_buffers.load(), queue_draining.load(), queue_empty.load());
     uint64_t hires_matched, hires_fallback;
     musyx_hires_counts(hires_matched, hires_fallback);
+    const rush2049::Limiter& limiter = rush2049::output_limiter;
+    uint64_t limiter_frames = limiter.frames_total.load();
+    uint64_t limited = limiter.frames_limited.load();
+    fprintf(stderr, "  limiter: engaged %llu times, %llu of %llu frames (%.3f%%), lowest gain %.2f dB\n",
+            (unsigned long long)limiter.engagements.load(), (unsigned long long)limited,
+            (unsigned long long)limiter_frames, limiter_frames ? 100.0 * limited / limiter_frames : 0.0,
+            20.0 * std::log10(limiter.min_gain_ppm.load() / 1e6));
     fprintf(stderr, "  musyx hi-res: %llu frames played, %llu without a match\n", (unsigned long long)hires_matched,
             (unsigned long long)hires_fallback);
     fprintf(stderr, "  sched msgs: retrace %u rsp %u rdp %u nmi %u audio %u\n", sched_counts[0].load(),
