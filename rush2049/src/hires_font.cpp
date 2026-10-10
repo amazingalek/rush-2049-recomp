@@ -29,6 +29,7 @@
 #include "util/file.h"
 
 #include "xxHash/xxh3.h"
+#include "shared/rt64_f3d_defines.h"
 #include "common/rt64_load_types.h"
 #include "common/rt64_tmem_hasher.h"
 
@@ -46,7 +47,8 @@ constexpr uint32_t tmem_bytes = 4096;
 constexpr uint32_t fmt_rgba = 0, fmt_i = 4;
 constexpr uint32_t siz_4b = 0, siz_8b = 1, siz_32b = 3;
 
-std::atomic<bool> enabled{ false };
+// On by default: the option's change callback doesn't run on a first launch, before there is a saved config.
+std::atomic<bool> enabled{ true };
 std::filesystem::path pack_dir;
 // Every hash already handled: in the pack, or drawn but not wanted (empty).
 std::unordered_set<uint64_t> seen;
@@ -283,7 +285,7 @@ bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uin
 void write_database() {
     std::string json = "{\n  \"configuration\": { \"autoPath\": \"rt64\", \"configurationVersion\": 3, \"hashVersion\": " +
                        std::to_string(RT64::TMEMHasher::CurrentHashVersion) +
-                       ", \"defaultOperation\": \"preload\", \"defaultShift\": \"half\" },\n  \"textures\": [";
+                       ", \"defaultOperation\": \"preload\", \"defaultShift\": \"none\" },\n  \"textures\": [";
     for (size_t i = 0; i < in_pack.size(); i++) {
         char entry[96];
         snprintf(entry, sizeof(entry), "%s\n    { \"hashes\": { \"rt64\": \"%016" PRIx64 "\" }, \"path\": \"\" }",
@@ -386,6 +388,7 @@ void rush2049::init_hires_font() {
         }
     }
     write_database();
+    register_pack();
 }
 
 void rush2049::set_hires_font(bool on) {
