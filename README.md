@@ -179,6 +179,10 @@ Resolution Original          -70%
 The defaults use about 4% of that card. Every interpolated frame is a full render, so Framerate Display on a
 144 Hz monitor is 2.4 times the work of 60. On a weak GPU lower Resolution first.
 
+Nearly a third of the default frame's cost stays even at Resolution Original: mostly the game's ~500 draw calls a
+frame, and drawing the finished frame into the window, which costs more the bigger the window is. So on a weak GPU
+a smaller window helps too.
+
 ## Mods
 
 N64Recomp mods (`.nrm`) are **supported but untested**: an example mod builds in CI on every change, but no real

@@ -73,7 +73,8 @@ RecompFrontend-0001    built-in texture packs (the hi-res font)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0002              CPU hot paths: texture hashing, frame matching containers
-rt64-0003              GPU timings for --gpu-profile
+rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
+rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 ```
 
 ## This machine
@@ -85,6 +86,8 @@ rt64-0003              GPU timings for --gpu-profile
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
 - RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
+- The desktop is 3840x2160 at **30 Hz**, so Framerate Display presents 30 frames a second while the game renders
+  60, and interpolation can't be seen or measured here.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
@@ -132,11 +135,30 @@ no ROM.
 --dump-ram <prefix> <t1,..>  all of RDRAM at those times; diff two to find a setting's byte
 --watch <addr>               stacks on the first 6 changes of one RDRAM byte; --hwwatch <addr>: reads too
 --profile <after> <secs>     sample every thread each ms, print top functions (Windows)
---gpu-profile <after> <secs> RT64's GPU time per frame and per present
+--gpu-profile <after> <secs> RT64's GPU time per frame and per present, and per part of each
 ```
 
 GPU readings are wall time and the 2070's clock wanders 630–1620 MHz under light load, so compare in cycles (ms ×
-the clock `nvidia-smi` reports over the same run) and interleave runs.
+the clock `nvidia-smi` reports over the same run) and interleave runs. Check the host too: with its CPU busy the
+game drops below 60 fps and the attract race reaches other scenes, so the draw count (printed) moves.
+
+Where a frame goes, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of cycles (Auto is
+the 1080p column):
+
+```
+part                         240p   1080p
+render: draws                 116     754   ~500 calls, ~175 cycles each + 40k
+        vertex compute         27      31
+        uploads                25      35   was ~36 at 240p before rt64-0004
+        barriers, resolves     13      21
+        everything else         5       6
+present: VI pass               71      95   sized by the window: 37 in 1280x720
+         resolve (MSAA 2x)     20      94   3 with MSAA off
+         UI                     6       6
+```
+
+So what doesn't scale with resolution is the draw calls (their count, not their pixels), the VI pass (it scales
+with the window instead) and about 50k of compute and uploads. No integrated GPU has been measured.
 
 ## Testing in the game
 
@@ -154,6 +176,8 @@ the clock `nvidia-smi` reports over the same run) and interleave runs.
 - A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
 - A draw-distance unlock: the game draws to just short of its far plane already, and its fog sits beyond it.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
+- Cutting the 240p GPU floor further: it is the cost of starting ~500 draw calls a frame (fewer means RT64 merging
+  N64 draws) and a full-window VI pass (one textured triangle and a clear). Only the upload barriers were overhead.
 - Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
   Rewrite commands in place instead.
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
