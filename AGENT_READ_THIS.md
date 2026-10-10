@@ -161,4 +161,6 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
 <!-- Replace the line below with: READY FOR HANDOVER: yes, at <commit sha>, <Oslo time>, loop stopped.
      After that, do nothing more in this repo. -->
 
-READY FOR HANDOVER: not yet
+READY FOR HANDOVER: yes, at 70c6364, 2026-10-10 07:54 Oslo time, loop stopped (CronList was empty and the
+dynamic loop was stopped with ScheduleWakeup stop: true). All work is pushed; the WIP music replacement is commit
+7eb79dd. The runtime patch in `rush2049/runtime-patches/` already matches the submodule's local edits.
