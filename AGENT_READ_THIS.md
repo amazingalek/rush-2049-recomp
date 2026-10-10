@@ -131,9 +131,7 @@ on N64Recomp, N64ModernRuntime, RT64 and RecompFrontend. Jet Force Gemini (`docs
    lists) or a faster VI; audio is paced by retrace. See "Frame rate" under Runtime notes in the docs.
 4. **Feature: move the 3D coin icons in the widescreen HUD.** They are 3D models next to the right-hand
    counters, not texture rects, so they stay at their 4:3 position.
-5. **Bug (unconfirmed): the ghost car in Ghost Race isn't seen.** See the status paragraph in
-   `docs/games/rush2049.md`.
-6. **Decision for Alek:** whether to continue Jet Force Gemini.
+5. **Decision for Alek:** whether to continue Jet Force Gemini.
 
 ## Known problems and gotchas
 
