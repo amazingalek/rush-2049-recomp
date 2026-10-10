@@ -1,0 +1,114 @@
+diff --git a/src/common/rt64_gpu_timings.h b/src/common/rt64_gpu_timings.h
+new file mode 100644
+index 0000000..3991d0b
+--- /dev/null
++++ b/src/common/rt64_gpu_timings.h
+@@ -0,0 +1,29 @@
++//
++// RT64
++//
++
++#pragma once
++
++#include <mutex>
++#include <vector>
++
++namespace RT64 {
++    // GPU time of every frame, in milliseconds, collected only while a host has turned it on (to measure settings).
++    // render: the workload queue's frame, game and interpolated frames alike. present: the VI pass that draws
++    // the frame into the swap chain.
++    struct GPUTimings {
++        std::mutex mutex;
++        bool enabled = false;
++        std::vector<double> render;
++        std::vector<double> present;
++
++        void add(std::vector<double> &samples, double ms) {
++            std::scoped_lock lock(mutex);
++            if (enabled) {
++                samples.push_back(ms);
++            }
++        }
++    };
++
++    inline GPUTimings gpuTimings;
++};
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 3227ab1..16a808e 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -4,6 +4,8 @@
+ 
+ #include "rt64_present_queue.h"
+ 
++#include "common/rt64_gpu_timings.h"
++
+ #include "common/rt64_thread.h"
+ #include "rhi/rt64_render_hooks.h"
+ 
+@@ -87,6 +89,7 @@ namespace RT64 {
+         this->ext = ext;
+ 
+         viRenderer = std::make_unique<VIRenderer>();
++        queryPool = ext.device->createQueryPool(2);
+ 
+         presentThreadRunning = true;
+         presentThread = new std::thread(&PresentQueue::threadLoop, this);
+@@ -309,6 +312,8 @@ namespace RT64 {
+                 RenderFramebuffer *swapChainFramebuffer = swapChainFramebuffers[swapChainIndex].get();
+                 RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();
+                 commandList->begin();
++                commandList->resetQueryPool(queryPool.get(), 0, 2);
++                commandList->writeTimestamp(queryPool.get(), 0);
+                 commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(swapChainTexture, RenderTextureLayout::COLOR_WRITE));
+                 
+                 VIRenderer::RenderParams renderParams;
+@@ -360,12 +365,16 @@ namespace RT64 {
+                     }
+                     
+                     commandList->barriers(RenderBarrierStage::NONE, RenderTextureBarrier(swapChainTexture, RenderTextureLayout::PRESENT));
++                    commandList->writeTimestamp(queryPool.get(), 1);
+                     commandList->end();
+                     const RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();
+                     RenderCommandSemaphore *waitSemaphore = acquiredSemaphore.get();
+                     RenderCommandSemaphore *signalSemaphore = drawSemaphores[swapChainIndex].get();
+                     ext.presentGraphicsWorker->commandQueue->executeCommandLists(&commandList, 1, &waitSemaphore, 1, &signalSemaphore, 1, ext.presentGraphicsWorker->commandFence.get());
+                     ext.presentGraphicsWorker->wait();
++                    queryPool->queryResults();
++                    const uint64_t *presentTimestamps = queryPool->getResults();
++                    gpuTimings.add(gpuTimings.present, double(presentTimestamps[1] - presentTimestamps[0]) / 1000000.0);
+                 }
+             }
+ 
+diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
+index e08b02c..666fbe3 100644
+--- a/src/hle/rt64_present_queue.h
++++ b/src/hle/rt64_present_queue.h
+@@ -52,6 +52,7 @@ namespace RT64 {
+         std::unique_ptr<RenderCommandSemaphore> acquiredSemaphore;
+         std::vector<std::unique_ptr<RenderCommandSemaphore>> drawSemaphores;
+         std::unique_ptr<VIRenderer> viRenderer;
++        std::unique_ptr<RenderQueryPool> queryPool;
+         std::unique_ptr<Inspector> inspector;
+         ProfilingTimer presentProfiler = ProfilingTimer(120);
+         Timestamp presentTimestamp;
+diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
+index 846c96d..9e78a5b 100644
+--- a/src/hle/rt64_workload_queue.cpp
++++ b/src/hle/rt64_workload_queue.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include "rt64_workload_queue.h"
+ 
++#include "common/rt64_gpu_timings.h"
+ #include "common/rt64_thread.h"
+ 
+ #include "rt64_present_queue.h"
+@@ -849,6 +850,7 @@ namespace RT64 {
+             queryPool->queryResults();
+             const uint64_t *frameTimestamps = queryPool->getResults();
+             rendererGPUProfiler.log(double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
++            gpuTimings.add(gpuTimings.render, double(frameTimestamps[1] - frameTimestamps[0]) / 1000000.0);
+ 
+             // Indicate to the texture cache it's safe to delete the textures if no locks are active.
+             ext.textureCache->decrementLock();

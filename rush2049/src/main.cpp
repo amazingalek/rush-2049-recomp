@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include "nfd.h"
@@ -44,6 +45,7 @@
 #include "librecomp/helpers.hpp"
 #include "librecomp/rsp.hpp"
 
+#include "common/rt64_gpu_timings.h"
 #include "rush2049_game.h"
 #include "crash_handler.h"
 #include "audio_limiter.h"
@@ -188,6 +190,9 @@ ultramodern::input::connected_device_info_t get_connected_device_info(int) {
 }
 
 SDL_Window* window;
+// --window <w>x<h> sets the size the window opens at, to measure settings at a given size.
+static int window_width = 1600;
+static int window_height = 1200;
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
     uint32_t flags = SDL_WINDOW_RESIZABLE;
@@ -198,7 +203,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
-    window = SDL_CreateWindow(rush2049::program_name.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 1200, flags);
+    window = SDL_CreateWindow(rush2049::program_name.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_width, window_height, flags);
     if (window == nullptr) {
         exit_error("Failed to create window: %s\n", SDL_GetError());
     }
@@ -426,6 +431,49 @@ void on_launcher_init(recompui::LauncherMenu* menu) {
     game_options_menu->add_default_options();
 }
 
+// --gpu-profile: from `after` seconds on, collect RT64's GPU time for every frame for `seconds` seconds, then print
+// count, rate, mean, median, 95th percentile and max for the rendered frames and for the present pass, and the
+// share of the window the GPU spent on both.
+static void start_gpu_profiler(int after_seconds, int seconds) {
+    std::thread([after_seconds, seconds]() {
+        std::this_thread::sleep_for(std::chrono::seconds(after_seconds));
+        RT64::GPUTimings& timings = RT64::gpuTimings;
+        {
+            std::scoped_lock lock(timings.mutex);
+            timings.render.clear();
+            timings.present.clear();
+            timings.enabled = true;
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(seconds));
+        std::vector<double> render, present;
+        {
+            std::scoped_lock lock(timings.mutex);
+            timings.enabled = false;
+            render.swap(timings.render);
+            present.swap(timings.present);
+        }
+        double busy_ms = 0.0;
+        auto report = [&](const char* name, std::vector<double>& ms) {
+            if (ms.empty()) {
+                printf("[gpuprofile] %s: no frames\n", name);
+                return;
+            }
+            std::sort(ms.begin(), ms.end());
+            double sum = 0.0;
+            for (double m : ms) {
+                sum += m;
+            }
+            busy_ms += sum;
+            printf("[gpuprofile] %s: %zu frames (%.1f/s), mean %.3f ms, median %.3f, p95 %.3f, max %.3f\n", name, ms.size(),
+                ms.size() / double(seconds), sum / ms.size(), ms[ms.size() / 2], ms[ms.size() * 95 / 100], ms.back());
+        };
+        report("render", render);
+        report("present", present);
+        printf("[gpuprofile] GPU busy %.1f%% of %d s\n", busy_ms / (seconds * 10.0), seconds);
+        fflush(stdout);
+    }).detach();
+}
+
 int main(int argc, char** argv) {
     rush2049::install_crash_handler();
 
@@ -453,6 +501,13 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--profile") == 0 && i + 2 < argc) {
             int after = atoi(argv[++i]);
             rush2049::start_profiler(after, atoi(argv[++i]));
+        }
+        if (strcmp(argv[i], "--window") == 0 && i + 1 < argc) {
+            sscanf(argv[++i], "%dx%d", &window_width, &window_height);
+        }
+        if (strcmp(argv[i], "--gpu-profile") == 0 && i + 2 < argc) {
+            int after = atoi(argv[++i]);
+            start_gpu_profiler(after, atoi(argv[++i]));
         }
         if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
             load_input_script(argv[++i]);
