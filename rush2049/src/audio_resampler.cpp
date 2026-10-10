@@ -2,7 +2,7 @@
 #include <cmath>
 #include <numeric>
 
-#include "resampler.h"
+#include "audio_resampler.h"
 
 namespace {
 
@@ -11,6 +11,7 @@ constexpr int taps = 2 * half;
 constexpr int phases = 256;         // kernel rows; the output's position between two rows is interpolated
 constexpr double beta = 9.0;        // Kaiser window: about -90 dB in the stop band
 constexpr double transition = 0.09; // of the input rate, the stop band starting at the lower Nyquist frequency
+constexpr double pi = 3.14159265358979323846;
 
 double bessel_i0(double x) {
     double sum = 1.0, term = 1.0;
@@ -40,7 +41,7 @@ void rush2049::Resampler::reset(uint32_t new_in_rate, uint32_t new_out_rate) {
             double d = (k - (half - 1)) - frac;  // tap k reads input frame half - 1 + k - (half - 1) past the output's
             double x = d / half;
             double w = std::abs(x) >= 1.0 ? 0.0 : bessel_i0(beta * std::sqrt(1.0 - x * x)) / bessel_i0(beta);
-            double s = d == 0.0 ? 1.0 : std::sin(2.0 * M_PI * cutoff * d) / (M_PI * d);
+            double s = d == 0.0 ? 1.0 : std::sin(2.0 * pi * cutoff * d) / (pi * d);
             kernel[p * taps + k] = (float)(s * w);
             sum += s * w;
         }

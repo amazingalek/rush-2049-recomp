@@ -1,5 +1,5 @@
 // Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
-// and hi-res font on the Graphics tab, and the music replacement options on the Sound tab.
+// and hi-res font on the Graphics tab, and MusyX mixing and the music replacement options on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -7,6 +7,7 @@
 
 #include "rush2049_game.h"
 #include "rush2049_hooks.h"
+#include "musyx_hle.h"
 #include "librecomp/config.hpp"
 #include "recompinput/input_mapping.h"
 #include "recompui/config.h"
@@ -77,6 +78,17 @@ namespace {
         {MusicReplacement::On, "On", "On"},
     };
     const std::string music_replacement_option = "music_replacement";
+
+    enum class MusyxMix {
+        Original,
+        HighQuality,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> musyx_mix_options = {
+        {MusyxMix::Original, "Original", "Original"},
+        {MusyxMix::HighQuality, "HighQuality", "High Quality"},
+    };
+    const std::string musyx_mix_option = "musyx_mix";
     const std::string music_replacement_volume_option = "music_replacement_volume";
 }
 
@@ -241,6 +253,20 @@ void rush2049::init_config() {
     recompui::config::create_controls_tab();
 
     recomp::config::Config& sound = recompui::config::create_sound_tab();
+    sound.add_enum_option(
+        musyx_mix_option,
+        "MusyX Mixing",
+        "<b>High Quality</b> mixes the game's music and sound effects at 44.1 kHz with a sharper interpolator, so "
+        "sounds played above their recorded pitch keep their treble and loud passages don't clip. "
+        "<b>Original</b> plays the game's own 22 kHz mix.",
+        musyx_mix_options,
+        MusyxMix::HighQuality
+    );
+    // Called on load too.
+    sound.add_option_change_callback(musyx_mix_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_musyx_hires(static_cast<MusyxMix>(std::get<uint32_t>(cur_value)) == MusyxMix::HighQuality);
+        });
     sound.add_enum_option(
         music_replacement_option,
         "Replacement Music",

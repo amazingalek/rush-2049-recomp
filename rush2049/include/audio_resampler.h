@@ -1,5 +1,5 @@
-#ifndef __RUSH2049_RESAMPLER_H__
-#define __RUSH2049_RESAMPLER_H__
+#ifndef __RUSH2049_AUDIO_RESAMPLER_H__
+#define __RUSH2049_AUDIO_RESAMPLER_H__
 
 #include <cstddef>
 #include <cstdint>

@@ -77,7 +77,7 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/widescreen.cpp
     ${CMAKE_SOURCE_DIR}/src/hires_font.cpp
     ${CMAKE_SOURCE_DIR}/src/music.cpp
-    ${CMAKE_SOURCE_DIR}/src/resampler.cpp
+    ${CMAKE_SOURCE_DIR}/src/audio_resampler.cpp
     ${CMAKE_SOURCE_DIR}/lib/decoders/stb_vorbis.c
     ${CMAKE_SOURCE_DIR}/src/musyx_hle.cpp
     ${CMAKE_SOURCE_DIR}/src/gsm_decoder.cpp

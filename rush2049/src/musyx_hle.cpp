@@ -43,7 +43,7 @@ RspExitReason musyx_mixer(uint8_t* rdram, uint32_t ucode_addr);
 namespace {
 
 rush2049::MusyxMode mode = rush2049::MusyxMode::Hle;
-bool hires_wanted = true;
+std::atomic<bool> hires_wanted{ true };
 
 // The high-quality mix (src/hle/musyx.c, musyx_hires_t): the latest subframe the HLE rendered at twice the game's
 // rate for each output buffer, beside a copy of the game's own subframe and where it sits in RDRAM. The audio output
@@ -223,6 +223,7 @@ RspUcodeFunc* rush2049::get_musyx_ucode() {
     case MusyxMode::Compare:
         return run_compare;
     case MusyxMode::Hle:
+    case MusyxMode::Native:
     default:
         return run_hle_task;
     }

@@ -22,7 +22,6 @@
 #else
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_syswm.h"
-#include "resampler.h"
 #undef None
 #undef Status
 #undef LockMask
@@ -46,6 +45,7 @@
 
 #include "rush2049_game.h"
 #include "crash_handler.h"
+#include "audio_resampler.h"
 #include "debug_probe.h"
 #include "musyx_hle.h"
 
@@ -169,6 +169,7 @@ void update_gfx(void*) {
 // first swapped for the same audio rendered at twice the game's rate.
 
 static rush2049::Resampler resampler;
+static uint32_t resampler_input_rate = 0;
 static SDL_AudioDeviceID audio_device = 0;
 static uint32_t sample_rate = 48000;
 static uint32_t output_sample_rate = 48000;
@@ -180,7 +181,13 @@ static uint32_t input_sample_rate() {
     return rush2049::musyx_hires_enabled() ? 2 * sample_rate : sample_rate;
 }
 
+void update_audio_converter();
+
 void queue_samples(int16_t* audio_data, size_t sample_count) {
+    // The Sound tab can switch the high-quality mix, and with it the input rate, at any time.
+    if (input_sample_rate() != resampler_input_rate) {
+        update_audio_converter();
+    }
     // Left, right, with the game's 16-bit full scale at 1.0.
     static std::vector<float> input;
     if (rush2049::musyx_hires_enabled()) {
@@ -244,12 +251,13 @@ size_t get_frames_remaining() {
 }
 
 void update_audio_converter() {
-    resampler.reset(input_sample_rate(), output_sample_rate);
+    resampler_input_rate = input_sample_rate();
+    resampler.reset(resampler_input_rate, output_sample_rate);
+    rush2049::probe_audio_frequency(resampler_input_rate);
 }
 
 void set_frequency(uint32_t freq) {
     sample_rate = freq;
-    rush2049::probe_audio_frequency(input_sample_rate());
     update_audio_converter();
 }
 
@@ -395,8 +403,7 @@ int main(int argc, char** argv) {
                 rush2049::set_musyx_mode(rush2049::MusyxMode::Compare);
             }
             else if (strcmp(argv[i], "native") == 0) {
-                rush2049::set_musyx_mode(rush2049::MusyxMode::Hle);
-                rush2049::set_musyx_hires(false);
+                rush2049::set_musyx_mode(rush2049::MusyxMode::Native);
             }
             else {
                 rush2049::set_musyx_mode(rush2049::MusyxMode::Hle);
