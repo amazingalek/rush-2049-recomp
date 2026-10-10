@@ -13,6 +13,10 @@ namespace rush2049 {
     void probe_audio(const float* samples, size_t frames);
     void probe_audio_frequency(uint32_t freq);
 
+    // The audio device's queue as each buffer is added (real time at the device rate), and whether that buffer was
+    // played faster to drain it. An empty queue means the device was down to its own few ms of buffer: about to run dry.
+    void probe_audio_queue(uint32_t queued_us, bool draining);
+
     // --dump-audio <file.wav>: also write that audio, before resampling and volume, to a 32-bit float WAV file.
     void start_audio_dump(const char* path);
 
