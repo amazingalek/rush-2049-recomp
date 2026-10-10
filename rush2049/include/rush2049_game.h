@@ -11,6 +11,8 @@ namespace rush2049 {
     void init_config();
     // The accessory in every controller: a Controller Pak (saves) or a Rumble Pak (rumble, no saves).
     bool rumble_pak_selected();
+    // The "Controller Pak Size" setting: 62 banks (about 1.9 MB) rather than the original 32 KiB.
+    bool large_controller_pak();
     // Frames a second the game draws at the "Game Frame Rate" setting: 30, 60, or more with Match Framerate.
     uint32_t game_frame_rate();
     // --dump-dl: write the first display list the game submits after the given number of seconds (src/dl_dump.cpp).
