@@ -19,6 +19,7 @@ void rush2049_frame_pace(recomp_context* ctx);
 void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx);
 void rush2049_hud_rect_end(uint8_t* rdram);
 void rush2049_hud_race_mark(uint8_t* rdram);
+void rush2049_music_command(uint8_t* rdram, uint32_t command);
 void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr);
 
 /* Before the scheduler starts a task (us.toml); writes it out when --dump-dl is due. */

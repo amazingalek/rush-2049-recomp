@@ -53,6 +53,13 @@ func = "func_8010761C"
 before_vram = 0x8010761C
 text = "    rush2049_hud_race_mark(rdram);"
 
+# The music thread (func_800992AC) has received a command ($s5) and is about to switch on its type
+# (src/music.cpp).
+[[patches.hook]]
+func = "func_800992AC"
+before_vram = 0x80099390
+text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
+
 # The scheduler is about to start the task at sctask+0x10 ($sp+0x24 holds sctask): turn on RT64's extended GBI
 # for a graphics task (src/widescreen.cpp), and write it out for --dump-dl (src/dl_dump.cpp).
 [[patches.hook]]

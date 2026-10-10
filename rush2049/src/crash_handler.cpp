@@ -211,8 +211,80 @@ void rush2049::start_byte_watch(uint32_t vram) {
     }).detach();
 }
 
+// --hwwatch <vram>: a hardware data breakpoint (x86 debug register 0) on one byte of RDRAM, set on every thread,
+// so reads are caught too. Each new host instruction that touches the byte is printed once with its game stack.
+namespace {
+
+uintptr_t hw_watch_addr = 0;
+std::mutex hw_watch_mutex;
+std::map<DWORD64, int> hw_watch_hits;
+
+LONG WINAPI hw_watch_filter(EXCEPTION_POINTERS* info) {
+    if (info->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP || (info->ContextRecord->Dr6 & 1) == 0) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+    info->ContextRecord->Dr6 = 0;
+    std::lock_guard lock{ hw_watch_mutex };
+    DWORD64 rip = info->ContextRecord->Rip;
+    if (hw_watch_hits[rip]++ == 0 && hw_watch_hits.size() < 64) {
+        std::lock_guard crash_lock{ crash_mutex };
+        uint8_t value = *reinterpret_cast<volatile uint8_t*>(hw_watch_addr);
+        fprintf(stderr, "[hwwatch] value %02X, thread %lu:", value, GetCurrentThreadId());
+        print_trace(info->ContextRecord, GetCurrentThread(), true);
+        fprintf(stderr, "\n");
+        fflush(stderr);
+    }
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+void arm_hw_watch() {
+    DWORD self = GetCurrentThreadId();
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    THREADENTRY32 te{};
+    te.dwSize = sizeof(te);
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != GetCurrentProcessId() || te.th32ThreadID == self) {
+            continue;
+        }
+        HANDLE t = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, te.th32ThreadID);
+        if (t == nullptr) {
+            continue;
+        }
+        if (SuspendThread(t) != (DWORD)-1) {
+            CONTEXT ctx{};
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            if (GetThreadContext(t, &ctx) && ctx.Dr0 != hw_watch_addr) {
+                ctx.Dr0 = hw_watch_addr;
+                ctx.Dr7 = (ctx.Dr7 & ~0xF0003ull) | 1 | (3ull << 16);  // local enable, read/write, 1 byte
+                SetThreadContext(t, &ctx);
+            }
+            ResumeThread(t);
+        }
+        CloseHandle(t);
+    }
+    CloseHandle(snap);
+}
+
+} // namespace
+
+void rush2049::start_hw_watch(uint32_t vram) {
+    AddVectoredExceptionHandler(1, hw_watch_filter);
+    std::thread([vram]() {
+        uint8_t* rdram;
+        while ((rdram = rush2049::probe_get_rdram()) == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        hw_watch_addr = reinterpret_cast<uintptr_t>(rdram + ((vram & 0x7FFFFFFF) ^ 3));
+        while (true) {
+            arm_hw_watch();
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+    }).detach();
+}
+
 #else
 
+void rush2049::start_hw_watch(uint32_t) {}
 void rush2049::install_crash_handler() {}
 std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
 void rush2049::start_stack_sampler(int, bool) {}

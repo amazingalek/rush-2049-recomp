@@ -4,7 +4,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <vector>
 
 #include "recomp.h"
 #include "rush2049_hooks.h"
@@ -131,7 +133,53 @@ void rush2049::start_dl_dump(const char* path, double after_seconds) {
     dump_armed = true;
 }
 
+std::string ram_dump_prefix;
+std::vector<double> ram_dump_times;
+size_t ram_dumps_done = 0;
+
+void rush2049::start_ram_dump(const char* prefix, const char* times) {
+    ram_dump_prefix = prefix;
+    for (const char* p = times; *p != '\0';) {
+        char* end;
+        ram_dump_times.push_back(strtod(p, &end));
+        p = (*end == ',') ? end + 1 : end;
+        if (end == p && *p != '\0') {
+            break;
+        }
+    }
+    start_time = std::chrono::steady_clock::now();
+}
+
+static void dump_ram(uint8_t* rdram) {
+    if (ram_dumps_done >= ram_dump_times.size()) {
+        return;
+    }
+    std::chrono::duration<double> since = std::chrono::steady_clock::now() - start_time;
+    if (since.count() < ram_dump_times[ram_dumps_done]) {
+        return;
+    }
+    std::string path = ram_dump_prefix + std::to_string(ram_dumps_done) + ".bin";
+    ram_dumps_done++;
+    FILE* f = fopen(path.c_str(), "wb");
+    if (f == nullptr) {
+        return;
+    }
+    // Words are host-endian in rdram; write them big-endian, as the N64 sees memory.
+    std::vector<uint8_t> out(8 * 1024 * 1024);
+    for (size_t i = 0; i < out.size(); i += 4) {
+        uint32_t w = *reinterpret_cast<uint32_t*>(rdram + i);
+        out[i + 0] = w >> 24;
+        out[i + 1] = w >> 16;
+        out[i + 2] = w >> 8;
+        out[i + 3] = w;
+    }
+    fwrite(out.data(), 1, out.size(), f);
+    fclose(f);
+    fprintf(stderr, "[ram] wrote %s at %.2f s\n", path.c_str(), since.count());
+}
+
 extern "C" void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr) {
+    dump_ram(rdram);
     if (!dump_armed.load(std::memory_order_relaxed)) {
         return;
     }

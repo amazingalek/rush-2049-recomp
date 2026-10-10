@@ -228,6 +228,8 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
         }
     }
 
+    rush2049::music_mix(samples_to_queue, num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])), output_channels,
+                        output_sample_rate, main_volume);
     SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
 }
 
@@ -373,8 +375,15 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--players") == 0 && i + 1 < argc) {
             fake_players = atoi(argv[++i]);
         }
+        if (strcmp(argv[i], "--hwwatch") == 0 && i + 1 < argc) {
+            rush2049::start_hw_watch((uint32_t)strtoul(argv[++i], nullptr, 16));
+        }
         if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
             rush2049::start_byte_watch((uint32_t)strtoul(argv[++i], nullptr, 16));
+        }
+        if (strcmp(argv[i], "--dump-ram") == 0 && i + 2 < argc) {
+            const char* prefix = argv[++i];
+            rush2049::start_ram_dump(prefix, argv[++i]);
         }
         if (strcmp(argv[i], "--dump-dl") == 0 && i + 2 < argc) {
             const char* path = argv[++i];
