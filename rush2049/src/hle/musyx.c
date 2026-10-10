@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "arithmetics.h"
@@ -117,8 +118,9 @@ enum {
 /* struct definition */
 /* rush2049: a high-quality side mix. Each voice is rendered a second time at twice the mix rate, with a 16-tap
  * Kaiser-windowed sinc in place of RESAMPLE_LUT. The game loads only the samples RESAMPLE_LUT's 4 taps reach, so the
- * side mix loads the rest itself (see hires_voice_t). Everything else that reaches the left/right output (the base
- * volumes, the delayed cc0 surround channel, the delay effect) is carried over from the original mix. The result
+ * side mix loads the rest itself (see hires_voice_t). The delay effect runs a second time too, in float at twice the
+ * rate on its own copy of the game's circular buffer (sfx_hires_stage). Everything else that reaches the left/right
+ * output (the base volumes, the delayed cc0 surround channel) is carried over from the original mix. The result
  * goes to musyx_hires_store() beside the subframe the game gets, and the audio output plays it in place of the
  * game's buffer. RDRAM and the game's own output stay exactly as the original mix leaves them. MusyX v1 only.
  *
@@ -140,11 +142,21 @@ typedef struct musyx_hires {
     float left[2][HIRES_SIZE];        /* [bus] */
     float right[2][HIRES_SIZE];
     float cc0[2][HIRES_SIZE];         /* carried into the next subframe, like musyx_t's cc0 */
+    float e50[HIRES_SIZE];            /* the delay effect's input, like musyx_t's e50 */
     float history[2][2][HIRES_LPF_TAPS - 1]; /* [bus][left, right] the last inputs */
 
     int16_t cc0_check[SUBFRAME_SIZE]; /* the original mix's cc0 that the carry belongs to */
-    float sfx_history[3];             /* the delay effect's last samples, for upsampling it */
+    /* The delay effect's circular buffer at twice the rate. sfx_shadow is the game's buffer as sfx_stage last left
+     * it: when what the game's taps read differs from it, the game wrote its buffer itself, and the copy is rebuilt
+     * from the game's. */
+    uint32_t sfx_ptr;                 /* the game's buffer the copy belongs to */
+    uint32_t sfx_length;              /* in samples of the original rate */
+    int16_t *sfx_shadow;              /* [sfx_length], or NULL */
+    float *sfx_buffer;                /* [2 * sfx_length], or NULL */
+    float sfx_last[6];                /* the effect's last outputs, for the FIR4 */
 } musyx_hires_t;
+
+enum { SFX_HIRES_MAX_LENGTH = 0x400000 }; /* all of RDRAM, in samples */
 
 /* A voice's two segments as the side mix reads them: the samples the game loaded, with HIRES_EXTRA more before and
  * after the main segment and after the restart segment, read from the same stream. */
@@ -244,7 +256,12 @@ static void hires_load_voice(struct hle_t* hle, uint32_t voice_ptr, const int16_
 static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, int start, int end_point,
                             uint16_t restart_point, uint32_t pitch_accu, uint32_t pitch_step,
                             const int32_t *env, const int32_t *env_step);
-static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe);
+static bool sfx_hires_begin(musyx_hires_t *hires, uint32_t cbuffer_ptr, uint32_t cbuffer_length);
+static bool sfx_hires_matches(const musyx_hires_t *hires, const int16_t *delayed, int dpos);
+static void sfx_hires_stage(struct hle_t* hle, musyx_t *musyx, bool stale, uint32_t pos, uint16_t tap_count,
+                            const uint32_t *tap_delays, const int16_t *tap_gains, int16_t fir4_hgain,
+                            const int16_t *fir4_hcoeffs);
+static void sfx_hires_shadow(musyx_hires_t *hires, const int16_t *e50, uint32_t pos);
 static void interleave_hires_v1(struct hle_t* hle, musyx_t *musyx, uint32_t output_ptr);
 
 static int32_t dot4(const int16_t *x, const int16_t *y)
@@ -859,13 +876,13 @@ static void sfx_stage(struct hle_t* hle, mix_sfx_with_main_subframes_t mix_sfx_w
     int16_t fir4_hgain;
     uint16_t sfx_gains[2];
 
+    musyx_hires_t *hires = musyx->hires;
+    bool stale = false;
+
     HleVerboseMessage(hle->user_defined, "SFX: %08x, idx=%d", sfx_ptr, idx);
 
-    if (sfx_ptr == 0) {
-        if (musyx->hires != NULL)
-            memset(musyx->hires->sfx_history, 0, sizeof(musyx->hires->sfx_history));
+    if (sfx_ptr == 0)
         return;
-    }
 
     /* load sfx  parameters */
     cbuffer_ptr    = *dram_u32(hle, sfx_ptr + SFX_CBUFFER_PTR);
@@ -881,6 +898,12 @@ static void sfx_stage(struct hle_t* hle, mix_sfx_with_main_subframes_t mix_sfx_w
 
     sfx_gains[0]   = *dram_u16(hle, sfx_ptr + SFX_U16_3C);
     sfx_gains[1]   = *dram_u16(hle, sfx_ptr + SFX_U16_3E);
+
+    if (hires != NULL) {
+        stale = sfx_hires_begin(hires, cbuffer_ptr, cbuffer_length);
+        if (hires->sfx_buffer == NULL)
+            hires = NULL;
+    }
 
     HleVerboseMessage(hle->user_defined,
                       "cbuffer: ptr=%08x length=%x", cbuffer_ptr,
@@ -919,19 +942,24 @@ static void sfx_stage(struct hle_t* hle, mix_sfx_with_main_subframes_t mix_sfx_w
 
         dram_load_u16(hle, (uint16_t *)delayed, cbuffer_ptr + dpos * 2, dlength);
 
+        if (hires != NULL && !stale)
+            stale = !sfx_hires_matches(hires, delayed, dpos);
+
         mix_subframes(subframe, delayed, tap_gains[i]);
     }
 
     /* add resulting subframe to main subframes */
     mix_sfx_with_main_subframes(musyx, subframe, sfx_gains);
-    if (musyx->hires != NULL)
-        mix_sfx_hires(musyx->hires, subframe);
+    if (hires != NULL)
+        sfx_hires_stage(hle, musyx, stale, pos, tap_count, tap_delays, tap_gains, fir4_hgain, fir4_hcoeffs);
 
     /* apply FIR4 filter and writeback filtered result */
     memcpy(buffer, musyx->subframe_740_last4, 4 * sizeof(int16_t));
     memcpy(musyx->subframe_740_last4, subframe + SUBFRAME_SIZE - 4, 4 * sizeof(int16_t));
     mix_fir4(musyx->e50, buffer + 1, fir4_hgain, fir4_hcoeffs);
     dram_store_u16(hle, (uint16_t *)musyx->e50, cbuffer_ptr + pos * 2, SUBFRAME_SIZE);
+    if (hires != NULL)
+        sfx_hires_shadow(hires, musyx->e50, pos);
 }
 
 static void mix_sfx_with_main_subframes_v1(musyx_t *musyx, const int16_t *subframe,
@@ -1198,7 +1226,11 @@ static void init_hires_v1(musyx_t *musyx)
 {
     musyx_hires_t *hires = musyx->hires;
     float base_cc0 = clamp_s16(musyx->base_vol[2]);
+    float base_e50 = clamp_s16(musyx->base_vol[3]);
     unsigned i, bus;
+
+    for (i = 0; i < HIRES_SIZE; ++i)
+        hires->e50[i] = base_e50;
 
     for (bus = 0; bus < 2; ++bus) {
         for (i = 0; i < HIRES_SIZE; ++i) {
@@ -1345,7 +1377,7 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
     const int n = min_int((int)((pitch_accu + (uint64_t)half_step * (HIRES_SIZE - 1)) >> 16) + HIRES_TAPS,
                           HIRES_SPAN);
     int16_t x[HIRES_SPAN];
-    float *dst[3];
+    float *dst[4];
     bool restart = false;
     int i, k, pos;
 
@@ -1362,6 +1394,7 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
     dst[0] = hires->left[bus];
     dst[1] = hires->right[bus];
     dst[2] = hires->cc0[bus];
+    dst[3] = hires->e50; /* the delay effect's output goes to bus 0, which cuts what this adds above 11 kHz */
 
     pos = 0;
     for (i = 0; i < HIRES_SIZE; ++i) {
@@ -1372,7 +1405,7 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
         pitch_accu = frac + half_step;
         v = hires_interpolate(x + pos, frac);
 
-        for (k = 0; k < 3; ++k) {
+        for (k = 0; k < 4; ++k) {
             /* the envelope at time i/2: env + env_step * i / 2, then >> 16 as envmix does */
             int64_t e = ((int64_t)env[k] * 2 + (int64_t)env_step[k] * i) >> 17;
 
@@ -1381,28 +1414,156 @@ static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, in
     }
 }
 
-/* The delay effect's output at twice the rate, as mix_sfx_with_main_subframes_v1 adds it. It lags by two samples
- * of the original rate, so the odd outputs can be interpolated from samples on both sides; on a reverb that is
- * inaudible. */
-static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe)
+/* (p mod length), for an index into the delay effect's buffer that may be negative or past its end */
+static uint32_t sfx_hires_wrap(int64_t p, uint32_t length)
 {
-    const float *half = hires_sfx_half;
-    float x[SUBFRAME_SIZE + 3];
+    p %= length;
+    return (uint32_t)((p < 0) ? p + length : p);
+}
+
+/* Keys the copy to the game's buffer. Returns true when it has to be rebuilt from the game's. */
+static bool sfx_hires_begin(musyx_hires_t *hires, uint32_t cbuffer_ptr, uint32_t cbuffer_length)
+{
+    if (cbuffer_ptr == hires->sfx_ptr && cbuffer_length == hires->sfx_length)
+        return false;
+
+    free(hires->sfx_shadow);
+    free(hires->sfx_buffer);
+    hires->sfx_shadow = NULL;
+    hires->sfx_buffer = NULL;
+    hires->sfx_ptr = cbuffer_ptr;
+    hires->sfx_length = cbuffer_length;
+
+    if (cbuffer_length > 0 && cbuffer_length <= SFX_HIRES_MAX_LENGTH) {
+        hires->sfx_shadow = malloc(cbuffer_length * sizeof(int16_t));
+        hires->sfx_buffer = malloc(2 * cbuffer_length * sizeof(float));
+        if (hires->sfx_shadow == NULL || hires->sfx_buffer == NULL) {
+            free(hires->sfx_shadow);
+            free(hires->sfx_buffer);
+            hires->sfx_shadow = NULL;
+            hires->sfx_buffer = NULL;
+        }
+    }
+
+    return true;
+}
+
+/* whether a tap the game read from its buffer is what sfx_stage left there */
+static bool sfx_hires_matches(const musyx_hires_t *hires, const int16_t *delayed, int dpos)
+{
+    uint32_t p = sfx_hires_wrap(dpos, hires->sfx_length);
     unsigned i;
 
-    memcpy(x, hires->sfx_history, sizeof(hires->sfx_history));
-    for (i = 0; i < SUBFRAME_SIZE; ++i)
-        x[i + 3] = subframe[i];
-    memcpy(hires->sfx_history, x + SUBFRAME_SIZE, sizeof(hires->sfx_history));
+    for (i = 0; i < SUBFRAME_SIZE; ++i) {
+        if (hires->sfx_shadow[p] != delayed[i])
+            return false;
+        if (++p == hires->sfx_length)
+            p = 0;
+    }
+
+    return true;
+}
+
+/* Rebuilds the copy from the game's buffer and FIR4 history, the odd samples interpolated halfway. */
+static void sfx_hires_reseed(struct hle_t* hle, musyx_hires_t *hires, const int16_t *last4)
+{
+    const float *half = hires_sfx_half;
+    const uint32_t length = hires->sfx_length;
+    const int16_t *s = hires->sfx_shadow;
+    uint32_t p;
+
+    dram_load_u16(hle, (uint16_t *)hires->sfx_shadow, hires->sfx_ptr, length);
+
+    for (p = 0; p < length; ++p) {
+        uint32_t p0 = (p == 0) ? length - 1 : p - 1;
+        uint32_t p2 = (p + 1 == length) ? 0 : p + 1;
+        uint32_t p3 = (p2 + 1 == length) ? 0 : p2 + 1;
+
+        hires->sfx_buffer[2 * p]     = s[p];
+        hires->sfx_buffer[2 * p + 1] = half[0] * s[p0] + half[1] * s[p] + half[2] * s[p2] + half[3] * s[p3];
+    }
+
+    /* last4[1..3] are the outputs 3, 2 and 1 back */
+    hires->sfx_last[0] = last4[1];
+    hires->sfx_last[1] = 0.5f * ((float)last4[1] + (float)last4[2]);
+    hires->sfx_last[2] = last4[2];
+    hires->sfx_last[3] = 0.5f * ((float)last4[2] + (float)last4[3]);
+    hires->sfx_last[4] = last4[3];
+    hires->sfx_last[5] = last4[3];
+}
+
+/* The delay effect again, as sfx_stage runs it, in float at twice the rate: the taps at twice the delays into bus 0
+ * (as mix_sfx_with_main_subframes_v1 adds them), and the FIR4 with its taps two samples apart, which is the
+ * original's response below 11 kHz, back into the buffer with the voices' sends. Nothing is rounded to 16 bits, so
+ * a tail decays smoothly instead of into quantisation noise. Runs before sfx_stage updates subframe_740_last4.
+ * Rush 2049 itself never turns the effect on (docs/games/rush2049.md); this is for a mod that does. */
+static void sfx_hires_stage(struct hle_t* hle, musyx_t *musyx, bool stale, uint32_t pos, uint16_t tap_count,
+                            const uint32_t *tap_delays, const int16_t *tap_gains, int16_t fir4_hgain,
+                            const int16_t *fir4_hcoeffs)
+{
+    musyx_hires_t *hires = musyx->hires;
+    const uint32_t length = 2 * hires->sfx_length;
+    float x[6 + HIRES_SIZE];
+    float *subframe = x + 6;
+    float h[4];
+    uint32_t i, k, p;
+
+    if (stale)
+        sfx_hires_reseed(hle, hires, musyx->subframe_740_last4);
+
+    memset(subframe, 0, HIRES_SIZE * sizeof(subframe[0]));
+    for (k = 0; k < tap_count; ++k) {
+        const float gain = (float)tap_gains[k] * (1.0f / 32768.0f);
+        const int dpos = pos - tap_delays[k];
+
+        p = sfx_hires_wrap(2 * (int64_t)dpos, length);
+        for (i = 0; i < HIRES_SIZE; ++i) {
+            subframe[i] += gain * hires->sfx_buffer[p];
+            if (++p == length)
+                p = 0;
+        }
+    }
+
+    for (i = 0; i < HIRES_SIZE; ++i) {
+        hires->left[0][i]  += subframe[i];
+        hires->right[0][i] += subframe[i];
+    }
+
+    for (k = 0; k < 4; ++k)
+        h[k] = (float)((fir4_hgain * fir4_hcoeffs[k]) >> 15) * (1.0f / 32768.0f);
+
+    memcpy(x, hires->sfx_last, sizeof(hires->sfx_last));
+    memcpy(hires->sfx_last, x + HIRES_SIZE, sizeof(hires->sfx_last));
+
+    p = sfx_hires_wrap(2 * (int64_t)pos, length);
+    for (i = 0; i < HIRES_SIZE; ++i) {
+        float v = hires->e50[i] + h[0] * x[i] + h[1] * x[i + 2] + h[2] * x[i + 4] + h[3] * x[i + 6];
+
+        /* Clamped like the game's e50, so a loop that overloads saturates the same way. What is far below 16-bit
+         * resolution is flushed, so a tail that dies out never reaches denormals. */
+        if (v > 32767.0f)
+            v = 32767.0f;
+        else if (v < -32768.0f)
+            v = -32768.0f;
+        else if (fabsf(v) < 1e-9f)
+            v = 0.0f;
+
+        hires->sfx_buffer[p] = v;
+        if (++p == length)
+            p = 0;
+    }
+}
+
+/* mirrors sfx_stage's write to the game's buffer */
+static void sfx_hires_shadow(musyx_hires_t *hires, const int16_t *e50, uint32_t pos)
+{
+    uint32_t p = sfx_hires_wrap(pos, hires->sfx_length);
+    unsigned i;
 
     for (i = 0; i < SUBFRAME_SIZE; ++i) {
-        float even = x[i + 1];
-        float odd  = half[0] * x[i] + half[1] * x[i + 1] + half[2] * x[i + 2] + half[3] * x[i + 3];
-
-        hires->left[0][2 * i]      += even;
-        hires->right[0][2 * i]     += even;
-        hires->left[0][2 * i + 1]  += odd;
-        hires->right[0][2 * i + 1] += odd;
+        hires->sfx_shadow[p] = e50[i];
+        if (++p == hires->sfx_length)
+            p = 0;
     }
 }
 
