@@ -82,6 +82,7 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 
 // --probes: log each change of player 1's buttons as the game reads them.
 static bool log_input = false;
+static int fake_players = 0;
 
 static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float* x_out, float* y_out) {
     bool ret = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
@@ -102,6 +103,8 @@ ultramodern::input::connected_device_info_t get_connected_device_info(int contro
     // mode only port 1 has a controller.
     bool connected = recompinput::players::is_single_player_mode() ? controller_num == 0
                                                                    : recompinput::players::get_player_is_assigned(controller_num);
+    // --players N: report ports 1..N as connected, so split screen can be tested with one pad (the others idle).
+    connected = connected || controller_num < fake_players;
     if (connected) {
         return ultramodern::input::connected_device_info_t{
             .connected_device = ultramodern::input::Device::Controller,
@@ -357,6 +360,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--probes") == 0) {
             rush2049::start_stack_sampler(5, false);
             log_input = true;
+        }
+        if (strcmp(argv[i], "--players") == 0 && i + 1 < argc) {
+            fake_players = atoi(argv[++i]);
         }
         if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
             rush2049::start_byte_watch((uint32_t)strtoul(argv[++i], nullptr, 16));
