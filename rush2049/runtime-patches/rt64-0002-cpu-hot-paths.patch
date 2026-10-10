@@ -1,5 +1,5 @@
 diff --git a/src/common/rt64_tmem_hasher.h b/src/common/rt64_tmem_hasher.h
-index 8c6af2b..015e2e8 100644
+index 8c6af2b..d0cdacb 100644
 --- a/src/common/rt64_tmem_hasher.h
 +++ b/src/common/rt64_tmem_hasher.h
 @@ -4,6 +4,8 @@
@@ -11,7 +11,58 @@ index 8c6af2b..015e2e8 100644
  // Referenced from zstd.
  
  static unsigned bitScanForward64(uint64_t val) {
-@@ -66,21 +68,23 @@ namespace RT64 {
+@@ -45,12 +47,48 @@ namespace RT64 {
+             return tmemBytesPerRow > drawBytesPerRow;
+         }
+ 
++        // Collects the bytes a hash covers into one buffer and hashes them in one go. XXH3 gives the same hash for the same
++        // bytes whether they come at once or piece by piece, and this skips the cost of every small streaming update.
++        struct GatheredXXH3 {
++            alignas(16) uint8_t buffer[8192];
++            uint32_t size = 0;
++            bool streaming = false;
++            XXH3_state_t state;
++
++            void update(const void *data, uint32_t byteCount) {
++                if ((size + byteCount) > sizeof(buffer)) {
++                    if (!streaming) {
++                        XXH3_64bits_reset(&state);
++                        streaming = true;
++                    }
++
++                    XXH3_64bits_update(&state, buffer, size);
++                    size = 0;
++                    if (byteCount > sizeof(buffer)) {
++                        XXH3_64bits_update(&state, data, byteCount);
++                        return;
++                    }
++                }
++
++                memcpy(&buffer[size], data, byteCount);
++                size += byteCount;
++            }
++
++            uint64_t digest() {
++                if (!streaming) {
++                    return XXH3_64bits(buffer, size);
++                }
++
++                XXH3_64bits_update(&state, buffer, size);
++                return XXH3_64bits_digest(&state);
++            }
++        };
++
+         static uint64_t hash(const uint8_t *TMEM, const LoadTile &loadTile, uint16_t width, uint16_t height, uint32_t tlut, uint32_t version) {
+             const uint32_t TMEMBytes = 4096;
+             const uint32_t TMEMMask8 = 4095;
+             const uint32_t TMEMMask16 = 2047;
+-            XXH3_state_t xxh3;
+-            XXH3_64bits_reset(&xxh3);
++            GatheredXXH3 xxh3;
+             const bool RGBA32 = (loadTile.siz == G_IM_SIZ_32b) && (loadTile.fmt == G_IM_FMT_RGBA);
+             const bool usesTLUT = tlut > 0;
+             bool halfTMEM = RGBA32;
+@@ -66,21 +104,23 @@ namespace RT64 {
              const uint32_t tmemMask = halfTMEM ? TMEMMask16 : TMEMMask8;
              const uint32_t tmemAddress = (loadTile.tmem << 3) & tmemMask;
              uint64_t tlutBitset[4] = {};
@@ -21,7 +72,8 @@ index 8c6af2b..015e2e8 100644
 +            alignas(16) uint8_t tlutSeen[256];
 +            bool tlutSeenUsed = false;
              auto hashUpdate = [&](const uint8_t *tmemBytes, uint32_t byteCount) {
-                 XXH3_64bits_update(&xxh3, tmemBytes, byteCount);
+-                XXH3_64bits_update(&xxh3, tmemBytes, byteCount);
++                xxh3.update(tmemBytes, byteCount);
  
                  // Version 5 parses every byte individually if TLUT is enabled to determine the TLUT bytes that can be hashed.
                  if ((version >= 5) && usesTLUT) {
@@ -44,7 +96,7 @@ index 8c6af2b..015e2e8 100644
                      }
                  }
              };
-@@ -141,6 +145,31 @@ namespace RT64 {
+@@ -141,6 +181,31 @@ namespace RT64 {
                  }
              }
  
@@ -76,6 +128,64 @@ index 8c6af2b..015e2e8 100644
              // If TLUT is active, we also hash the corresponding palette bytes.
              if (usesTLUT) {
                  const bool CI4 = (loadTile.siz == G_IM_SIZ_4b);
+@@ -151,7 +216,7 @@ namespace RT64 {
+                 if (version >= 5) {
+                     // Fast path for a full bitset for CI4.
+                     if (CI4 && (tlutBitset[0] == UINT16_MAX)) {
+-                        XXH3_64bits_update(&xxh3, &TMEM[paletteAddress], 0x80);
++                        xxh3.update(&TMEM[paletteAddress], 0x80);
+                     }
+                     else {
+                         const uint32_t bitsetCount = CI4 ? 1 : 4;
+@@ -160,14 +225,14 @@ namespace RT64 {
+                         for (uint32_t i = 0; i < bitsetCount; i++) {
+                             // Fast path for a full bitset.
+                             if (tlutBitset[i] == UINT64_MAX) {
+-                                XXH3_64bits_update(&xxh3, &TMEM[paletteAddress + i * 0x200], 0x200);
++                                xxh3.update(&TMEM[paletteAddress + i * 0x200], 0x200);
+                             }
+                             else {
+                                 // Must check every bit individually.
+                                 while (tlutBitset[i] > 0) {
+                                     bitsetIndex = bitScanForward64(tlutBitset[i]);
+                                     paletteIndex = (i * 0x40) + bitsetIndex;
+-                                    XXH3_64bits_update(&xxh3, &TMEM[paletteAddress + paletteIndex * 8], 8);
++                                    xxh3.update(&TMEM[paletteAddress + paletteIndex * 8], 8);
+                                     tlutBitset[i] &= ~(1ULL << bitsetIndex);
+                                 }
+                             }
+@@ -176,7 +241,7 @@ namespace RT64 {
+                 }
+                 else {
+                     const int32_t bytesToHash = CI4 ? 0x80 : 0x800;
+-                    XXH3_64bits_update(&xxh3, &TMEM[paletteAddress], bytesToHash);
++                    xxh3.update(&TMEM[paletteAddress], bytesToHash);
+                 }
+             }
+             
+@@ -187,14 +252,14 @@ namespace RT64 {
+             static_assert(sizeof(loadTile.line) == 2, "Hash must use 16-bit line.");
+             static_assert(sizeof(loadTile.siz) == 1, "Hash must use 8-bit siz.");
+             static_assert(sizeof(loadTile.fmt) == 1, "Hash must use 8-bit fmt.");
+-            XXH3_64bits_update(&xxh3, &width, sizeof(width));
+-            XXH3_64bits_update(&xxh3, &height, sizeof(height));
+-            XXH3_64bits_update(&xxh3, &tlut, sizeof(tlut));
+-            XXH3_64bits_update(&xxh3, &loadTile.line, sizeof(loadTile.line));
+-            XXH3_64bits_update(&xxh3, &loadTile.siz, sizeof(loadTile.siz));
+-            XXH3_64bits_update(&xxh3, &loadTile.fmt, sizeof(loadTile.fmt));
+-
+-            return XXH3_64bits_digest(&xxh3);
++            xxh3.update(&width, sizeof(width));
++            xxh3.update(&height, sizeof(height));
++            xxh3.update(&tlut, sizeof(tlut));
++            xxh3.update(&loadTile.line, sizeof(loadTile.line));
++            xxh3.update(&loadTile.siz, sizeof(loadTile.siz));
++            xxh3.update(&loadTile.fmt, sizeof(loadTile.fmt));
++
++            return xxh3.digest();
+         }
+ 
+         static bool requiresRawTMEM(const LoadTile &loadTile, uint16_t width, uint16_t height, uint32_t tlutFormat) {
 diff --git a/src/hle/rt64_game_frame.cpp b/src/hle/rt64_game_frame.cpp
 index 87392d0..81e5238 100644
 --- a/src/hle/rt64_game_frame.cpp
