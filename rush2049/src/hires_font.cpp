@@ -17,6 +17,11 @@
 // app folder, is cut into those strips the same way: each strip the walk finds is hashed with its palette, and its
 // replacement is read out of the picture where the strip lands on screen. A strip whose texels don't match the
 // picture shrunk back down (another screen drawn the same way, or a picture of something else) is left alone.
+// The picture is made from the game's art, so it can't be handed around; a patch can. Each run with title.png writes
+// the title as the game draws it to hires_title/original.ppm, and tools/rush2049/title_patch.py turns the two into
+// hires_title/title_patch.png: per pixel of the picture, its difference from the original pixel under it, and in
+// alpha a check byte of that original pixel. With only the patch, the picture is rebuilt from the strips as they are
+// drawn, and a strip whose texels don't all give the patch's check bytes is left alone.
 
 #include <algorithm>
 #include <atomic>
@@ -72,6 +77,10 @@ constexpr float title_match = 16.0f;
 std::filesystem::path title_dir;
 std::vector<uint8_t> title_rgba;
 int title_scale = 0;
+// title_rgba is rebuilt from title_patch (RGBA, the picture's size) and the strips, rather than read from title.png.
+std::vector<uint8_t> title_patch;
+// The title as the game draws it, RGB, written to original.ppm.
+std::vector<uint8_t> title_original;
 std::unordered_set<uint64_t> title_seen;
 std::vector<uint64_t> title_in_pack;
 
@@ -516,9 +525,12 @@ void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
         return &title_rgba[((size_t)py * pic_w + px) * 4];
     };
 
-    // The strip as the game draws it against the picture shrunk back down: the mean of each texel's block.
-    float diff = 0.0f;
-    int count = 0;
+    // The strip's texels, each as the screen pixel it fills.
+    struct Texel {
+        int x, y;
+        uint32_t c;  // RGBA 5551
+    };
+    std::vector<Texel> texels;
     for (int v = 0; v < height; v++) {
         for (int u = 0; u < width; u++) {
             float x = screen_x(u + 0.5f), y = screen_y(v + 0.5f);
@@ -533,22 +545,55 @@ void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
             if (!tmem_known[e] || !tmem_known[e + 1]) {
                 return;  // the palette was loaded by an earlier task
             }
-            uint32_t c = (tmem[e] << 8) | tmem[e + 1];  // RGBA 5551
-            float texel[3] = { ((c >> 11) & 31) * 255.0f / 31, ((c >> 6) & 31) * 255.0f / 31, ((c >> 1) & 31) * 255.0f / 31 };
-            float sum[3] = {};
+            texels.push_back({ (int)x, (int)y, (uint32_t)((tmem[e] << 8) | tmem[e + 1]) });
+        }
+    }
+    // As title_patch.py has them: a channel out of 255, and the check byte of a colour.
+    auto channel = [](uint32_t c, int k) { return (int)((c >> (11 - 5 * k)) & 31) * 255 / 31; };
+    auto check_byte = [](uint32_t c) { return (uint8_t)((((c >> 1) & 0x7FFF) * 40503u) >> 8); };
+
+    if (!title_patch.empty()) {
+        int mismatched = 0;
+        for (const Texel& t : texels) {
+            mismatched += title_patch[((size_t)t.y * title_scale * pic_w + t.x * title_scale) * 4 + 3] != check_byte(t.c);
+        }
+        if (texels.empty() || mismatched > 0) {
+            title_seen.insert(hash);
+            if (!texels.empty()) {
+                fprintf(stderr, "[hires title] strip at (%g,%g) %016" PRIx64 " differs from the patch's title in %d of %zu pixels, left alone\n",
+                        ulx, uly, hash, mismatched, texels.size());
+            }
+            return;
+        }
+        for (const Texel& t : texels) {
             for (int j = 0; j < title_scale; j++) {
                 for (int i = 0; i < title_scale; i++) {
-                    const uint8_t* p = pixel(std::floor(x) + (i + 0.5f) / title_scale, std::floor(y) + (j + 0.5f) / title_scale);
+                    size_t o = ((size_t)(t.y * title_scale + j) * pic_w + t.x * title_scale + i) * 4;
                     for (int k = 0; k < 3; k++) {
-                        sum[k] += p[k];
+                        title_rgba[o + k] = (uint8_t)(channel(t.c, k) + title_patch[o + k]);
                     }
                 }
             }
-            for (int k = 0; k < 3; k++) {
-                diff += std::fabs(sum[k] / (title_scale * title_scale) - texel[k]);
-            }
-            count += 3;
         }
+    }
+
+    // The strip as the game draws it against the picture shrunk back down: the mean of each texel's block.
+    float diff = 0.0f;
+    int count = 0;
+    for (const Texel& t : texels) {
+        float sum[3] = {};
+        for (int j = 0; j < title_scale; j++) {
+            for (int i = 0; i < title_scale; i++) {
+                const uint8_t* p = pixel(t.x + (i + 0.5f) / title_scale, t.y + (j + 0.5f) / title_scale);
+                for (int k = 0; k < 3; k++) {
+                    sum[k] += p[k];
+                }
+            }
+        }
+        for (int k = 0; k < 3; k++) {
+            diff += std::fabs(sum[k] / (title_scale * title_scale) - channel(t.c, k));
+        }
+        count += 3;
     }
     title_seen.insert(hash);
     if (count == 0 || diff / count > title_match) {
@@ -557,6 +602,13 @@ void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
                     hash, diff / count);
         }
         return;
+    }
+    if (!title_original.empty()) {
+        for (const Texel& t : texels) {
+            for (int k = 0; k < 3; k++) {
+                title_original[((size_t)t.y * title_width + t.x) * 3 + k] = (uint8_t)channel(t.c, k);
+            }
+        }
     }
 
     // Each texel gets the part of the picture it covers on screen. A flipped strip needs RT64 to start its high
@@ -595,25 +647,48 @@ void register_pack() {
     recompui::renderer::set_builtin_texture_packs(packs);
 }
 
-// hires_title/title.png, if there is one: the pack is cut from it afresh each launch.
+// The title as the game draws it, for title_patch.py.
+void write_original() {
+    std::FILE* f = std::fopen((title_dir / "original.ppm").string().c_str(), "wb");
+    if (f == nullptr) {
+        return;
+    }
+    std::fprintf(f, "P6\n%d %d\n255\n", title_width, title_height);
+    std::fwrite(title_original.data(), 1, title_original.size(), f);
+    std::fclose(f);
+}
+
+// hires_title/title.png, or failing that hires_title/title_patch.png: the pack is cut afresh each launch.
 void init_hires_title() {
     title_dir = recompui::file::get_app_folder_path() / "hires_title";
     std::error_code ec;
     std::filesystem::remove_all(title_dir / "pack", ec);
+    bool patch = false;
     int w = 0, h = 0, channels = 0;
     uint8_t* data = stbi_load((title_dir / "title.png").string().c_str(), &w, &h, &channels, 4);
     if (data == nullptr) {
+        patch = true;
+        data = stbi_load((title_dir / "title_patch.png").string().c_str(), &w, &h, &channels, 4);
+    }
+    if (data == nullptr) {
         return;
     }
+    const char* file = patch ? "title_patch.png" : "title.png";
     int scale = w / title_width;
     if (scale >= 2 && scale <= 8 && w == title_width * scale && h == title_height * scale) {
-        title_rgba.assign(data, data + (size_t)w * h * 4);
+        if (patch) {
+            title_patch.assign(data, data + (size_t)w * h * 4);
+            title_rgba.assign((size_t)w * h * 4, 255);
+        } else {
+            title_rgba.assign(data, data + (size_t)w * h * 4);
+            title_original.assign((size_t)title_width * title_height * 3, 0);
+        }
         title_scale = scale;
         std::filesystem::create_directories(title_dir / "pack", ec);
         write_database(title_dir / "pack", title_in_pack);
-        fprintf(stderr, "[hires title] %dx%d picture, %dx\n", w, h, scale);
+        fprintf(stderr, "[hires title] %s, %dx%d, %dx\n", file, w, h, scale);
     } else {
-        fprintf(stderr, "[hires title] title.png is %dx%d, not 320x220 times 2 to 8\n", w, h);
+        fprintf(stderr, "[hires title] %s is %dx%d, not 320x220 times 2 to 8\n", file, w, h);
     }
     stbi_image_free(data);
 }
@@ -666,6 +741,9 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
     if (rdp.found_title) {
         write_database(title_dir / "pack", title_in_pack);
         register_pack();
+        if (!title_original.empty()) {
+            write_original();
+        }
     }
     if (!rdp.found.empty()) {
         write_database(pack_dir, in_pack);
