@@ -313,7 +313,8 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
     static uint32_t n = 0; static double dbg_us = 0;
     if (++n % 30 == 0) {
         float clock; uint32_t w = read_word(rdram, race_clock_addr); memcpy(&clock, &w, 4);
-        fprintf(stderr, "[rewind dbg] clock %.2f held %d frames %zu bytes %zu\n", clock, rewind_held(), history.size(), history_bytes); fprintf(stderr, "[rewind dbg] avg %.0f us\n", dbg_us / 30); dbg_us = 0;
+        fprintf(stderr, "[rewind dbg] clock %.2f held %d frames %zu bytes %zu\n", clock, rewind_held(), history.size(), history_bytes); fprintf(stderr, "[rewind dbg] avg %.0f us\n", dbg_us / 30);
+        for (uint32_t head : { 0x80144028u, 0x80144C58u, 0x80143F60u }) { int k = 0; for (uint32_t p = read_word(rdram, head); p && k < 500; p = read_word(rdram, p)) k++; fprintf(stderr, "[rewind dbg] sounds %08X: %d\n", head, k); } dbg_us = 0;
     }
     if (rewind_held()) {
         { float a, b; uint32_t w = read_word(rdram, race_clock_addr), v = read_word(shadow.data(), race_clock_addr); memcpy(&a, &w, 4); memcpy(&b, &v, 4);
