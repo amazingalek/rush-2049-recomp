@@ -23,6 +23,8 @@ namespace rush2049 {
     bool large_controller_pak();
     // Frames a second the game draws at the "Game Frame Rate" setting: 30, 60, or more with Match Framerate.
     uint32_t game_frame_rate();
+    // Whether 2- and 4-player views widen with the window ("Split-Screen Aspect Ratio" at Expand).
+    bool split_screen_expand();
     // --dump-dl: write the first display list the game submits after the given number of seconds (src/dl_dump.cpp).
     void start_dl_dump(const char* path, double after_seconds);
     // --dump-ram: write all of RDRAM (big-endian) to <prefix>N.bin at each of the comma-separated times in seconds.

@@ -1,6 +1,6 @@
-// Config tabs: the stock tabs, plus the controller accessory and Controller Pak size options on the General tab and
-// the game frame rate and hi-res font on the Graphics tab, and MusyX mixing and the music replacement options on the
-// Sound tab.
+// Config tabs: the stock tabs, plus the controller accessory and Controller Pak size options on the General tab, the
+// game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing and the music
+// replacement options on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -80,6 +80,19 @@ namespace {
     };
     const std::string hires_font_option = "hires_font";
 
+    enum class SplitScreenRatio {
+        Expand,
+        Original,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> split_screen_ratio_options = {
+        {SplitScreenRatio::Expand, "Expand", "Expand"},
+        {SplitScreenRatio::Original, "Original", "Original"},
+    };
+    const std::string split_screen_ratio_option = "split_screen_ratio";
+    // Read on the game thread with every display list.
+    std::atomic<SplitScreenRatio> split_screen_ratio_setting{ SplitScreenRatio::Expand };
+
     enum class MusicReplacement {
         Off,
         On,
@@ -106,6 +119,10 @@ namespace {
 
 uint32_t rush2049::game_frame_rate() {
     return game_fps.load(std::memory_order_relaxed);
+}
+
+bool rush2049::split_screen_expand() {
+    return split_screen_ratio_setting.load(std::memory_order_relaxed) == SplitScreenRatio::Expand;
 }
 
 bool rush2049::rumble_pak_selected() {
@@ -280,6 +297,23 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(hires_font_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_hires_font(static_cast<HiresFont>(std::get<uint32_t>(cur_value)) == HiresFont::On);
+        });
+
+    graphics.add_enum_option(
+        split_screen_ratio_option,
+        "Split-Screen Aspect Ratio",
+        "How the 2- and 4-player views fit a wide window. The original game splits a 4:3 screen, so at 16:9 the "
+        "views sit inside a 4:3 area with bars at the sides."
+        "<br/>"
+        "<b>Expand:</b> each view widens to fill its share of the window, and its HUD moves with it. Needs "
+        "<recomp-color primary>Aspect Ratio</recomp-color> at Expand and "
+        "<recomp-color primary>HUD Placement</recomp-color> at something other than Original.",
+        split_screen_ratio_options,
+        SplitScreenRatio::Expand
+    );
+    graphics.add_option_change_callback(split_screen_ratio_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            split_screen_ratio_setting = static_cast<SplitScreenRatio>(std::get<uint32_t>(cur_value));
         });
 
     recompui::config::create_controls_tab();
