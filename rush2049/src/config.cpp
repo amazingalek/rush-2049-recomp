@@ -1,5 +1,5 @@
 // Config tabs: the stock tabs, plus the controller accessory option on the General tab and the game frame rate
-// and hi-res font on the Graphics tab.
+// and hi-res font on the Graphics tab, and the music replacement options on the Sound tab.
 
 #include <atomic>
 #include <filesystem>
@@ -46,6 +46,18 @@ namespace {
         {HiresFont::On, "On", "On"},
     };
     const std::string hires_font_option = "hires_font";
+
+    enum class MusicReplacement {
+        Off,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> music_replacement_options = {
+        {MusicReplacement::Off, "Off", "Off"},
+        {MusicReplacement::On, "On", "On"},
+    };
+    const std::string music_replacement_option = "music_replacement";
+    const std::string music_replacement_volume_option = "music_replacement_volume";
 }
 
 bool rush2049::rumble_pak_selected() {
@@ -141,7 +153,33 @@ void rush2049::init_config() {
 
     recompui::config::create_controls_tab();
 
-    recompui::config::create_sound_tab();
+    recomp::config::Config& sound = recompui::config::create_sound_tab();
+    sound.add_enum_option(
+        music_replacement_option,
+        "Replacement Music",
+        "Plays your own recordings of the game's songs instead of its music. Put them in a <b>music</b> folder next "
+        "to the game, named by song number or name: <b>00.ogg</b>, <b>bassy.flac</b>, <b>03 - Trancey.mp3</b>. "
+        "OGG, FLAC, MP3 and WAV are read. Songs with no file keep the game's own music."
+        "<br/>"
+        "Takes effect from the next song.",
+        music_replacement_options,
+        MusicReplacement::On
+    );
+    sound.add_number_option(
+        music_replacement_volume_option,
+        "Replacement Music Volume",
+        "The volume of the replacement music, on top of the game's own MUSIC VOLUME setting.",
+        0, 200, 1, 0, true, 100
+    );
+    // Called on load too.
+    sound.add_option_change_callback(music_replacement_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_music_replacement(static_cast<MusicReplacement>(std::get<uint32_t>(cur_value)) == MusicReplacement::On);
+        });
+    sound.add_option_change_callback(music_replacement_volume_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_music_replacement_volume(static_cast<float>(std::get<double>(cur_value) / 100.0));
+        });
 
     recompui::config::create_mods_tab();
 
