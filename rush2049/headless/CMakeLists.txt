@@ -35,7 +35,14 @@ if (EMSCRIPTEN)
 endif()
 
 add_library(RecompiledFuncs STATIC)
-target_compile_options(RecompiledFuncs PRIVATE -fno-strict-aliasing -Wno-unused-variable -Wno-implicit-function-declaration)
+target_compile_options(RecompiledFuncs PRIVATE -fno-strict-aliasing -Wno-unused-variable)
+# A call to an undeclared function links to a trap in WebAssembly (recompiled_externs.h), so it is an error there.
+if (EMSCRIPTEN)
+    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration
+        -include ${CMAKE_CURRENT_SOURCE_DIR}/recompiled_externs.h)
+else()
+    target_compile_options(RecompiledFuncs PRIVATE -Wno-implicit-function-declaration)
+endif()
 target_include_directories(RecompiledFuncs PRIVATE
     ${GAME_DIR}/include
     ${GAME_DIR}/lib/N64ModernRuntime/ultramodern/include
@@ -43,7 +50,8 @@ target_include_directories(RecompiledFuncs PRIVATE
     ${GAME_DIR}/lib/N64ModernRuntime/N64Recomp/include
 )
 file(GLOB FUNC_C_SOURCES ${GAME_DIR}/RecompiledFuncs/*.c)
-target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES})
+file(GLOB FUNC_CXX_SOURCES ${GAME_DIR}/RecompiledFuncs/*.cpp)
+target_sources(RecompiledFuncs PRIVATE ${FUNC_C_SOURCES} ${FUNC_CXX_SOURCES})
 
 add_executable(Rush2049Headless
     main.cpp
@@ -59,6 +67,7 @@ add_executable(Rush2049Headless
     ${GAME_DIR}/src/widescreen.cpp
     ${GAME_DIR}/src/rewind.cpp
     ${GAME_DIR}/src/music.cpp
+    ${GAME_DIR}/lib/decoders/stb_vorbis.c
     ${GAME_DIR}/src/audio_resampler.cpp
     ${GAME_DIR}/src/audio_limiter.cpp
     ${GAME_DIR}/src/musyx_hle.cpp

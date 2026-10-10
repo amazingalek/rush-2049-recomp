@@ -5,14 +5,16 @@
 //
 //   Rush2049Headless <rom.z64> [--seconds n] [--fps n] [--mix original|hq] [--config dir]
 //
-// The renderer takes each display list and returns at once, as if the RDP were infinitely fast, and counts the
-// frames. The audio sink drains at the rate the game set, the way a sound card would, so the audio thread is paced as
-// it is in the game. Nobody presses anything, so the game runs its title screen and attract races. --fps is the Game
-// Frame Rate option (30 is Original, 60 the default); asked for more than the CPU side can give, the frames a second
-// it does reach is its ceiling. --mix is the MusyX Mixing option (High Quality is the default).
+// The renderer takes each display list and returns at once, as if the RDP were infinitely fast, and counts them and
+// the retraces. The audio sink drains at the rate the game set, the way a sound card would, so the audio thread is
+// paced as it is in the game. Nobody presses anything, so the game runs its title screen and attract races, which
+// draw 30 frames a second. --fps is the Game Frame Rate option (30 is Original, 60 the default). --mix is the MusyX
+// Mixing option (High Quality is the default).
 //
-// Every 5 seconds it prints frames, display lists and audio buffers a second, and the CPU time the whole process used
-// in that time as a share of one core (not in a browser, which has no way to read it).
+// Every 5 seconds it prints retraces, display lists and audio buffers a second, and the CPU time the whole process
+// used in that time as a share of one core (not in a browser, which has no way to read it). At the end, the same over
+// the whole run but its first interval (the boot), and the CPU time per display list: what a frame costs the CPU side,
+// against the 16.7 ms a frame has at 60 fps.
 
 #include <atomic>
 #include <chrono>
@@ -49,7 +51,7 @@ extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
 
 namespace {
-    std::atomic<uint64_t> frames{0};
+    std::atomic<uint64_t> retraces{0};
     std::atomic<uint64_t> display_lists{0};
     std::atomic<uint64_t> audio_buffers{0};
 
@@ -66,7 +68,7 @@ namespace {
         void enable_instant_present() override {}
         void send_dl(const OSTask*) override { display_lists++; }
         void send_dummy_workload(uint32_t) override {}
-        void update_screen() override { frames++; }
+        void update_screen() override { retraces++; }
         void shutdown() override {}
         uint32_t get_display_framerate() const override { return 60; }
         float get_resolution_scale() const override { return 1.0f; }
@@ -148,27 +150,47 @@ namespace {
         constexpr int interval = 5;
         auto last_time = std::chrono::steady_clock::now();
         double last_cpu = process_cpu_seconds();
-        uint64_t last_frames = 0, last_dls = 0, last_audio = 0;
+        uint64_t last_retraces = 0, last_dls = 0, last_audio = 0;
+        auto start_time = last_time;
+        double start_cpu = last_cpu;
+        uint64_t start_retraces = 0, start_dls = 0;
         for (int t = interval; t <= seconds; t += interval) {
             std::this_thread::sleep_for(std::chrono::seconds(interval));
             auto now = std::chrono::steady_clock::now();
             double wall = std::chrono::duration<double>(now - last_time).count();
             double cpu = process_cpu_seconds();
-            uint64_t f = frames, d = display_lists, a = audio_buffers;
+            uint64_t f = retraces, d = display_lists, a = audio_buffers;
             char cpu_text[32] = "n/a";
             if (cpu >= 0.0 && last_cpu >= 0.0) {
                 snprintf(cpu_text, sizeof(cpu_text), "%.0f%%", 100.0 * (cpu - last_cpu) / wall);
             }
-            printf("[headless] %3ds  frames/s %6.1f  display lists/s %6.1f  audio buffers/s %5.1f  cpu %s\n", t,
-                   (f - last_frames) / wall, (d - last_dls) / wall, (a - last_audio) / wall, cpu_text);
+            printf("[headless] %3ds  retraces/s %5.1f  display lists/s %5.1f  audio buffers/s %5.1f  cpu %s\n", t,
+                   (f - last_retraces) / wall, (d - last_dls) / wall, (a - last_audio) / wall, cpu_text);
             fflush(stdout);
             last_time = now;
             last_cpu = cpu;
-            last_frames = f;
+            last_retraces = f;
             last_dls = d;
             last_audio = a;
+            if (t == interval) {
+                start_time = now;
+                start_cpu = cpu;
+                start_retraces = f;
+                start_dls = d;
+            }
         }
-        std::exit(EXIT_SUCCESS);
+        double wall = std::chrono::duration<double>(last_time - start_time).count();
+        uint64_t dls = last_dls - start_dls;
+        char cpu_text[64] = "cpu n/a";
+        if (start_cpu >= 0.0 && dls != 0) {
+            snprintf(cpu_text, sizeof(cpu_text), "cpu %.0f%%, %.2f ms per display list", 100.0 * (last_cpu - start_cpu) / wall,
+                     1000.0 * (last_cpu - start_cpu) / dls);
+        }
+        printf("[headless] %.0fs after boot: retraces/s %.1f  display lists/s %.1f  %s\n", wall,
+               (last_retraces - start_retraces) / wall, dls / wall, cpu_text);
+        fflush(stdout);
+        // Not std::exit: the game threads are still running, and destroying them at exit aborts.
+        std::_Exit(EXIT_SUCCESS);
     }
 }
 
@@ -196,6 +218,7 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     timeBeginPeriod(1);
 #endif
+    rush2049::install_crash_handler();
 
     rush2049::set_game_frame_rate(fps);
     rush2049::set_musyx_hires(hq_mix);
@@ -224,8 +247,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "%s is not San Francisco Rush 2049 (USA)\n", rom_path.string().c_str());
         return EXIT_FAILURE;
     }
-    recomp::start_game(game_id, "");
-    std::thread{report, seconds}.detach();
+    // Started once the runtime is up, as the launcher does: the VI thread needs a retrace with the dummy VI mode the
+    // runtime sets until the game starts.
+    std::thread{[game_id, seconds]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        recomp::start_game(game_id, "");
+        report(seconds);
+    }}.detach();
 
     recomp::rsp::callbacks_t rsp_callbacks{ .get_rsp_microcode = get_rsp_microcode };
     ultramodern::renderer::callbacks_t renderer_callbacks{
