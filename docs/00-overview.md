@@ -38,5 +38,5 @@ The candidates come from Alek. These are the factors to check each one against, 
 
 ## Next steps (Rush 2049)
 
-1. Play through more of the game: a ghost saved to the Controller Pak, and multiplayer with real second pads.
+1. Play through more of the game: see the ghost car on screen (someone who knows how Ghost Race shows it), and multiplayer with real second pads.
 2. Done: keyboard defaults for driving, and a Controller Pak or Rumble Pak option on the General tab.
