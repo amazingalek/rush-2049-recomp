@@ -1,6 +1,6 @@
 # Source this from Git Bash: `. tools/env.sh`
 # Puts the per-user N64 toolchain (installed under %LOCALAPPDATA%\Programs\n64-toolchain,
-# see docs/03-local-env.md) on PATH and points clang-cl at the portable MSVC + Windows SDK.
+# see docs/local-env.md) on PATH and points clang-cl at the portable MSVC + Windows SDK.
 N64TC="${LOCALAPPDATA:-$HOME/AppData/Local}/Programs/n64-toolchain"
 N64TC="$(cygpath -u "$N64TC")"
 _msvc="$N64TC/portable-msvc/msvc"

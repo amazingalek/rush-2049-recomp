@@ -4,7 +4,7 @@
 #include "modding.h"
 #include "types.h"
 
-// What San Francisco Rush 2049: Recompiled gives every mod (docs/games/rush2049.md, "Mods"). Game functions and
+// What San Francisco Rush 2049: Recompiled gives every mod (docs/rush2049.md, "Mods"). Game functions and
 // variables are not here: call or hook them by their names in syms/rush2049/.
 
 // printf to the game's console (patches/print.c).

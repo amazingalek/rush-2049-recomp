@@ -1,4 +1,4 @@
-// Functions the executable gives mods (docs/games/rush2049.md, "Mods"). A mod imports these from "*"
+// Functions the executable gives mods (docs/rush2049.md, "Mods"). A mod imports these from "*"
 // (RECOMP_IMPORT("*", ...)), next to the patches library's exports. recomp_vprintf is a native the patches library
 // calls (patches/syms.ld), not an export.
 

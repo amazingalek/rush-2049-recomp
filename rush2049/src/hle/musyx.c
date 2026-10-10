@@ -1539,7 +1539,7 @@ static void sfx_hires_reseed(struct hle_t* hle, musyx_hires_t *hires, const int1
  * (as mix_sfx_with_main_subframes_v1 adds them), and the FIR4 with its taps two samples apart, which is the
  * original's response below 11 kHz, back into the buffer with the voices' sends. Nothing is rounded to 16 bits, so
  * a tail decays smoothly instead of into quantisation noise. Runs before sfx_stage updates subframe_740_last4.
- * Rush 2049 itself never turns the effect on (docs/games/rush2049.md); this is for a mod that does. */
+ * Rush 2049 itself never turns the effect on (docs/rush2049.md); this is for a mod that does. */
 static void sfx_hires_stage(struct hle_t* hle, musyx_t *musyx, bool stale, uint32_t pos, uint16_t tap_count,
                             const uint32_t *tap_delays, const int16_t *tap_gains, int16_t fir4_hgain,
                             const int16_t *fir4_hcoeffs)

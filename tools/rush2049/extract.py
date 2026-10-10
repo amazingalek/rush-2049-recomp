@@ -3,7 +3,7 @@
 Rush 2049 keeps everything but its boot segment as raw deflate streams that the game inflates
 itself at run time (func_80006814(rom, dest, flag)). N64Recomp reads instructions straight from
 the ROM, so this writes a copy with each compressed code segment appended uncompressed at a
-fake ROM address (SEGMENTS below). See docs/games/rush2049.md#memory-map.
+fake ROM address (SEGMENTS below). See docs/rush2049.md#memory-map.
 
 Usage: py -3 -I tools/rush2049/extract.py <rom (.z64/.n64/.v64)> [out_dir]   (default out_dir: roms/)
 Writes <out_dir>/rush2049.us.z64 (big-endian copy) and <out_dir>/rush2049.us.recomp.z64.

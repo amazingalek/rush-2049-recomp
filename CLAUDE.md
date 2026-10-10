@@ -7,10 +7,10 @@ and RT64, plus enhancements. Almost all of it is written by AI sessions, so this
 
 - `README.md` is for **humans**: what the project is, its enhancements, how to get it running, controls, mods,
   credits. Plain words, no internals.
-- `docs/games/rush2049.md` is the **source of truth** for everything else: status, the enhancements table, building,
+- `docs/rush2049.md` is the **source of truth** for everything else: status, the enhancements table, building,
   memory map, runtime fixes and why, performance numbers, developer flags. Read the section you are working in
   before you change the code it describes, and update it in the same PR.
-- `docs/01-toolchain.md` explains how N64Recomp, the runtime and RT64 fit together; `docs/03-local-env.md` is the
+- `docs/toolchain.md` explains how N64Recomp, the runtime and RT64 fit together; `docs/local-env.md` is the
   toolchain on this machine (`tools/env.sh` / `tools/env.ps1`).
 
 ## Keep the README current
@@ -25,14 +25,14 @@ in the same PR:
 - mod support (the "Mods" section says *supported but untested* until a real mod has been played)
 - a new doc under `docs/` (the "Docs" table)
 
-Keep the detail in `docs/games/rush2049.md` and link to it; the README says what and where, the doc says how and
+Keep the detail in `docs/rush2049.md` and link to it; the README says what and where, the doc says how and
 why. Keep the AI note at the top as it is.
 
 ## Rules
 
 - No ROMs, ROM-derived assets or extracted game data in git, CI or PRs (`tools/ci/check_repo.py` checks).
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
-  topic (General, Graphics, Sound, Controls), with a row in the enhancements table in `docs/games/rush2049.md` and a
+  topic (General, Graphics, Sound, Controls), with a row in the enhancements table in `docs/rush2049.md` and a
   line in the README.
 - Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
 - Changes to the submodules go in `rush2049/runtime-patches/` and are applied by

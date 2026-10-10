@@ -11,7 +11,7 @@ drawing it. It is not an emulator and it contains no game data: you supply your 
 **Status: playable** on Windows. Menus, Single Race, Circuit, Ghost Race, Stunt and Battle run at full speed, all
 six race tracks race to the results screen, two- and four-player split screen renders, and Controller Pak saves
 survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
-one pad. Details, findings and what is still open are in [docs/games/rush2049.md](docs/games/rush2049.md).
+one pad. Details, findings and what is still open are in [docs/rush2049.md](docs/rush2049.md).
 
 ## Modern enhancements
 
@@ -29,7 +29,7 @@ option has an Original value that runs the game as it shipped.
   out when the audio output falls behind.
 - **Replacement music**: drop your own recordings of the songs (OGG, FLAC, MP3, WAV, with loop points) into a
   `music` folder and they play instead of the game's sequenced music. See
-  [Replacement music](docs/games/rush2049.md#replacement-music) for the file names and where better recordings
+  [Replacement music](docs/rush2049.md#replacement-music) for the file names and where better recordings
   come from.
 - **Rewind**: hold Rewind (Backspace, or the left stick click) in a single-player race to run the race backwards,
   up to about a minute.
@@ -38,10 +38,10 @@ option has an Original value that runs the game as it shipped.
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
   driving-friendly defaults, rebindable on the Controls tab.
 - **Light on the CPU**: the game holds 60 fps on a single CPU core. On a weak GPU,
-  [Performance](docs/games/rush2049.md#performance) lists what each graphics setting costs and which to lower first.
+  [Performance](docs/rush2049.md#performance) lists what each graphics setting costs and which to lower first.
 
 The full table, with each option's config key, default and Original value, is in
-[Enhancements and the original game](docs/games/rush2049.md#enhancements-and-the-original-game).
+[Enhancements and the original game](docs/rush2049.md#enhancements-and-the-original-game).
 
 ## Getting it running
 
@@ -50,8 +50,8 @@ There is no prebuilt download: you build it from source, and you need your own c
 1. **The ROM.** *San Francisco Rush 2049 (U)*, the US release, as a `.z64` with SHA-1
    `3f99351d7bb61656614bdb2aa1a90cfe55d1922c`. The build and the launcher both check its hash. Other regions and
    revisions are not supported.
-2. **Build.** Install the toolchain in [docs/03-local-env.md](docs/03-local-env.md), then follow
-   [Building and running](docs/games/rush2049.md#building-and-running): fetch the submodules, apply the runtime
+2. **Build.** Install the toolchain in [docs/local-env.md](docs/local-env.md), then follow
+   [Building and running](docs/rush2049.md#building-and-running): fetch the submodules, apply the runtime
    patches, extract the ROM with `tools/rush2049/extract.py`, then configure with CMake and build with Ninja.
    Windows with clang-cl is the tested path; Linux (clang, Ubuntu 24.04) builds in CI.
 3. **Run** `rush2049/build/Rush2049Recompiled.exe` from `rush2049/`. The launcher finds the ROM by itself if it
@@ -77,7 +77,7 @@ recomp menu       Esc                    Back
 ```
 
 Tip: the game's cheat menu unlocks every track and car without playing through Circuit. How to open it is at the
-top of [docs/games/rush2049.md](docs/games/rush2049.md).
+top of [docs/rush2049.md](docs/rush2049.md).
 
 ## Mods
 
@@ -85,17 +85,17 @@ N64Recomp mods (`.nrm`) are **supported but untested**. The game loads them from
 folder, the launcher's mod menu turns them on and off, and mods can hook any game function by name, read and write
 game variables, and print to the console. An example mod in `rush2049/mod_template/` builds in CI on every change,
 but no real mod has been played with yet, so expect rough edges. How to write one, and how it works, is under
-[Mods](docs/games/rush2049.md#mods).
+[Mods](docs/rush2049.md#mods).
 
 ## Docs
 
 | File | Contents |
 |---|---|
-| [docs/games/rush2049.md](docs/games/rush2049.md) | Rush 2049: enhancements, replacement music, mods, building, memory map, what N64Recomp can't translate, runtime fixes, performance, developer flags |
+| [docs/rush2049.md](docs/rush2049.md) | Rush 2049: enhancements, replacement music, mods, building, memory map, what N64Recomp can't translate, runtime fixes, performance, developer flags |
 | [docs/00-overview.md](docs/00-overview.md) | How the game was picked, and where the research started |
-| [docs/01-toolchain.md](docs/01-toolchain.md) | How N64Recomp, N64ModernRuntime and RT64 work, and the anatomy of a recomp repo |
+| [docs/toolchain.md](docs/toolchain.md) | How N64Recomp, N64ModernRuntime and RT64 work, and the anatomy of a recomp repo |
 | [docs/02-existing-recomps.md](docs/02-existing-recomps.md) | Games that already have a recomp or a native port, so we don't duplicate one |
-| [docs/03-local-env.md](docs/03-local-env.md) | The installed toolchain and how to use it (`tools/env.sh`, `tools/env.ps1`) |
+| [docs/local-env.md](docs/local-env.md) | The installed toolchain and how to use it (`tools/env.sh`, `tools/env.ps1`) |
 | [docs/games/jet-force-gemini.md](docs/games/jet-force-gemini.md) | Jet Force Gemini: dropped (2026-10-10) because a recomp of it already exists |
 
 ## Repo layout

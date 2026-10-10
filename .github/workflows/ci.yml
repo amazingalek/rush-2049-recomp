@@ -101,7 +101,7 @@ jobs:
       - name: Apply runtime patches
         shell: bash
         run: bash tools/rush2049/apply_runtime_patches.sh
-      # The dev box uses CMake 3.31 (docs/03-local-env.md): CMake 4 rejects the old submodules' cmake_minimum_required.
+      # The dev box uses CMake 3.31 (docs/local-env.md): CMake 4 rejects the old submodules' cmake_minimum_required.
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: "~3.31.0"
