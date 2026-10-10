@@ -72,8 +72,7 @@ because the machine PATH comes before the user PATH, so always use `py -3`.
    (`funcs_0.c`, `lookup.cpp`, `recomp_overlays.inl`, 5 functions). The ELF needs a ROM-like
    layout; see the entrypoint note in [01-toolchain.md](01-toolchain.md).
 
-## Still to check
-
-- An end-to-end build of a real recomp (BanjoRecomp, Zelda64Recomp, or our game) needs a ROM.
-- RT64's minimum Windows build: D3D12 is available on 17763, but RT64's needs are unconfirmed.
-  Vulkan is the fallback.
+5. **A real recomp, end to end.** Rush 2049 builds and plays; see
+   [games/rush2049.md](games/rush2049.md#building-and-running).
+6. **RT64 on this machine.** RT64 can't create a D3D12 device with the features it needs on 17763 + RTX 2070 and
+   falls back to Vulkan, which works ("Unable to create a D3D12 device with the required features" in the log).
