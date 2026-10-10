@@ -94,6 +94,9 @@ jobs:
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: DIAG why ninja rebuilds
+        shell: bash
+        run: ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -40
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -160,6 +163,9 @@ jobs:
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      - name: DIAG why ninja rebuilds
+        shell: bash
+        run: ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -40
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
