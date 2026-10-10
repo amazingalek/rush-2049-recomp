@@ -115,8 +115,9 @@ enum {
 
 
 /* struct definition */
-/* rush2049: a high-quality side mix. Each voice is rendered a second time at twice the mix rate, with a 4-tap
- * Kaiser-windowed sinc in place of RESAMPLE_LUT. Everything else that reaches the left/right output (the base
+/* rush2049: a high-quality side mix. Each voice is rendered a second time at twice the mix rate, with a 16-tap
+ * Kaiser-windowed sinc in place of RESAMPLE_LUT. The game loads only the samples RESAMPLE_LUT's 4 taps reach, so the
+ * side mix loads the rest itself (see hires_voice_t). Everything else that reaches the left/right output (the base
  * volumes, the delayed cc0 surround channel, the delay effect) is carried over from the original mix. The result
  * goes to musyx_hires_store() beside the subframe the game gets, and the audio output plays it in place of the
  * game's buffer. RDRAM and the game's own output stay exactly as the original mix leaves them. MusyX v1 only.
@@ -128,6 +129,10 @@ enum {
  * time. */
 enum { HIRES_SIZE = 2 * SUBFRAME_SIZE };
 enum { HIRES_PHASES = 256 };
+enum { HIRES_TAPS = 16 };
+enum { HIRES_BEHIND = HIRES_TAPS / 2 - 2 }; /* taps before the original's read position, which is RESAMPLE_LUT's first */
+enum { HIRES_EXTRA = 32 };  /* samples the side mix loads past the game's, one ADPCM frame */
+enum { HIRES_SPAN = 16 * SUBFRAME_SIZE + HIRES_TAPS }; /* samples a voice can reach in a subframe, at the top pitch */
 enum { HIRES_LPF_TAPS = 97 };
 enum { HIRES_DELAY = (HIRES_LPF_TAPS - 1) / 2 };
 
@@ -141,9 +146,19 @@ typedef struct musyx_hires {
     float sfx_history[3];             /* the delay effect's last samples, for upsampling it */
 } musyx_hires_t;
 
+/* A voice's two segments as the side mix reads them: the samples the game loaded, with HIRES_EXTRA more before and
+ * after the main segment and after the restart segment, read from the same stream. */
+typedef struct {
+    int16_t main[HIRES_EXTRA + SAMPLE_BUFFER_SIZE + HIRES_EXTRA];
+    int16_t restart[SAMPLE_BUFFER_SIZE + HIRES_EXTRA];
+    int main_count;    /* what the game loaded, without the extra samples */
+    int restart_count;
+} hires_voice_t;
+
 /* the RSP task thread is the only caller */
 static musyx_hires_t hires_state;
-static float hires_kernel[HIRES_PHASES + 1][4];
+static float hires_kernel[HIRES_PHASES + 1][HIRES_TAPS];
+static float hires_sfx_half[4];
 static float hires_lpf[HIRES_LPF_TAPS];
 
 typedef struct {
@@ -198,7 +213,8 @@ static void adpcm_predict_frame(int16_t *dst, const uint8_t *src,
 
 static void mix_voice_samples(struct hle_t* hle, musyx_t *musyx,
                               uint32_t voice_ptr, const int16_t *samples,
-                              unsigned segbase, unsigned offset, uint32_t last_sample_ptr);
+                              unsigned segbase, unsigned offset, uint32_t last_sample_ptr,
+                              const hires_voice_t *hires_voice);
 
 static void sfx_stage(struct hle_t* hle,
                       mix_sfx_with_main_subframes_t mix_sfx_with_main_subframes,
@@ -223,9 +239,10 @@ static void interleave_stage_v2(struct hle_t* hle, musyx_t *musyx,
 
 static void hires_begin_task(musyx_hires_t *hires, const int16_t *cc0);
 static void init_hires_v1(musyx_t *musyx);
-static void mix_voice_hires(musyx_hires_t *hires, const int16_t *samples, unsigned segbase,
-                            const int16_t *sample, const int16_t *sample_end,
-                            const int16_t *sample_restart, uint32_t pitch_accu, uint32_t pitch_step,
+static void hires_load_voice(struct hle_t* hle, uint32_t voice_ptr, const int16_t *samples, unsigned segbase,
+                             hires_voice_t *voice);
+static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, int start, int end_point,
+                            uint16_t restart_point, uint32_t pitch_accu, uint32_t pitch_step,
                             const int32_t *env, const int32_t *env_step);
 static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe);
 static void interleave_hires_v1(struct hle_t* hle, musyx_t *musyx, uint32_t output_ptr);
@@ -523,6 +540,7 @@ static uint32_t voice_stage(struct hle_t* hle, musyx_t *musyx,
         for (;;) {
             /* load voice samples (PCM16 or APDCM) */
             int16_t samples[SAMPLE_BUFFER_SIZE];
+            hires_voice_t hires_voice;
             unsigned segbase;
             unsigned offset;
 
@@ -533,9 +551,12 @@ static uint32_t voice_stage(struct hle_t* hle, musyx_t *musyx,
             else
                 load_samples_ADPCM(hle, voice_ptr, samples, &segbase, &offset);
 
+            if (musyx->hires != NULL)
+                hires_load_voice(hle, voice_ptr, samples, segbase, &hires_voice);
+
             /* mix them with each internal subframes */
             mix_voice_samples(hle, musyx, voice_ptr, samples, segbase, offset,
-                              last_sample_ptr + i * 8);
+                              last_sample_ptr + i * 8, (musyx->hires != NULL) ? &hires_voice : NULL);
 
             /* check break condition */
             output_ptr = *dram_u32(hle, voice_ptr + VOICE_INTERLEAVED_PTR);
@@ -721,7 +742,8 @@ static void adpcm_predict_frame(int16_t *dst, const uint8_t *src,
 
 static void mix_voice_samples(struct hle_t* hle, musyx_t *musyx,
                               uint32_t voice_ptr, const int16_t *samples,
-                              unsigned segbase, unsigned offset, uint32_t last_sample_ptr)
+                              unsigned segbase, unsigned offset, uint32_t last_sample_ptr,
+                              const hires_voice_t *hires_voice)
 {
     int i, k;
 
@@ -752,8 +774,8 @@ static void mix_voice_samples(struct hle_t* hle, musyx_t *musyx,
     dram_load_u32(hle, (uint32_t *)v4_env,      voice_ptr + VOICE_ENV_BEGIN, 4);
     dram_load_u32(hle, (uint32_t *)v4_env_step, voice_ptr + VOICE_ENV_STEP,  4);
 
-    if (musyx->hires != NULL)
-        mix_voice_hires(musyx->hires, samples, segbase, sample, sample_end, sample_restart,
+    if (hires_voice != NULL)
+        mix_voice_hires(musyx->hires, hires_voice, offset + u16_4e, end_point, restart_point,
                         pitch_accu, pitch_step, v4_env, v4_env_step);
 
     v4_dst[0] = musyx->left;
@@ -1078,10 +1100,12 @@ static double sinc(double x)
     return (x == 0.0) ? 1.0 : sin(pi * x) / (pi * x);
 }
 
-/* hires_kernel[p] weighs sample[0..3] for the point p/HIRES_PHASES of the way from sample[1] to sample[2], the
- * same taps RESAMPLE_LUT uses (the game loads no more than that). A Kaiser window with beta 3 keeps the passband
- * flatter than RESAMPLE_LUT (-2.5 dB against -6.5 dB at 0.4 of the sample rate) and rejects the images further
- * out better (-36 dB against -29 dB at 0.75).
+/* hires_kernel[p] weighs sample[0..15] for the point p/HIRES_PHASES of the way from sample[7] to sample[8]. A Kaiser
+ * window with beta 5 keeps the passband flat to 0.4 of the sample rate (-0.0 dB, against -2.3 dB for the 4 taps
+ * the game's samples allow and -6.5 dB for RESAMPLE_LUT; -1.2 dB at 0.45) and rejects the images from 0.6 on by
+ * 53 dB (the 4 taps: 12 dB at 0.6, 34 dB from 0.75).
+ * hires_sfx_half weighs the delay effect's last 4 samples for the point halfway between the middle two, with the
+ * 4-tap window.
  * hires_lpf is bus 0's low-pass, relative to the doubled rate: flat to 10 kHz, -3 dB at 10.5 kHz, -74 dB from 12 kHz
  * on, at 44.1 kHz. */
 static void init_hires_kernel(void)
@@ -1091,20 +1115,30 @@ static void init_hires_kernel(void)
     unsigned p, k;
 
     for (p = 0; p <= HIRES_PHASES; ++p) {
-        double c[4];
+        double c[HIRES_TAPS];
         double f = (double)p / HIRES_PHASES;
 
         sum = 0.0;
-        for (k = 0; k < 4; ++k) {
-            double t = f + 1.0 - k;
+        for (k = 0; k < HIRES_TAPS; ++k) {
+            double t = f + (HIRES_TAPS / 2 - 1) - (double)k;
 
-            c[k] = sinc(t) * kaiser(t / 2.0, 3.0);
+            c[k] = sinc(t) * kaiser(t / (HIRES_TAPS / 2), 5.0);
             sum += c[k];
         }
 
-        for (k = 0; k < 4; ++k)
+        for (k = 0; k < HIRES_TAPS; ++k)
             hires_kernel[p][k] = (float)(c[k] / sum);
     }
+
+    sum = 0.0;
+    for (k = 0; k < 4; ++k) {
+        double t = 1.5 - k;
+
+        hires_sfx_half[k] = (float)(sinc(t) * kaiser(t / 2.0, 3.0));
+        sum += hires_sfx_half[k];
+    }
+    for (k = 0; k < 4; ++k)
+        hires_sfx_half[k] = (float)(hires_sfx_half[k] / sum);
 
     sum = 0.0;
     for (k = 0; k < HIRES_LPF_TAPS; ++k) {
@@ -1124,8 +1158,13 @@ static float hires_interpolate(const int16_t *x, uint32_t frac)
 {
     const float *a = hires_kernel[frac >> 8];
     const float *b = hires_kernel[(frac >> 8) + 1];
-    float va = a[0] * x[0] + a[1] * x[1] + a[2] * x[2] + a[3] * x[3];
-    float vb = b[0] * x[0] + b[1] * x[1] + b[2] * x[2] + b[3] * x[3];
+    float va = 0.0f, vb = 0.0f;
+    unsigned k;
+
+    for (k = 0; k < HIRES_TAPS; ++k) {
+        va += a[k] * x[k];
+        vb += b[k] * x[k];
+    }
 
     return va + (vb - va) * (float)(frac & 0xff) * (1.0f / 256.0f);
 }
@@ -1172,42 +1211,166 @@ static void init_hires_v1(musyx_t *musyx)
     }
 }
 
+/* The address of a byte of the stream dma_cat loads from catsrc, reading on past either end of it. The game streams
+ * samples through blocks of STREAM_BLOCK bytes: ptr2 names the next block before a voice reaches it, and a load that
+ * crosses into it is split there. Returns false for a byte before the start of a block, which could be anything. */
+enum { STREAM_BLOCK = 0x600 };
+
+static bool hires_catsrc_address(struct hle_t* hle, uint32_t catsrc_ptr, int32_t offset, uint32_t *address)
+{
+    uint32_t ptr1  = *dram_u32(hle, catsrc_ptr + CATSRC_PTR1);
+    uint32_t ptr2  = *dram_u32(hle, catsrc_ptr + CATSRC_PTR2);
+    int32_t  size1 = *dram_u16(hle, catsrc_ptr + CATSRC_SIZE1);
+    int32_t  size2 = *dram_u16(hle, catsrc_ptr + CATSRC_SIZE2);
+
+    if (offset < 0 && ptr2 != 0 && (int32_t)(ptr1 - ptr2) % STREAM_BLOCK == 0)
+        return false;
+
+    if (offset < size1 || (size2 == 0 && (ptr2 == 0 || (int32_t)(ptr1 + size1 - ptr2) % STREAM_BLOCK != 0)))
+        *address = ptr1 + offset;
+    else
+        *address = ptr2 + (offset - size1);
+
+    return true;
+}
+
+static bool hires_load_PCM16(struct hle_t* hle, uint32_t catsrc_ptr, int first, int16_t *dst)
+{
+    uint32_t address;
+    int k;
+
+    for (k = 0; k < HIRES_EXTRA; ++k) {
+        if (!hires_catsrc_address(hle, catsrc_ptr, 2 * (first + k), &address))
+            return false;
+        dst[k] = *dram_u16(hle, address);
+    }
+
+    return true;
+}
+
+/* Frames come in pairs of 40 bytes, both headers first; slot 0 is the first frame of the pair catsrc starts on.
+ * Each frame starts from two samples of its own, so one decodes without the frames before it. */
+static bool hires_load_ADPCM(struct hle_t* hle, uint32_t catsrc_ptr, int slot, const int16_t *table,
+                             int16_t *dst)
+{
+    uint8_t pair[40];
+    int32_t base = 40 * ((slot < 0) ? -1 : slot / 2);
+    uint32_t address;
+    unsigned k;
+
+    for (k = 0; k < sizeof(pair); ++k) {
+        if (!hires_catsrc_address(hle, catsrc_ptr, base + (int32_t)k, &address))
+            return false;
+        pair[k] = *dram_u8(hle, address);
+    }
+
+    adpcm_decode_frames(hle, dst, pair, table, 1, (slot & 1) ? 32 : 0);
+    return true;
+}
+
+static int min_int(int a, int b)
+{
+    return (a < b) ? a : b;
+}
+
+static void hires_load_voice(struct hle_t* hle, uint32_t voice_ptr, const int16_t *samples, unsigned segbase,
+                             hires_voice_t *voice)
+{
+    const uint32_t catsrc0 = voice_ptr + VOICE_CATSRC_0;
+    const uint32_t catsrc1 = voice_ptr + VOICE_CATSRC_1;
+    int16_t *main = voice->main + HIRES_EXTRA;
+    bool behind;
+    int k;
+
+    if (*dram_u8(hle, voice_ptr + VOICE_ADPCM_FRAMES) == 0) {
+        int count0 = (*dram_u16(hle, catsrc0 + CATSRC_SIZE1) + *dram_u16(hle, catsrc0 + CATSRC_SIZE2)) >> 1;
+        int count1 = (*dram_u16(hle, catsrc1 + CATSRC_SIZE1) + *dram_u16(hle, catsrc1 + CATSRC_SIZE2)) >> 1;
+
+        voice->main_count    = min_int(count0, SAMPLE_BUFFER_SIZE - segbase);
+        voice->restart_count = (*dram_u16(hle, voice_ptr + VOICE_U16_42) == 0) ? 0 : min_int(count1, segbase);
+
+        behind = hires_load_PCM16(hle, catsrc0, -HIRES_EXTRA, voice->main);
+        hires_load_PCM16(hle, catsrc0, voice->main_count, main + voice->main_count);
+        if (voice->restart_count != 0)
+            hires_load_PCM16(hle, catsrc1, voice->restart_count, voice->restart + voice->restart_count);
+    } else {
+        int16_t adpcm_table[128];
+        uint8_t frames0 = *dram_u8(hle, voice_ptr + VOICE_ADPCM_FRAMES    );
+        uint8_t frames1 = *dram_u8(hle, voice_ptr + VOICE_ADPCM_FRAMES + 1);
+        int first0 = (*dram_u8(hle, voice_ptr + VOICE_SKIP_SAMPLES    ) >= 32) ? 1 : 0;
+        int first1 = (*dram_u8(hle, voice_ptr + VOICE_SKIP_SAMPLES + 1) >= 32) ? 1 : 0;
+
+        dram_load_u16(hle, (uint16_t *)adpcm_table, *dram_u32(hle, voice_ptr + VOICE_ADPCM_TABLE_PTR), 128);
+
+        voice->main_count    = frames0 << 5;
+        voice->restart_count = min_int(frames1 << 5, segbase);
+
+        behind = hires_load_ADPCM(hle, catsrc0, first0 - 1, adpcm_table, voice->main);
+        hires_load_ADPCM(hle, catsrc0, first0 + frames0, adpcm_table, main + voice->main_count);
+        if (frames1 != 0)
+            hires_load_ADPCM(hle, catsrc1, first1 + frames1, adpcm_table, voice->restart + voice->restart_count);
+    }
+
+    memcpy(main, samples + segbase, voice->main_count * sizeof(samples[0]));
+    if (!behind) {
+        /* the main segment starts a block, and the one before it is unknown */
+        for (k = 0; k < HIRES_EXTRA; ++k)
+            voice->main[k] = main[0];
+    }
+    memcpy(voice->restart, samples, voice->restart_count * sizeof(samples[0]));
+    if (voice->restart_count == 0)
+        memset(voice->restart, 0, HIRES_EXTRA * sizeof(samples[0]));
+}
+
+/* sample i of a segment, holding the outermost one loaded past either end */
+static int16_t hires_voice_sample(const hires_voice_t *voice, bool restart, int i)
+{
+    if (!restart) {
+        i = (i < -HIRES_EXTRA) ? -HIRES_EXTRA : min_int(i, voice->main_count + HIRES_EXTRA - 1);
+        return voice->main[HIRES_EXTRA + i];
+    }
+
+    return voice->restart[min_int(i, voice->restart_count + HIRES_EXTRA - 1)];
+}
+
 /* The voice again at twice the rate. Output i is at time i/2 of the original's 192 outputs, so the even ones land on
- * the sample positions the original mix uses, and the envelopes ramp the same way. */
-static void mix_voice_hires(musyx_hires_t *hires, const int16_t *samples, unsigned segbase,
-                            const int16_t *sample, const int16_t *sample_end,
-                            const int16_t *sample_restart, uint32_t pitch_accu, uint32_t pitch_step,
+ * the sample positions the original mix uses, and the envelopes ramp the same way. start, end_point and the restart
+ * point are the original's, counted from the main segment's first sample. */
+static void mix_voice_hires(musyx_hires_t *hires, const hires_voice_t *voice, int start, int end_point,
+                            uint16_t restart_point, uint32_t pitch_accu, uint32_t pitch_step,
                             const int32_t *env, const int32_t *env_step)
 {
     const uint32_t half_step = pitch_step >> 1; /* pitch_step is a multiple of 16, so this is exact */
     const int bus = (pitch_step > 0x10000) ? 1 : 0;
+    const int n = min_int((int)((pitch_accu + (uint64_t)half_step * (HIRES_SIZE - 1)) >> 16) + HIRES_TAPS,
+                          HIRES_SPAN);
+    int16_t x[HIRES_SPAN];
     float *dst[3];
-    int i, k;
+    bool restart = false;
+    int i, k, pos;
 
+    /* the samples the voice plays, in order, from HIRES_BEHIND before its read position on, through the
+     * end/restart points the way the original handles them */
+    pos = start - HIRES_BEHIND;
+    for (i = 0; i < n; ++i) {
+        if (!restart && pos >= end_point) {
+            pos = (restart_point & 0x7fff) + (pos - end_point);
+            restart = (restart_point & 0x8000) != 0;
+        }
+        x[i] = hires_voice_sample(voice, restart, pos++);
+    }
     dst[0] = hires->left[bus];
     dst[1] = hires->right[bus];
     dst[2] = hires->cc0[bus];
 
+    pos = 0;
     for (i = 0; i < HIRES_SIZE; ++i) {
         uint32_t frac = pitch_accu & 0xffff;
-        const int16_t *next = sample + (pitch_accu >> 16);
-        int dist = next - sample_end;
         float v;
 
-        if (dist >= 0)
-            next = sample_restart + dist;
-
-        /* The last output is half a step past the original's last one, which can need a sample the game did not
-         * load. The main segment is loaded up to the end of the buffer; anywhere else, hold the position. */
-        if (i == HIRES_SIZE - 1 && next != sample &&
-            !(next >= samples + segbase && next + 3 < samples + SAMPLE_BUFFER_SIZE)) {
-            next = sample;
-            frac = 0xffff;
-        }
-
-        sample = next;
-        pitch_accu = (pitch_accu & 0xffff) + half_step;
-        v = hires_interpolate(sample, frac);
+        pos = min_int(pos + (int)(pitch_accu >> 16), n - HIRES_TAPS);
+        pitch_accu = frac + half_step;
+        v = hires_interpolate(x + pos, frac);
 
         for (k = 0; k < 3; ++k) {
             /* the envelope at time i/2: env + env_step * i / 2, then >> 16 as envmix does */
@@ -1223,7 +1386,7 @@ static void mix_voice_hires(musyx_hires_t *hires, const int16_t *samples, unsign
  * inaudible. */
 static void mix_sfx_hires(musyx_hires_t *hires, const int16_t *subframe)
 {
-    const float *half = hires_kernel[HIRES_PHASES / 2];
+    const float *half = hires_sfx_half;
     float x[SUBFRAME_SIZE + 3];
     unsigned i;
 
