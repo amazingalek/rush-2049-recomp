@@ -230,6 +230,7 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     rush2049::music_mix(samples_to_queue, num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])), output_channels,
                         output_sample_rate, main_volume);
+    rush2049::probe_output(samples_to_queue, num_bytes_to_queue / (output_channels * sizeof(swap_buffer[0])), output_sample_rate);
     SDL_QueueAudio(audio_device, samples_to_queue, num_bytes_to_queue);
 }
 
@@ -391,6 +392,9 @@ int main(int argc, char** argv) {
         }
         if (strcmp(argv[i], "--dump-audio") == 0 && i + 1 < argc) {
             rush2049::start_audio_dump(argv[++i]);
+        }
+        if (strcmp(argv[i], "--dump-output") == 0 && i + 1 < argc) {
+            rush2049::start_output_dump(argv[++i]);
         }
         if (strcmp(argv[i], "--musyx") == 0 && i + 1 < argc) {
             i++;

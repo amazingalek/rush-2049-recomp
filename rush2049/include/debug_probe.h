@@ -15,6 +15,11 @@ namespace rush2049 {
     // --dump-audio <file.wav>: also write the game's audio output (as the AI receives it) to a WAV file.
     void start_audio_dump(const char* path);
 
+    // --dump-output <file.wav>: write what is queued on the audio device (the game's audio plus the replacement
+    // music, at the device rate) to a WAV file.
+    void start_output_dump(const char* path);
+    void probe_output(const float* samples, size_t frames, uint32_t rate);
+
     // Prints the bring-up probe counters (src/debug_probe.cpp) to stderr.
     void print_probes();
 
