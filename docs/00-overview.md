@@ -30,13 +30,9 @@ The candidates come from Alek. These are the factors to check each one against, 
 | Game | Doc | Status (2026-10-10) |
 |---|---|---|
 | San Francisco Rush 2049 | [games/rush2049.md](games/rush2049.md) | Playable: boots, menus, races (3+ minutes driven without a crash), MusyX audio at real-time speed, Controller Pak saves that survive a restart |
-| Jet Force Gemini | [games/jet-force-gemini.md](games/jet-force-gemini.md) | On hold: a recomp was released on 2026-10-09 (TK22-26/JetForceGemini-Recomp v1.1.0) |
-
-## Open decisions
-
-- Whether to keep going with Jet Force Gemini now that a recomp of it exists.
+| Jet Force Gemini | [games/jet-force-gemini.md](games/jet-force-gemini.md) | Dropped 2026-10-10: a recomp was released on 2026-10-09 (TK22-26/JetForceGemini-Recomp v1.1.0) |
 
 ## Next steps (Rush 2049)
 
-1. Play through more of the game: see the ghost car on screen (someone who knows how Ghost Race shows it), and multiplayer with real second pads.
+1. Play through more of the game: multiplayer with real second pads.
 2. Done: keyboard defaults for driving, and a Controller Pak or Rumble Pak option on the General tab.
