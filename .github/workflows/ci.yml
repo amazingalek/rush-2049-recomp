@@ -46,14 +46,18 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+      # Not actions/checkout: its cleanup walks every submodule the cache restored, ~15 s on Windows.
+      - name: Checkout
+        shell: bash
+        run: |
+          git init -q
+          git fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
+          git checkout -q FETCH_HEAD
       - name: Cache key
         id: key
         shell: bash
         run: |
-          prefix="build-v1-$ImageOS-"
+          prefix="build-v2-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
@@ -88,18 +92,23 @@ jobs:
           mkdir -p rush2049/RecompiledFuncs rush2049/rsp
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/RecompiledFuncs/ci_placeholder.c
           echo "// CI placeholder: generated from the ROM on a real build" > rush2049/rsp/musyx.cpp
-      - name: DIAG before configure
-        shell: bash
-        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
       - name: Configure
         run: |
           clang-cl --version
           cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      # A first configure writes backslashed paths into the compile commands and every later one forward slashes, so a
+      # build cached straight after a first configure would see every command line change on the next run and rebuild.
+      - name: Configure again before a build that gets cached
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cmake rush2049/build
       - name: DIAG why ninja rebuilds
         shell: bash
-        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+        run: |
+          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+          ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -8
+          du -sh .git/modules rush2049/lib/* rush2049/build rush2049/build/* 2>/dev/null | sort -h | tail -12
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -127,7 +136,7 @@ jobs:
       - name: Cache key
         id: key
         run: |
-          prefix="build-v1-$ImageOS-"
+          prefix="build-v2-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
@@ -168,7 +177,10 @@ jobs:
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       - name: DIAG why ninja rebuilds
         shell: bash
-        run: ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+        run: |
+          ninja -C rush2049/build -t commands lib/RecompFrontend/recompui/lib/lunasvg/plutovg/CMakeFiles/plutovg.dir/source/plutovg-blend.c.obj | tail -1
+          ninja -C rush2049/build -d explain -n librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -8
+          du -sh .git/modules rush2049/lib/* rush2049/build rush2049/build/* 2>/dev/null | sort -h | tail -12
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C rush2049/build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
