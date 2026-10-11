@@ -13,8 +13,11 @@
 # So for every .git file under a submodule path (nested ones too, shallowest first), the git dir it points at, if it
 # is not this worktree's, is copied to the same place under this worktree's git dir (a nested one comes with its
 # parent's copy), the .git file is pointed at the copy and the copy's core.worktree at this working tree, both as
-# relative paths, the way git writes them. If the other git dir's core.worktree had been moved here, it is pointed
-# back at its own worktree's tree. Run with no argument, that is the repair for a worktree that already shares.
+# relative paths, the way git writes them, with core.longpaths on (a worktree's git dirs are deep enough for Windows'
+# path limit). A copied link is resolved from the tree it was copied from: one from the main checkout
+# (../../../.git/modules/...) would lead, from here, into this worktree's .git file. If the other git dir's
+# core.worktree had been moved here, it is pointed back at its own worktree's tree. Run with no argument, that is the
+# repair for a worktree that already shares.
 #
 # With a source, its working trees come with their patches applied and any other edits, on whatever commits it had,
 # so each is reset to its commit and cleaned (ignored files stay), then updated to the commits this tree pins. Run
@@ -24,6 +27,7 @@ root="$(cygpath -u "$(git rev-parse --show-toplevel)" 2>/dev/null || git rev-par
 cd "$root"
 gitdir="$(cd "$(git rev-parse --absolute-git-dir)" && pwd)"
 paths=($(git config -f .gitmodules --get-regexp '\.path$' | cut -d' ' -f2))
+src=
 
 if (( $# > 0 )); then
     src="$(cd "$1" && pwd)"
@@ -55,8 +59,9 @@ for p in "${paths[@]}"; do
 done | awk -F/ '{ print NF, $0 }' | sort -n | cut -d' ' -f2- | while read -r link; do
     tree="$(cd "$(dirname "$link")" && pwd)"
     target="$(sed -n 's/^gitdir: //p' "$link")"
-    # A relative link copied to a different depth points nowhere; then only a fresh clone of it helps.
-    old="$(cd "$tree" && cd "$target" 2>/dev/null && pwd)" || { echo "$link points nowhere: $target" >&2; exit 1; }
+    # Relative, from the tree it was copied from; with no source, a link that points nowhere needs a fresh clone.
+    from="${src:+$src/$(dirname "$link")}"
+    old="$(cd "${from:-$tree}" && cd "$target" 2>/dev/null && pwd)" || { echo "$link points nowhere: $target" >&2; exit 1; }
     case "$old/" in
     "$gitdir/modules/"*)
         new="$old"
@@ -81,6 +86,7 @@ done | awk -F/ '{ print NF, $0 }' | sort -n | cut -d' ' -f2- | while read -r lin
         ;;
     esac
     git config -f "$new/config" core.worktree "$(realpath --relative-to="$new" "$tree")"
+    git config -f "$new/config" core.longpaths true
 done
 
 if (( $# > 0 )); then

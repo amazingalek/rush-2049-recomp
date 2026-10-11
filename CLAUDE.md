@@ -140,8 +140,8 @@ source tools/env.sh && cmake -S rush2049 -B rush2049/build ...   # the README's 
 bash tools/rush2049/iterate.sh 30
 ```
 
-Copying the submodules from another worktree is faster than cloning them (about 3 minutes): in place of the
-submodule update, `bash tools/copy_submodules.sh <that worktree>`, then the patch script. Never copy `rush2049/lib/`
+Copying the submodules from another checkout is faster than cloning them (about 2 minutes): in place of the
+submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. Never copy `rush2049/lib/`
 by hand: its `.git` files point into the other worktree's git dir, so the two share one, and git in either acts on
 the other's files. If `git -C rush2049/lib/rt64 rev-parse --show-toplevel` names another worktree, the same script
 with no argument gives this one its own (the header says how). Without `portable.txt` the game reads and writes the user's own settings in
