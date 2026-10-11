@@ -21,9 +21,10 @@ endif()
 
 if (EMSCRIPTEN)
     # Threads are pthreads (SharedArrayBuffer), main() runs on one of them so the browser's thread can wait, and the
-    # runtime ends a game thread by throwing. -msimd128 as the game's CMakeLists.txt.
+    # runtime ends a game thread by throwing. -msimd128 and XXH_HAS_INCLUDE as the game's CMakeLists.txt.
     # The rest is the driver's own (below): RT64 builds a tool of its own that runs at build time.
     add_compile_options(-pthread -fwasm-exceptions -msimd128)
+    add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
     add_compile_options(-sUSE_SDL=2)
 endif()
