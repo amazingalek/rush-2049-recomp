@@ -115,8 +115,10 @@ same storage, written back every couple of seconds and when you leave the page. 
 browser removes all of it.
 
 What differs from the desktop build: no mods and no replacement music (the page has no folder to put them in), no
-MSAA and no HDR output. The keyboard works as below; gamepads go through the browser's gamepad support but haven't
-been tried yet.
+MSAA and no HDR output. The launcher has no Mods or Exit: close the tab to leave. The keyboard works as below, and
+gamepads the browser knows the layout of (it calls them standard, as it does Xbox and PlayStation pads) use the same
+bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
+browser only shows a page its gamepads after that.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
 recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and naga
