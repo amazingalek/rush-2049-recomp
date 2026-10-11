@@ -20,8 +20,8 @@
 # repair for a worktree that already shares.
 #
 # With a source, its working trees come with their patches applied and any other edits, on whatever commits it had,
-# so each is reset to its commit and cleaned (ignored files stay), then updated to the commits this tree pins. Run
-# tools/rush2049/apply_runtime_patches.sh after it.
+# so each is reset to its commit and cleaned (ignored files stay), then synced to the URLs and updated to the commits
+# this tree pins. Run tools/rush2049/apply_runtime_patches.sh after it.
 set -euo pipefail
 root="$(cygpath -u "$(git rev-parse --show-toplevel)" 2>/dev/null || git rev-parse --show-toplevel)"
 cd "$root"
@@ -91,5 +91,8 @@ done
 
 if (( $# > 0 )); then
     git -c core.longpaths=true submodule foreach --recursive --quiet 'git reset --quiet --hard && git clean -fdq'
-    git -c core.longpaths=true submodule update --init --recursive
+    # Synced first: a copied git dir fetches from the URL it was cloned from, which may not be the one .gitmodules names
+    # now (a checkout from before the forks). Twice, since a nested submodule's URL is only known once its parent moved.
+    git submodule sync --quiet && git -c core.longpaths=true submodule update --init
+    git submodule sync --quiet --recursive && git -c core.longpaths=true submodule update --init --recursive
 fi

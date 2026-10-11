@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Applies the runtime patches, <Submodule>-*.patch, to the matching submodule under rush2049/lib: first
-# web/runtime-patches/ (the web target, game-agnostic, so each applies to the clean upstream submodule), then
-# rush2049/runtime-patches/ (this game's) on top, each folder in order of name. Patches already applied are skipped.
+# Applies this game's runtime patches, rush2049/runtime-patches/<Submodule>-*.patch, to the matching submodule under
+# rush2049/lib, in order of name. The submodules are amazingalek's forks, checked out on their web branches, so the
+# patches go on top of the web support (CLAUDE.md, "The web target"). Patches already applied are skipped.
 # A submodule nested one level down (N64ModernRuntime/N64Recomp), or in a submodule's src/contrib
 # (rt64/src/contrib/plume), is found by its name too; a patch for one inside a submodule that isn't checked out is
 # skipped. Run after cloning or updating submodules, and again after pulling new patches.
 # Which patches are applied is found on a scratch copy of the files they touch: they are reversed there newest first,
 # so a patch whose lines a later one changed reverses once that one is off, and each one that reverses was applied.
-# A checkout can hold a later patch without an earlier one: a web patch lands on main after the game's patches for
-# that submodule were applied. Then the applied ones after the first missing one come off and everything from it goes
+# A checkout can hold a later patch without an earlier one, if a patch was added or edited on main after the others
+# were applied. Then the applied ones after the first missing one come off and everything from it goes
 # on in order, so the tree is the same as a fresh checkout's. The whole set is tried on the copy first, and a patch
 # that doesn't apply (the submodule has other changes, or an applied patch was since edited) stops the script before
 # the submodule is touched.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-patches=("$root"/web/runtime-patches/*.patch "$root"/rush2049/runtime-patches/*.patch)
+patches=("$root"/rush2049/runtime-patches/*.patch)
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 export GIT_CEILING_DIRECTORIES="$scratch"  # git apply in a copy works on its files, never on a repo above it

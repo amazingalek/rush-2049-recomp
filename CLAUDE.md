@@ -37,10 +37,10 @@ here, and a finding that explains code goes beside that code.
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
   topic (General, Graphics, Sound, Controls), with a line in the README's list and a row in its settings table.
 - Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
-- Changes to the submodules go in `rush2049/runtime-patches/`, or `web/runtime-patches/` for the web target (see
-  The web target), and are applied by `tools/rush2049/apply_runtime_patches.sh`; never commit inside
-  `rush2049/lib/`. A new change is a new patch file per submodule, numbered after the highest of that submodule in
-  either folder; check that the set still applies to a clean checkout of the submodule.
+- The game's changes to the submodules go in `rush2049/runtime-patches/` and are applied by
+  `tools/rush2049/apply_runtime_patches.sh`; never commit them inside `rush2049/lib/`. A new change is a new patch
+  file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
+  of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
@@ -67,7 +67,9 @@ here, and a finding that explains code goes beside that code.
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
-The runtime patches, one line each (the why is in the code they touch). `web/runtime-patches/`, applied first:
+The submodules are amazingalek's forks (The web target): each `web` branch is the upstream commit plus the web
+support, one commit per change, named here by the patch file it was until 2026-10-11, as the notes below still call
+them (the why is in the code they touch):
 
 ```
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
@@ -102,7 +104,7 @@ RecompFrontend-0005    Emscripten: no Mods or Exit in the launcher, no Quit icon
                        aren't mods, rumble through the Gamepad API (SDL2's port has none)
 ```
 
-`rush2049/runtime-patches/`, this game's, on top:
+`rush2049/runtime-patches/`, this game's, on top of the forks:
 
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
@@ -146,7 +148,10 @@ bash tools/rush2049/iterate.sh 30
 ```
 
 Copying the submodules from another checkout is faster than cloning them (about 2 minutes): in place of the
-submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. Never copy `rush2049/lib/`
+submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. It also moves a
+checkout from before the forks (upstream submodules with the web patches applied) onto them; by hand that is a reset
+of every submodule, `git submodule sync --recursive` and `git submodule update --init --recursive`, the last two twice
+(the nested forks are only known once their parents have moved). Never copy `rush2049/lib/`
 by hand: its `.git` files point into the other worktree's git dir, so the two share one, and git in either acts on
 the other's files. If `git -C rush2049/lib/rt64 rev-parse --show-toplevel` names another worktree, the same script
 with no argument gives this one its own (the header says how). Without `portable.txt` the game reads and writes the user's own settings in
@@ -229,33 +234,42 @@ measured.
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
 for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
 
-**It moves out.** Once the game draws in a browser (or another recomp wants it), the web support leaves this repo
-as Alek chose on 2026-10-11:
+**It has moved out** (2026-10-11, as Alek chose). Six repos under amazingalek, all public:
 
-- A fork of each upstream it patches (rt64, plume, N64ModernRuntime, N64Recomp; RecompFrontend once it does), each
-  with a `web` branch: the web patches as commits on the pinned upstream commit. The rt64 fork's `src/contrib/plume`
-  and the N64ModernRuntime fork's `N64Recomp` point at the sibling forks. These branches are what upstream PRs are
-  opened from, and a fork goes away once upstream takes its branch.
-- One small repo for what isn't a patch: the Emscripten build options, the page and its loader, `web/tests/`, and CI
-  building the forks with emsdk. Its tags are the releases and pin fork commits that work together. Source at a
-  tag, not a package (NuGet or a prebuilt library): the game's own patches go on top of the source, and everything
-  links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
-- This repo then points its submodules at the forks, drops `web/`, and keeps `rush2049/runtime-patches/` on top.
+- The forks, each with a `web` branch: the commit upstream pins, plus the web support one commit per change (table
+  in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web`), `N64ModernRuntime-web` (its
+  `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. Upstream PRs are opened from these branches, and a fork
+  goes away once upstream takes its branch.
+- `recomp-web`, the submodule `rush2049/lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
+  a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
+  page), `tests/` (the plume device thread test, `wgsl_check.mjs`, and `build/`, every library of a page built with
+  Emscripten from the forks), and the CI that runs those three. Its README is the guide for another recomp. Source at a
+  tag, not a package: the game's own patches go on top of the source, and everything links into one wasm with the
+  game's recompiled code, built by the game's emsdk with its flags.
+- Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
+  (CI's checks job compares them), with `rush2049/runtime-patches/` on top.
 
-It is built here until then because the game is how it is tested, so keep the line between the two clean:
+None of the six has a board: their work is done from cards on this board, and this repo's PR is where it is reviewed
+and lands. Nothing in them names this game, includes from `rush2049/` or needs its ROM; what is the game's stays in
+`rush2049/`: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
+branches of `rush2049/CMakeLists.txt` that make the game a page with `recomp-web/frontend/`. The link options in
+`headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
+runtime's own interfaces, as every recomp does.
 
-- `web/` is what moves: the web runtime patches, their tests, and from now on any build glue or code that another
-  recomp would need as is. Nothing in it names this game, includes from `rush2049/` or needs its ROM; `rush2049/`
-  uses `web/`, never the other way.
-- Each web patch applies to the clean upstream submodule with no Rush patch under it. That is the order the patch
-  script and CI apply them in, so a web patch that leans on a Rush one fails CI. A change made in a fully patched
-  checkout, on lines a Rush patch also touches, needs rebasing: commit each patch in turn on the pinned commit,
-  cherry-pick the web ones first and the Rush ones after, check the last tree is the same, and `git diff` each
-  commit back out.
-- What is this game's stays in `rush2049/`: `headless/` (the game without the frontend, as a test page or with no
-  renderer) and the `EMSCRIPTEN` branches of `rush2049/CMakeLists.txt` that make the game a page with
-  `web/frontend/`. The link options in `headless/CMakeLists.txt` predate `web/frontend/` and overlap it. What the web
-  side needs from a game it gets through the runtime's own interfaces, as every recomp does.
+**Changing it.** The submodule here holds the game's patches as uncommitted changes, so commit to a fork from a clone
+of its own in your scratch directory:
+
+1. `git clone -b web https://github.com/amazingalek/<fork>`, make the change behind `__EMSCRIPTEN__`/`__wasm__` (or
+   an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
+   game first by applying the same diff to `rush2049/lib/<fork>` (plume is `rush2049/lib/rt64/src/contrib/plume`).
+2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
+   change to plume-web or N64Recomp-web also moves the submodule pointer in rt64-web or N64ModernRuntime-web: commit
+   and push that too.
+3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
+   for its CI: `gh run list -R amazingalek/recomp-web`.
+4. Here, move the submodules and `rush2049/lib/recomp-web` to those commits, rerun the patch script (rebase a game
+   patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag recomp-web
+   (`v0.<n+1>.0`).
 
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
@@ -302,7 +316,8 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 **Step 2, done: the game on a canvas.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui
 draw through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks), `plume-0002` runs it on the
 page's main thread for every caller, `plume-0003`, `plume-0004` and `plume-0006` add what RT64 needs, and rt64-0006
-to rt64-0011 make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
+to rt64-0011 make RT64 build for it and fit it. `recomp-web/renderer/` is the RecompFrontend RT64 context without
+recompui, and the
 headless build draws through it by default (`HEADLESS_RT64`), as a page, `Rush2049Headless.html`: the title screen,
 the Midway screen and the attract races draw as they do natively, with no WebGPU errors. To build and run it:
 
@@ -323,8 +338,8 @@ console) build with `emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <di
 
 Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga
 `--keep-coordinate-space`), spec constants become `override`s and push constants a uniform buffer at `@group(3)
-@binding(999)`. `node web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in headless Chrome.
-CI's `wgsl` job builds and checks them on every PR, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
+@binding(999)`. `node rush2049/lib/recomp-web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in
+headless Chrome. recomp-web's CI `wgsl` job builds and checks them on every push there, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
 
@@ -423,7 +438,7 @@ against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there)
 
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
-HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `web/frontend/CMakeLists.txt`'s header says
+HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `recomp-web/frontend/CMakeLists.txt`'s header says
 what each part does; the README says how to build and serve it. Checked in headless Chrome 154: launcher, Load ROM,
 title, menus, a race on the keyboard, audio playing (RMS 0.1-0.2), a reload that boots from the stored ROM, and
 without the two headers through `coi_serviceworker.js`. What to know:
@@ -446,8 +461,9 @@ without the two headers through `coi_serviceworker.js`. What to know:
   (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
   real pad has been tried on the page. Exit, before it was hidden, left a black canvas, and the next input aborted
   the program (`emscripten_proxy_async failed`).
-- CI builds no Emscripten target, so the page, recompui's `Interface*.wgsl` and `file.cpp`'s picker are checked only
-  by a build and a run here.
+- recomp-web's CI builds every library of a page with Emscripten, recompui's `Interface*.wgsl` included, but no page
+  (that needs a game), and this repo's CI builds no Emscripten target: the page and `file.cpp`'s picker are checked
+  only by a build and a run here.
 
 **Still to do, each its own card:**
 
