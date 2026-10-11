@@ -420,4 +420,7 @@ and load wasm modules instead. No other N64 recomp running in a browser was foun
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
 - Making the browser's render-to-RAM readback cheaper: upload buffers mapped without a trip to the main thread, and
   polling the readback without sleeps, left the time per list where it was. Chrome paces the readback itself.
+- Lowering RT64's swapchain frame latency (2 on Vulkan, 1 on D3D12) for input lag: in a window a presented frame
+  reached the compositor 0.6 ms later with either value, so nothing queues there. Fullscreen wasn't measured (a
+  shared desktop). What did queue was the game's own scheduler (`frame_rate.cpp`, the Input Lag option).
 - SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.

@@ -62,6 +62,17 @@ namespace {
     };
     const std::string game_frame_rate_option = "game_frame_rate";
 
+    enum class InputLag {
+        Reduced,
+        Original,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> input_lag_options = {
+        {InputLag::Reduced, "Reduced", "Reduced"},
+        {InputLag::Original, "Original", "Original"},
+    };
+    const std::string input_lag_option = "input_lag";
+
     enum class HiresFont {
         Off,
         On,
@@ -274,6 +285,21 @@ void rush2049::init_config() {
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             static constexpr uint32_t fps[] = { 30, 60, 0 };  // Original, 60, Match Framerate
             rush2049::set_game_frame_rate(fps[std::get<uint32_t>(cur_value)]);
+        });
+
+    graphics.add_enum_option(
+        input_lag_option,
+        "Input Lag",
+        "<b>Reduced:</b> each frame is drawn as soon as the game has worked it out, so what you press shows on screen "
+        "one frame sooner (17 ms at 60 fps). At 30 FPS (Original) Game Frame Rate it changes nothing."
+        "<br/>"
+        "<b>Original:</b> each frame waits for the next refresh before it is drawn, as on the console.",
+        input_lag_options,
+        InputLag::Reduced
+    );
+    graphics.add_option_change_callback(input_lag_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_reduced_input_lag(static_cast<InputLag>(std::get<uint32_t>(cur_value)) == InputLag::Reduced);
         });
 
     rush2049::init_hires_font();

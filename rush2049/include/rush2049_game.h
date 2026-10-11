@@ -25,6 +25,8 @@ namespace rush2049 {
     // The frame rate the Game Frame Rate option asks for; 0 is Match Framerate (src/frame_rate.cpp).
     void set_game_frame_rate(uint32_t fps);
     uint32_t game_frame_rate();
+    // The "Input Lag" setting: a frame is drawn as soon as the game queues it (Reduced), not on the next retrace.
+    void set_reduced_input_lag(bool reduced);
     // Whether 2- and 4-player views widen with the window ("Split-Screen Aspect Ratio" at Expand).
     bool split_screen_expand();
     // Whether the menus' background is mirrored out to a wide window's edges ("Menu Aspect Ratio" at Expand).
