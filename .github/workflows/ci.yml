@@ -54,6 +54,15 @@ jobs:
           gcc -O2 -Wall -Irush2049/src/hle rush2049/tests/musyx_hires_test.c rush2049/src/hle/audio.c \
             rush2049/src/hle/memory.c -lm -o musyx_hires_test
           ./musyx_hires_test
+      - name: plume device thread tests
+        run: |
+          dpkg -s libx11-dev > /dev/null 2>&1 || sudo apt-get install -y --no-install-recommends libx11-dev
+          git submodule update --init --depth 1 rush2049/lib/rt64
+          git -C rush2049/lib/rt64 submodule update --init --depth 1 src/contrib/plume
+          bash tools/rush2049/apply_runtime_patches.sh
+          g++ -std=c++20 -O2 -Wall -pthread -Irush2049/lib/rt64/src/contrib/plume rush2049/tests/plume_device_thread_test.cpp \
+            rush2049/lib/rt64/src/contrib/plume/plume_device_thread.cpp -o device_thread_test
+          ./device_thread_test
 
   build:
     runs-on: windows-2025
@@ -94,11 +103,12 @@ jobs:
         shell: bash
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
         # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
-        # so a file an older patch created would block the patch that creates it now: clean them.
+        # so a file an older patch created would block the patch that creates it now: clean them, in nested submodules too
+        # (plume, inside rt64).
         run: |
           for i in 1 2 3; do
             git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
-              git submodule foreach -q git clean -fdq && exit 0
+              git submodule foreach --recursive -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1
@@ -176,11 +186,12 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         # Retried: one transient "Empty reply from server" from a submodule host otherwise fails the whole build.
         # A cache restored by prefix holds the submodules as older patches left them, and --force keeps untracked files,
-        # so a file an older patch created would block the patch that creates it now: clean them.
+        # so a file an older patch created would block the patch that creates it now: clean them, in nested submodules too
+        # (plume, inside rt64).
         run: |
           for i in 1 2 3; do
             git -c protocol.version=2 submodule update --init --recursive --force --depth 1 --jobs 8 &&
-              git submodule foreach -q git clean -fdq && exit 0
+              git submodule foreach --recursive -q git clean -fdq && exit 0
             echo "attempt $i failed"; sleep $((i * 15))
           done
           exit 1
