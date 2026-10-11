@@ -364,6 +364,8 @@ display lists a second                  ~55           59.8 of 60
 ```
 
 So without render to RAM a list in the browser takes about what it takes natively with it, and the page keeps 60.
+The game's page (`Rush2049Recompiled.html`, 1256x805) presented 57-60 frames a second through the title and attract
+races with the host 100% busy with other sessions.
 
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and

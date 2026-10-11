@@ -15,8 +15,8 @@ one pad.
 
 **In a browser: it runs, not yet published.** The same game builds as a web page (see **In a browser** below), with
 the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
-uploaded. It plays the title screen, the menus and races in Chrome, at about 50-60 frames a second where the
-desktop build keeps 60. It isn't hosted anywhere yet, so for now you build it and serve it yourself. The web support
+uploaded. It plays the title screen, the menus and races in Chrome at close to 60 frames a second, as the desktop
+build does. It isn't hosted anywhere yet, so for now you build it and serve it yourself. The web support
 is written to work for every N64 recomp, not just this one.
 
 ## Modern enhancements
