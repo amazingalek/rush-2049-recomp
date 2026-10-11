@@ -14,7 +14,7 @@ declare -A applied_through
 sub_dir() {
     local dir
     for dir in "$root/rush2049/lib/$1" "$root"/rush2049/lib/*/"$1" "$root"/rush2049/lib/*/src/contrib/"$1"; do
-        if [[ -d "$dir" ]]; then
+        if [[ -e "$dir/.git" ]]; then  # an uninitialised submodule is an empty folder
             echo "$dir"
             return
         fi

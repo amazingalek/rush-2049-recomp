@@ -64,6 +64,53 @@ jobs:
             rush2049/lib/rt64/src/contrib/plume/plume_device_thread.cpp -o device_thread_test
           ./device_thread_test
 
+  # RT64's shaders as WebGPU gets them (CLAUDE.md, "The web target"): rt64 configured natively with RT64_WGSL builds
+  # each one with dxc and naga, and web/tests/wgsl_check.mjs checks every one against a core WebGPU device in headless
+  # Chrome. The runner has no GPU, so Chrome's WebGPU runs on SwiftShader (Vulkan on the CPU), which has no dual-source
+  # blending: the checker skips the *DualSource variants, which naga still validates as it writes them. Only the
+  # shaders are built, not the library.
+  wgsl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NAGA_VERSION: "30.0.1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Submodules
+        run: |
+          # Every source of the library has to exist for CMake to generate, though only the shaders are built.
+          git -c protocol.version=2 submodule update --init --recursive --depth 1 --jobs 8 rush2049/lib/rt64
+          bash tools/rush2049/apply_runtime_patches.sh
+      - uses: actions/cache@v4
+        id: naga
+        with:
+          path: ~/.cargo/bin/naga
+          key: naga-cli-${{ env.NAGA_VERSION }}-${{ runner.os }}
+      - name: naga
+        if: steps.naga.outputs.cache-hit != 'true'
+        run: cargo install naga-cli --version "$NAGA_VERSION" --locked
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libsdl2-dev libdbus-1-dev
+      - name: Build the shaders to WGSL
+        run: |
+          cmake -S rush2049/lib/rt64 -B rt64-wgsl -G Ninja -DRT64_WGSL=ON -DRT64_NAGA_EXECUTABLE="$HOME/.cargo/bin/naga"             -DNFD_PORTAL=ON
+          ninja -C rt64-wgsl $(ninja -C rt64-wgsl -t targets all | grep -E '^[^:]+\.wgsl\.c:' | cut -d: -f1)
+          find rt64-wgsl -name '*.wgsl' | wc -l
+      # The checker uses Node's own WebSocket (22 and up).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check them against core WebGPU
+        env:
+          CHROME_FLAGS: --enable-unsafe-swiftshader --use-webgpu-adapter=swiftshader --enable-features=Vulkan --no-sandbox
+        run: |
+          google-chrome --version
+          CHROME="$(command -v google-chrome)" node web/tests/wgsl_check.mjs "$(dirname "$(find rt64-wgsl -name '*.wgsl' | head -1)")"
+
   build:
     runs-on: windows-2025
     timeout-minutes: 90

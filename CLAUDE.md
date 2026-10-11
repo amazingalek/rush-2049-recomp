@@ -304,6 +304,8 @@ every plume call it makes):
   and each compute pipeline, which is where binding limits fail): all 62 pass since rt64-0009 fit RSPProcessCS and
   RSPWorldCS into 4 storage buffers (`RSPPackedInputs` in `rt64_rsp_processor.h` says how; configure with
   `-DRT64_PACKED_RSP_INPUTS=ON` to run that path on Vulkan here, which draws the game as the stock path does).
+  CI's `wgsl` job does both on every PR, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the checker), which
+  has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
   Left: the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
   the boolean texture as `R32_UINT` (8-bit storage textures don't exist), no nearest samplers 16-24 in the
   descriptor set, and no `rgba16unorm` (HDR) target on the web. A read_write storage texture is only core in r32
