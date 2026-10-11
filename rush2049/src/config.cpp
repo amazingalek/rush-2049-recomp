@@ -1,6 +1,5 @@
 // Config tabs: the stock tabs, plus the controller accessory, Controller Pak size and rewind options on the General
-// tab, the game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing and the
-// music replacement options on the Sound tab.
+// tab, the game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -121,16 +120,6 @@ namespace {
     // Read on the game thread with every display list.
     std::atomic<MenuRatio> menu_ratio_setting{ MenuRatio::Expand };
 
-    enum class MusicReplacement {
-        Off,
-        On,
-        OptionCount
-    };
-    const std::vector<recomp::config::ConfigOptionEnumOption> music_replacement_options = {
-        {MusicReplacement::Off, "Off", "Off"},
-        {MusicReplacement::On, "On", "On"},
-    };
-    const std::string music_replacement_option = "music_replacement";
 
     enum class MusyxMix {
         Original,
@@ -142,7 +131,6 @@ namespace {
         {MusyxMix::HighQuality, "HighQuality", "High Quality"},
     };
     const std::string musyx_mix_option = "musyx_mix";
-    const std::string music_replacement_volume_option = "music_replacement_volume";
 }
 
 bool rush2049::split_screen_expand() {
@@ -382,32 +370,6 @@ void rush2049::init_config() {
     sound.add_option_change_callback(musyx_mix_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_musyx_hires(static_cast<MusyxMix>(std::get<uint32_t>(cur_value)) == MusyxMix::HighQuality);
-        });
-    sound.add_enum_option(
-        music_replacement_option,
-        "Replacement Music",
-        "Plays your own recordings of the game's songs instead of its music. Put them in a <b>music</b> folder next "
-        "to the game, named by song number or name: <b>00.ogg</b>, <b>bassy.flac</b>, <b>03 - Trancey.mp3</b>. "
-        "OGG, FLAC, MP3 and WAV are read. Songs with no file keep the game's own music."
-        "<br/>"
-        "Takes effect from the next song.",
-        music_replacement_options,
-        MusicReplacement::On
-    );
-    sound.add_number_option(
-        music_replacement_volume_option,
-        "Replacement Music Volume",
-        "The volume of the replacement music, on top of the game's own MUSIC VOLUME setting.",
-        0, 200, 1, 0, true, 100
-    );
-    // Called on load too.
-    sound.add_option_change_callback(music_replacement_option,
-        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
-            rush2049::set_music_replacement(static_cast<MusicReplacement>(std::get<uint32_t>(cur_value)) == MusicReplacement::On);
-        });
-    sound.add_option_change_callback(music_replacement_volume_option,
-        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
-            rush2049::set_music_replacement_volume(static_cast<float>(std::get<double>(cur_value) / 100.0));
         });
 
     recompui::config::create_mods_tab();

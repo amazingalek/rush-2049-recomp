@@ -68,8 +68,7 @@ add_executable(Rush2049Headless
     ${GAME_DIR}/src/dl_dump.cpp
     ${GAME_DIR}/src/widescreen.cpp
     ${GAME_DIR}/src/rewind.cpp
-    ${GAME_DIR}/src/music.cpp
-    ${GAME_DIR}/lib/decoders/stb_vorbis.c
+    ${GAME_DIR}/src/music_thread.cpp
     ${GAME_DIR}/src/audio_resampler.cpp
     ${GAME_DIR}/src/audio_limiter.cpp
     ${GAME_DIR}/src/musyx_hle.cpp

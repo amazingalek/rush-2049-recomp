@@ -26,9 +26,8 @@ gpr rush2049_task_framebuffer(gpr next_framebuffer, gpr current_framebuffer);
 void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx);
 void rush2049_hud_rect_end(uint8_t* rdram);
 void rush2049_hud_race_mark(uint8_t* rdram);
-void rush2049_music_command(uint8_t* rdram, uint32_t command);
 /* At the start of the music thread's retrace tick (us.toml): nonzero while another retrace is already queued for the
-   thread, and the tick should return (src/music.cpp). */
+   thread, and the tick should return (src/music_thread.cpp). */
 int rush2049_music_tick_behind(uint8_t* rdram);
 void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr);
 

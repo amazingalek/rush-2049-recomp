@@ -178,8 +178,9 @@ void rush2049::print_probes() {
             queue_buffers.load(), queue_draining.load(), queue_empty.load());
     uint64_t hires_matched, hires_fallback;
     musyx_hires_counts(hires_matched, hires_fallback);
-    for (const auto& [name, limiter] : { std::pair<const char*, const rush2049::Limiter&>{ "limiter", rush2049::output_limiter },
-                                         { "music limiter", rush2049::mix_limiter } }) {
+    {
+        const char* name = "limiter";
+        const rush2049::Limiter& limiter = rush2049::output_limiter;
         uint64_t limiter_frames = limiter.frames_total.load();
         uint64_t limited = limiter.frames_limited.load();
         fprintf(stderr, "  %s: engaged %llu times, %llu of %llu frames (%.3f%%), lowest gain %.2f dB\n", name,

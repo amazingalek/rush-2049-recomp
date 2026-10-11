@@ -66,10 +66,9 @@ double error(const std::vector<float>& in, const std::vector<float>& out, size_t
 } // namespace
 
 int main() {
-    for (rush2049::Limiter* limiter : { &rush2049::output_limiter, &rush2049::mix_limiter }) {
-        const char* name = limiter == &rush2049::output_limiter ? "output_limiter" : "mix_limiter";
-        float ceiling = limiter == &rush2049::output_limiter ? 1.0f : 0.99f;
-        printf("%s\n", name);
+    {
+        rush2049::Limiter* limiter = &rush2049::output_limiter;
+        const float ceiling = 1.0f;
 
         std::vector<float> quiet = signal(0.0f);
         std::vector<float> out = run(*limiter, quiet);

@@ -47,12 +47,6 @@ namespace rush2049 {
     void set_hires_font(bool on);
     // Hi-res title screen (src/hires_font.cpp, set up by init_hires_font): the title cut from assets/title.patch.
     void set_hires_title(bool on);
-
-    // Music replacement (src/music.cpp): mixes the playing replacement file into `frames` frames of float audio
-    // at `rate` Hz with `channels` channels.
-    void music_mix(float* out, size_t frames, uint32_t channels, uint32_t rate, float main_volume);
-    void set_music_replacement(bool enabled);
-    void set_music_replacement_volume(float gain);
 }
 
 #endif

@@ -11,7 +11,6 @@ constexpr double release_seconds = 0.06;
 } // namespace
 
 rush2049::Limiter rush2049::output_limiter{ 0.9f, 1.0f };
-rush2049::Limiter rush2049::mix_limiter{ 0.95f, 0.99f };
 
 // The threshold plus a tanh curve that approaches the ceiling.
 float rush2049::Limiter::knee(float x) const {

@@ -44,12 +44,9 @@ namespace rush2049 {
         bool limiting = false;
     };
 
-    // The two in main.cpp's queue_samples; --probes prints their counters. output_limiter keeps the game's own mix
-    // (0.9 to 1.0) from clipping: the high-quality MusyX mix's loudest hits reach twice full scale. mix_limiter (0.95 to
-    // 0.99) runs on the sum once the replacement music is added, so a loud hit over a loud bar of music doesn't clip
-    // either; set higher, it leaves the music alone the rest of the time.
+    // The one in main.cpp's queue_samples; --probes prints its counters. It keeps the game's mix (0.9 to 1.0) from
+    // clipping: the high-quality MusyX mix's loudest hits reach twice full scale.
     extern Limiter output_limiter;
-    extern Limiter mix_limiter;
 }
 
 #endif

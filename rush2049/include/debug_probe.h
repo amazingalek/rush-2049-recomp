@@ -20,12 +20,11 @@ namespace rush2049 {
     // --dump-audio <file.wav>: also write that audio, before resampling and volume, to a 32-bit float WAV file.
     void start_audio_dump(const char* path);
 
-    // --dump-output <file.wav>: write what is queued on the audio device (the game's audio plus the replacement
-    // music, at the device rate) to a WAV file.
+    // --dump-output <file.wav>: write what is queued on the audio device (at the device rate) to a WAV file.
     void start_output_dump(const char* path);
     void probe_output(const float* samples, size_t frames, uint32_t rate);
 
-    // The music thread's retrace tick (src/music.cpp): sound commands in flight as each one starts, and ticks skipped
+    // The music thread's retrace tick (src/music_thread.cpp): sound commands in flight as each one starts, and ticks skipped
     // because the thread was behind.
     void probe_music_tick(uint32_t commands_in_flight);
     void probe_music_tick_skipped();

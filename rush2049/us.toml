@@ -86,15 +86,8 @@ func = "hud_draw_race_timer"
 before_vram = 0x8010761C
 text = "    rush2049_hud_race_mark(rdram);"
 
-# The music thread (func_800992AC) has received a command ($s5) and is about to switch on its type
-# (src/music.cpp).
-[[patches.hook]]
-func = "music_thread_main"
-before_vram = 0x80099390
-text = "    rush2049_music_command(rdram, (uint32_t)ctx->r21);"
-
-# Its tick on each retrace (func_80098FB8, before the stack frame) returns at once while another retrace is already
-# queued for the thread, so a backlog on a busy PC can't run the sound-command pool dry (src/music.cpp).
+# The music thread's tick on each retrace (func_80098FB8, before the stack frame) returns at once while another retrace is already
+# queued for the thread, so a backlog on a busy PC can't run the sound-command pool dry (src/music_thread.cpp).
 [[patches.hook]]
 func = "func_80098FB8"
 before_vram = 0x80098FB8
