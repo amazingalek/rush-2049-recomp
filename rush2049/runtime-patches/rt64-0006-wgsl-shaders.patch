@@ -1,3 +1,137 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 79dfc38..ec8253f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -11,6 +11,7 @@ endif()
+ option(RT64_STATIC "Build RT64 as a static library" OFF)
+ 
+ 
++option(RT64_WGSL "Compile the shaders to WGSL for WebGPU, in place of DXIL, SPIR-V and Metal (always on with Emscripten)" OFF)
+ option(RT64_SDL_WINDOW_VULKAN "Build RT64 to expect an SDL Window outside of Windows" OFF)
+ 
+ if (NOT ${RT64_STATIC})
+@@ -65,13 +66,37 @@ else()
+     endif()
+ endif()
+ 
++# WebGPU: dxc (on the host) compiles to SPIR-V with -D WEBGPU, naga turns that into WGSL, and plume's PlumeWGSL.cmake
++# moves the push constants into the uniform buffer plume's WebGPU backend gives them. WEBGPU is what the shaders check
++# (shaders/WebGPU.hlsli).
++if (EMSCRIPTEN)
++    set (RT64_WGSL ON)
++    if (CMAKE_HOST_WIN32)
++        set (DXC "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc.exe")
++    elseif (CMAKE_HOST_APPLE)
++        set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/arm64/dxc-macos")
++    else()
++        set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/src/contrib/dxc/bin/x64/dxc-linux")
++    endif()
++endif()
++if (RT64_WGSL)
++    find_program(RT64_NAGA_EXECUTABLE naga)
++    if (NOT RT64_NAGA_EXECUTABLE)
++        message(FATAL_ERROR "naga not found: install naga-cli (cargo install naga-cli) or set RT64_NAGA_EXECUTABLE.")
++    endif()
++    set (RT64_PLUME_WGSL "${PROJECT_SOURCE_DIR}/src/contrib/plume/examples/cmake/modules/PlumeWGSL.cmake")
++endif()
++
+ set(ZSTD_LEGACY_SUPPORT OFF)
+ set(ZSTD_BUILD_STATIC ON)
+ set(ZSTD_BUILD_SHARED OFF)
+ 
+ add_subdirectory(src/tools/file_to_c)
+ add_subdirectory(src/contrib/re-spirv)
+-add_subdirectory(src/contrib/nativefiledialog-extended)
++# A browser has no native file dialogs.
++if (NOT EMSCRIPTEN)
++    add_subdirectory(src/contrib/nativefiledialog-extended)
++endif()
+ add_subdirectory(src/contrib/zstd/build/cmake)
+ 
+ if (CMAKE_SYSTEM_NAME MATCHES "Linux" AND RT64_SDL_WINDOW_VULKAN)
+@@ -124,6 +149,20 @@ function(build_shader_spirv_impl TARGETOBJ FILENAME TARGET_NAME OUTNAME)
+     target_sources(${TARGETOBJ} PRIVATE ${OUTNAME}.spirv.c)
+ endfunction()
+ 
++function(build_shader_wgsl_impl TARGETOBJ FILENAME TARGET_NAME OUTNAME)
++    # WebGPU's clip space is D3D's, so the vertex shaders keep their y.
++    set(OPTIONS ${ARGN})
++    list(REMOVE_ITEM OPTIONS "-fvk-invert-y")
++    add_custom_command(OUTPUT ${OUTNAME}.wgsl.spv
++        COMMAND ${DXC} ${DXC_SPV_OPTS} -D WEBGPU ${OPTIONS} ${FILENAME} /Fo ${OUTNAME}.wgsl.spv
++        DEPENDS ${FILENAME})
++    add_custom_command(OUTPUT ${OUTNAME}.wgsl ${OUTNAME}.wgsl.c ${OUTNAME}.wgsl.h
++        COMMAND ${CMAKE_COMMAND} -DNAGA=${RT64_NAGA_EXECUTABLE} -DINPUT=${OUTNAME}.wgsl.spv -DOUTPUT=${OUTNAME}.wgsl
++            -DVAR_NAME=${TARGET_NAME}BlobWGSL -DOUTPUT_C=${OUTNAME}.wgsl.c -DOUTPUT_H=${OUTNAME}.wgsl.h -P ${RT64_PLUME_WGSL}
++        DEPENDS ${OUTNAME}.wgsl.spv ${RT64_PLUME_WGSL})
++    target_sources(${TARGETOBJ} PRIVATE ${OUTNAME}.wgsl.c)
++endfunction()
++
+ function(build_shader_dxil_impl TARGETOBJ FILENAME TARGET_NAME OUTNAME)
+     add_custom_command(OUTPUT ${OUTNAME}.dxil
+         COMMAND ${DXC} ${DXC_DXIL_OPTS} ${ARGN} ${FILENAME} /Fo ${OUTNAME}.dxil
+@@ -170,6 +209,10 @@ function(build_shader TARGETOBJ SHADERNAME OPTIONS)
+     cmake_path(GET OUTNAME STEM TARGET_NAME)
+     cmake_path(GET OUTNAME PARENT_PATH OUTPUT_DIR)
+     file(MAKE_DIRECTORY ${OUTPUT_DIR})
++    if (RT64_WGSL)
++        build_shader_wgsl_impl(${TARGETOBJ} ${FILENAME} ${TARGET_NAME} ${OUTNAME} ${OPTIONS} ${EXTRA_ARGS})
++        return()
++    endif()
+     # Compile DXIL shader binaries if building on Windows
+     if (WIN32)
+         build_shader_dxil_impl(${TARGETOBJ} ${FILENAME} ${TARGET_NAME} ${OUTNAME} ${OPTIONS} ${EXTRA_ARGS})
+@@ -215,6 +258,10 @@ function(build_shader_spirv TARGETOBJ SHADERNAME OPTIONS)
+     cmake_path(GET OUTNAME STEM TARGET_NAME)
+     cmake_path(GET OUTNAME PARENT_PATH OUTPUT_DIR)
+     file(MAKE_DIRECTORY ${OUTPUT_DIR})
++    if (RT64_WGSL)
++        build_shader_wgsl_impl(${TARGETOBJ} ${FILENAME} ${TARGET_NAME} ${OUTNAME} ${OPTIONS} ${EXTRA_ARGS})
++        return()
++    endif()
+     build_shader_spirv_impl(${TARGETOBJ} ${FILENAME} ${TARGET_NAME} ${OUTNAME} ${OPTIONS} ${EXTRA_ARGS})
+ endfunction()
+ 
+@@ -289,6 +336,11 @@ if (WIN32)
+     set(SDL2_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/include")
+     set(SDL2_LIBRARIES "SDL2" "SDL2main")
+     link_directories("${PROJECT_SOURCE_DIR}/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/lib/x64")
++elseif (EMSCRIPTEN)
++    # Emscripten's own port of SDL2.
++    add_compile_options("-sUSE_SDL=2")
++    set(SDL2_LIBRARIES "-sUSE_SDL=2")
++    set(SDL2_INCLUDE_DIRS "${EMSCRIPTEN_SYSROOT}/include/SDL2")
+ else()
+     find_package(SDL2 REQUIRED)
+ endif()
+@@ -441,7 +493,9 @@ set_target_properties(rt64 PROPERTIES PREFIX "")
+ 
+ # Add common libraries.
+ target_link_libraries(rt64 re-spirv)
+-target_link_libraries(rt64 nfd)
++if (NOT EMSCRIPTEN)
++    target_link_libraries(rt64 nfd)
++endif()
+ target_link_libraries(rt64 libzstd_static)
+ target_link_libraries(rt64 plume)
+ 
+@@ -504,6 +558,16 @@ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D MULTISAMPLING")
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D VERTEX_FLAT_COLOR")
+ build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantFlatMS.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING")
++if (RT64_WGSL)
++    # Dual-source blending is optional in WebGPU, so RasterPS also comes with it, for the devices that have it; the
++    # variants above write one output (RasterPS.hlsl).
++    build_pixel_shader(  rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicDualSource.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D DUAL_SOURCE_BLENDING")
++    build_pixel_shader(  rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSDynamicMSDualSource.hlsl" "-D DYNAMIC_RENDER_PARAMS" "-D MULTISAMPLING" "-D DUAL_SOURCE_BLENDING")
++    build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantDualSource.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D DUAL_SOURCE_BLENDING")
++    build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantMSDualSource.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D MULTISAMPLING" "-D DUAL_SOURCE_BLENDING")
++    build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantFlatDualSource.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D VERTEX_FLAT_COLOR" "-D DUAL_SOURCE_BLENDING")
++    build_pixel_shader_spec_constants(rt64 "src/shaders/RasterPS.hlsl" "src/shaders/RasterPSSpecConstantFlatMSDualSource.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D VERTEX_FLAT_COLOR" "-D MULTISAMPLING" "-D DUAL_SOURCE_BLENDING")
++endif()
+ build_vertex_shader( rt64 "src/shaders/RasterVS.hlsl" "src/shaders/RasterVSDynamic.hlsl" "-D DYNAMIC_RENDER_PARAMS")
+ build_vertex_shader_spec_constants( rt64 "src/shaders/RasterVS.hlsl" "src/shaders/RasterVSSpecConstant.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS")
+ build_vertex_shader_spec_constants( rt64 "src/shaders/RasterVS.hlsl" "src/shaders/RasterVSSpecConstantFlat.hlsl" "-D SPEC_CONSTANT_RENDER_PARAMS" "-D VERTEX_FLAT_COLOR")
 diff --git a/src/shaders/BicubicScalingCS.hlsl b/src/shaders/BicubicScalingCS.hlsl
 index 087471b..2c42302 100644
 --- a/src/shaders/BicubicScalingCS.hlsl
@@ -146,6 +280,68 @@ index bc250a2..225c4f6 100644
  
  // Set 1 - RGBA32 texture cache.
  Texture2D<float4> gTextures[8192] : register(t0, space1);
+diff --git a/src/shaders/FbRendererRT.hlsli b/src/shaders/FbRendererRT.hlsli
+index eff6ff8..f78c74c 100644
+--- a/src/shaders/FbRendererRT.hlsli
++++ b/src/shaders/FbRendererRT.hlsli
+@@ -31,28 +31,35 @@ RWBuffer<float4> gHitVelocityDistance : register(u41, space0);
+ RWBuffer<float4> gHitColor : register(u42, space0);
+ RWBuffer<float4> gHitNormalFog : register(u43, space0);
+ RWBuffer<uint> gHitInstanceId : register(u44, space0);
+-RWTexture2D<float4> gViewDirection : register(u45, space0);
+-RWTexture2D<float4> gShadingPosition : register(u46, space0);
+-RWTexture2D<float4> gShadingNormal : register(u47, space0);
+-RWTexture2D<float4> gShadingSpecular : register(u48, space0);
+-RWTexture2D<float4> gDiffuse : register(u49, space0);
+-RWTexture2D<int> gInstanceId : register(u50, space0);
+-RWTexture2D<float4> gDirectLightAccum : register(u51, space0);
+-RWTexture2D<float4> gIndirectLightAccum : register(u52, space0);
+-RWTexture2D<float4> gReflection : register(u53, space0);
+-RWTexture2D<float4> gRefraction : register(u54, space0);
+-RWTexture2D<float4> gTransparent : register(u55, space0);
+-RWTexture2D<float2> gFlow : register(u56, space0);
+-RWTexture2D<float> gReactiveMask : register(u57, space0);
+-RWTexture2D<float> gLockMask : register(u58, space0);
+-RWTexture2D<float4> gNormalRoughness : register(u59, space0);
+-RWTexture2D<float> gDepth : register(u60, space0);
+-RWTexture2D<float4> gPrevNormalRoughness : register(u61, space0);
+-RWTexture2D<float> gPrevDepth : register(u62, space0);
+-RWTexture2D<float4> gPrevDirectLightAccum : register(u63, space0);
+-RWTexture2D<float4> gPrevIndirectLightAccum : register(u64, space0);
+-RWTexture2D<float4> gFilteredDirectLight : register(u65, space0);
+-RWTexture2D<float4> gFilteredIndirectLight : register(u66, space0);
++// WebGPU builds no ray tracing shader, so nothing writes these there, and the debugger's views (DebugPS) only read
++// them: as sampled textures they need no storage format.
++#ifdef WEBGPU
++#   define RT_TEXTURE2D(T, NAME, REG) Texture2D<T> NAME : register(t##REG, space0)
++#else
++#   define RT_TEXTURE2D(T, NAME, REG) RWTexture2D<T> NAME : register(u##REG, space0)
++#endif
++RT_TEXTURE2D(float4, gViewDirection, 45);
++RT_TEXTURE2D(float4, gShadingPosition, 46);
++RT_TEXTURE2D(float4, gShadingNormal, 47);
++RT_TEXTURE2D(float4, gShadingSpecular, 48);
++RT_TEXTURE2D(float4, gDiffuse, 49);
++RT_TEXTURE2D(int, gInstanceId, 50);
++RT_TEXTURE2D(float4, gDirectLightAccum, 51);
++RT_TEXTURE2D(float4, gIndirectLightAccum, 52);
++RT_TEXTURE2D(float4, gReflection, 53);
++RT_TEXTURE2D(float4, gRefraction, 54);
++RT_TEXTURE2D(float4, gTransparent, 55);
++RT_TEXTURE2D(float2, gFlow, 56);
++RT_TEXTURE2D(float, gReactiveMask, 57);
++RT_TEXTURE2D(float, gLockMask, 58);
++RT_TEXTURE2D(float4, gNormalRoughness, 59);
++RT_TEXTURE2D(float, gDepth, 60);
++RT_TEXTURE2D(float4, gPrevNormalRoughness, 61);
++RT_TEXTURE2D(float, gPrevDepth, 62);
++RT_TEXTURE2D(float4, gPrevDirectLightAccum, 63);
++RT_TEXTURE2D(float4, gPrevIndirectLightAccum, 64);
++RT_TEXTURE2D(float4, gFilteredDirectLight, 65);
++RT_TEXTURE2D(float4, gFilteredIndirectLight, 66);
+ Texture2D<float4> gBlueNoise : register(t67, space0);
+ 
+ // Set 3 - Framebuffer.
 diff --git a/src/shaders/FbWriteColorCS.hlsl b/src/shaders/FbWriteColorCS.hlsl
 index cbc9418..a51bc5a 100644
 --- a/src/shaders/FbWriteColorCS.hlsl
@@ -441,6 +637,49 @@ index b02446e..fd8e788 100644
          );
      }
      
+diff --git a/src/shaders/RSPSmoothNormalCS.hlsl b/src/shaders/RSPSmoothNormalCS.hlsl
+index a74bb62..be1c2d1 100644
+--- a/src/shaders/RSPSmoothNormalCS.hlsl
++++ b/src/shaders/RSPSmoothNormalCS.hlsl
+@@ -46,19 +46,25 @@ float3 computeSmoothNormal(uint vertexIndex) {
+ 
+ [numthreads(GROUP_SIZE, 1, 1)]
+ void CSMain(uint triangleIndex : SV_DispatchThreadID) {
+-    if ((triangleIndex * 3) >= gConstants.indexCount) {
+-        return;
++    // Every thread of the group reaches the barrier: one past the end only skips the work around it. (A barrier in
++    // control flow that differs between threads is undefined, and WGSL refuses it.)
++    const bool inRange = (triangleIndex * 3) < gConstants.indexCount;
++    uint v0 = 0, v1 = 0, v2 = 0;
++    float3 n0 = 0.0f, n1 = 0.0f, n2 = 0.0f;
++    if (inRange) {
++        const uint baseIndex = gConstants.indexStart + triangleIndex * 3;
++        v0 = srcFaceIndices[baseIndex + 0];
++        v1 = srcFaceIndices[baseIndex + 1];
++        v2 = srcFaceIndices[baseIndex + 2];
++        n0 = computeSmoothNormal(v0);
++        n1 = computeSmoothNormal(v1);
++        n2 = computeSmoothNormal(v2);
+     }
+ 
+-    const uint baseIndex = gConstants.indexStart + triangleIndex * 3;
+-    const uint v0 = srcFaceIndices[baseIndex + 0];
+-    const uint v1 = srcFaceIndices[baseIndex + 1];
+-    const uint v2 = srcFaceIndices[baseIndex + 2];
+-    const float3 n0 = computeSmoothNormal(v0);
+-    const float3 n1 = computeSmoothNormal(v1);
+-    const float3 n2 = computeSmoothNormal(v2);
+     AllMemoryBarrierWithGroupSync();
+-    dstWorldNorm[v0] = float4(n0, 1.0f);
+-    dstWorldNorm[v1] = float4(n1, 1.0f);
+-    dstWorldNorm[v2] = float4(n2, 1.0f);
++    if (inRange) {
++        dstWorldNorm[v0] = float4(n0, 1.0f);
++        dstWorldNorm[v1] = float4(n1, 1.0f);
++        dstWorldNorm[v2] = float4(n2, 1.0f);
++    }
+ }
+\ No newline at end of file
 diff --git a/src/shaders/RSPWorldCS.hlsl b/src/shaders/RSPWorldCS.hlsl
 index 205dc4c..962ace6 100644
 --- a/src/shaders/RSPWorldCS.hlsl
@@ -487,10 +726,42 @@ index 205dc4c..962ace6 100644
      const float4 worldNorm = all(norm == 0.0f) ? float4(0.0f, 0.0f, 0.0f, 1.0f) : float4(normalize(mul(invTWorldMats[transformIndex], float4(norm, 0.0f)).xyz), 1.0f);
      const float4 prevWorldPos = mul(prevWorldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.prevFrameWeight), 1.0f));
 diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
-index cea0403..81750dc 100644
+index cea0403..4fe7422 100644
 --- a/src/shaders/RasterPS.hlsl
 +++ b/src/shaders/RasterPS.hlsl
-@@ -262,6 +262,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+@@ -48,6 +48,13 @@ float sampleBackgroundDepth(int2 pixelPos, uint sampleCount) {
+ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float2 vertexUV, float4 vertexSmoothColor, float4 vertexFlatColor,
+     bool isFrontFace, out float4 resultColor, out float4 resultAlpha) 
+ {
++    // Derivatives first, while every pixel of the quad is still running: they are undefined after a pixel returns, and
++    // WGSL refuses them in control flow that can differ between pixels.
++    const float ddxDepth = ddx(vertexPosition.z);
++    const float ddyDepth = ddy(vertexPosition.z);
++    float2 ddxVertexUV = ddx(vertexUV);
++    float2 ddyVertexUV = ddy(vertexUV);
++
+     const OtherMode otherMode = { rp.omL, rp.omH };
+ #if defined(DYNAMIC_RENDER_PARAMS)
+     if ((otherMode.cycleType() != G_CYC_COPY) && renderFlagCulling(rp.flags) && isFrontFace) {
+@@ -100,7 +107,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+             dz = instanceRDPParams[instanceIndex].primDepth.y;
+         }
+         else {
+-            dz = (abs(ddx(vertexPosition.z)) + abs(ddy(vertexPosition.z))) * FbParams.resolutionScale.y;
++            dz = (abs(ddxDepth) + abs(ddyDepth)) * FbParams.resolutionScale.y;
+         }
+ 
+         // Perform the decal depth tolerance check.
+@@ -111,8 +118,6 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+         }
+     }
+     
+-    float2 ddxVertexUV = ddx(vertexUV);
+-    float2 ddyVertexUV = ddy(vertexUV);
+     float2 lowResUV = vertexUV;
+     if (!renderFlagUpscale2D(rp.flags)) {
+         float2 screenPos = floor(vertexPosition.xy);
+@@ -262,6 +267,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
          resultColor.a = resultCvg;
      }
      
@@ -505,7 +776,7 @@ index cea0403..81750dc 100644
      // Add highlight color to the last step.
      uint highlightColorUint = instanceRenderIndices[gConstants.renderIndex].highlightColor;
      if (highlightColorUint > 0) {
-@@ -298,8 +306,12 @@ void PSMain(
+@@ -298,8 +311,12 @@ void PSMain(
  #if defined(DYNAMIC_RENDER_PARAMS)
      , bool isFrontFace : SV_IsFrontFace
  #endif
@@ -518,7 +789,7 @@ index cea0403..81750dc 100644
  )
  {
  #if !defined(DYNAMIC_RENDER_PARAMS)
-@@ -316,6 +328,8 @@ void PSMain(
+@@ -316,6 +333,8 @@ void PSMain(
      }
  
      pixelColor = resultColor;
