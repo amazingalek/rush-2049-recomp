@@ -3,7 +3,7 @@
 // so the game threads, the runtime and the MusyX audio can be timed in node and in a browser, and compared with the
 // same build on Windows.
 //
-//   Rush2049Headless <rom.z64> [--seconds n] [--fps n] [--mix original|hq] [--config dir]
+//   Rush2049Headless <rom.z64> [--seconds n] [--fps n] [--mix original|hq] [--render-to-ram 0|1] [--config dir]
 //
 // The renderer takes each display list and returns at once, as if the RDP were infinitely fast, and counts them and
 // the retraces. An Emscripten build hands them on to RT64 (HEADLESS_RT64, on unless configured off): it is a page,
@@ -11,7 +11,8 @@
 // A page has no command line, so it takes the options from its query (page_arguments.js). The audio sink drains at
 // the rate the game set, the way a sound card would, so the audio thread is paced as it is in the game. Nobody presses anything, so the game runs its title screen and attract races, which
 // draw 30 frames a second. --fps is the Game Frame Rate option (30 is Original, 60 the default). --mix is the MusyX
-// Mixing option (High Quality is the default).
+// Mixing option (High Quality is the default). --render-to-ram is RT64's render to RAM, off as on the game's page (its
+// main.cpp says why); 1 copies every frame back into RDRAM, as the desktop build does.
 //
 // Every 5 seconds it prints retraces, display lists and audio buffers a second, and the CPU time the whole process
 // used in that time as a share of one core (not in a browser, which has no way to read it). At the end, the same over
@@ -59,6 +60,7 @@ namespace {
     std::atomic<uint64_t> retraces{0};
     std::atomic<uint64_t> display_lists{0};
     std::atomic<uint64_t> audio_buffers{0};
+    bool render_to_ram = false;
 
     // Counts what the runtime sends the renderer. With RT64 in the build (HEADLESS_RT64), it hands everything on to RT64,
     // which draws on the page's canvas; without, it returns at once, as if the RDP were infinitely fast.
@@ -217,7 +219,7 @@ namespace {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "usage: %s <rom.z64> [--seconds n] [--fps n] [--mix original|hq] [--config dir]\n", argv[0]);
+        fprintf(stderr, "usage: %s <rom.z64> [--seconds n] [--fps n] [--mix original|hq] [--render-to-ram 0|1] [--config dir]\n", argv[0]);
         return EXIT_FAILURE;
     }
     std::filesystem::path rom_path = argv[1];
@@ -232,6 +234,8 @@ int main(int argc, char** argv) {
             fps = (uint32_t)atoi(argv[i + 1]);
         } else if (strcmp(argv[i], "--mix") == 0) {
             hq_mix = strcmp(argv[i + 1], "original") != 0;
+        } else if (strcmp(argv[i], "--render-to-ram") == 0) {
+            render_to_ram = atoi(argv[i + 1]) != 0;
         } else if (strcmp(argv[i], "--config") == 0) {
             config_path = argv[i + 1];
         }
@@ -280,7 +284,7 @@ int main(int argc, char** argv) {
     ultramodern::renderer::callbacks_t renderer_callbacks{
         .create_render_context = [](uint8_t* rdram, ultramodern::renderer::WindowHandle, bool) -> std::unique_ptr<ultramodern::renderer::RendererContext> {
 #ifdef HEADLESS_RT64
-            return std::make_unique<CountingRenderer>(recompweb::create_rt64_renderer(rdram));
+            return std::make_unique<CountingRenderer>(recompweb::create_rt64_renderer(rdram, render_to_ram));
 #else
             (void)rdram;
             return std::make_unique<CountingRenderer>(nullptr);
