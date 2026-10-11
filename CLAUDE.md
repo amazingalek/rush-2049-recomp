@@ -173,7 +173,7 @@ no ROM.
 ```
 --boot                       skip the launcher (needs the ROM already stored)
 --stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
---players <n>                ports 2..n copy port 1, to drive split screen with one pad
+--players <n>                ports 2..n copy port 1 (and --input), to drive split screen with one pad
 --input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
 --window <w>x<h>             window size (default 1600x1200; Auto resolution follows it)
 --musyx hle|native|lle|compare   audio path; native is the HLE without the 44.1 kHz mix
@@ -192,7 +192,7 @@ runs at 240p still differ by ±15% in cycles, so for a change worth less than th
 frames inside one run and time the two halves apart.
 
 Where a frame goes, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of cycles (Auto is
-the 1080p column):
+the 1080p column), measured with render to RAM still on (its second pass is in render):
 
 ```
 part                         240p   1080p
@@ -330,9 +330,10 @@ What to know before changing it:
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
-  into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so the
-  game's pages turn it off (`set_render_to_ram`, RecompFrontend-0004; `create_rt64_renderer`'s argument;
-  `?render-to-ram=1` on the headless page turns it back on). A game that reads its frames on the CPU needs it on.
+  into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so this
+  game turns it off, on the desktop too, since nothing in it reads a frame (`set_render_to_ram` in `main.cpp`,
+  RecompFrontend-0004; `create_rt64_renderer`'s argument; `?render-to-ram=1` on the headless page turns it back on).
+  Another recomp whose game reads its frames on the CPU needs it on.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
   for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.

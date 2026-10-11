@@ -101,7 +101,7 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 static bool log_input = false;
 static int fake_players = 0;
 
-// --input <file>: scripted port 1 input for unattended test runs. Each line is "<seconds> <buttons hex> [x y]",
+// --input <file>: scripted port 1 input for unattended test runs, and for every port --players adds. Each line is "<seconds> <buttons hex> [x y]",
 // seconds counted from the first input read, and the last line whose time has passed is held. Lines starting with #
 // are comments. Bit 0x10000, which is no N64 button, holds Rewind.
 struct ScriptedInput {
@@ -163,7 +163,7 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
         return true;
     }
     bool ret = recompinput::profiles::get_n64_input(player_index, buttons_out, x_out, y_out);
-    if (const ScriptedInput* in = scripted_input(); in != nullptr && player_index == 0) {
+    if (const ScriptedInput* in = scripted_input(); in != nullptr && (player_index == 0 || player_index < fake_players)) {
         *buttons_out = (uint16_t)in->buttons;
         *x_out = in->x;
         *y_out = in->y;
@@ -606,12 +606,16 @@ int main(int argc, char** argv) {
 
 #ifndef __EMSCRIPTEN__
     NFD_Init();
-#else
-    // No copy of each frame back into RDRAM on the web: nothing in the game is known to read its frames on the CPU,
-    // and in a browser the copy makes a display list in a race wait ~6 ms for the GPU process (13-14 ms a list with
-    // it, 5-6 ms without, as the desktop build takes with it). The desktop build keeps RT64's default.
-    recompui::renderer::set_render_to_ram(false);
 #endif
+
+    // No copy of each frame back into RDRAM (RT64's render to RAM, on by default there), which draws every frame a
+    // second time at the N64's resolution. Nothing in the game reads a frame on the CPU: with page guards on the
+    // framebuffers and the Z-buffer through boot, the attract races, the menus, a race with pause, Rewind and Quit,
+    // two-player split screen and a Ghost Race to its results, the game's only touches were the ROM inflate's staging
+    // buffer in a framebuffer it isn't showing, and no screen samples a framebuffer as a texture. Without the copy a
+    // race list on an RTX 2070 at 960x720 took 3.9 ms instead of 5.0 and the GPU drew 41-49 W instead of 60-62, and
+    // in a browser a list waited ~6 ms less for the GPU process (13-14 ms a list with it, 5-6 without).
+    recompui::renderer::set_render_to_ram(false);
 
     recompui::programconfig::set_program_name(rush2049::program_name);
     recompui::programconfig::set_program_id(rush2049::program_id);
