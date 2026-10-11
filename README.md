@@ -84,23 +84,26 @@ revisions are not supported.
 (CMake 4 rejects some of the submodules), Ninja, GNU make, Python 3.11, and for the mod-support library a clang
 built with the MIPS target (MSYS2's is; llvm.org's Windows builds are not) plus `ld.lld`. Make a Python venv at
 `.venv` with `spimdisasm`, `rabbitizer` and `numpy`. On Linux (Ubuntu 24.04, what CI builds; nobody has played on
-it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and configure with
-`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`.
+it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and pass
+`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++` to `tools/recompile.sh` and to the configure.
 
 **Build**, from the repo root in a bash shell:
 
 ```sh
 git submodule update --init --recursive
 bash tools/apply_runtime_patches.sh            # our fixes to the submodules
-git clone https://github.com/shygoo/n64sym ref/n64sym    # libultra signatures for the symbol generator (MIT)
 .venv/Scripts/python -I tools/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
+bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl   # the game's code as C
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
       -DPATCHES_C_COMPILER=<MIPS clang> -DPATCHES_LD=<ld.lld>
-bash tools/iterate.sh 30                        # symbols, recompile, build, and a 30 s test boot
+ninja -C build Rush2049Recompiled
 ```
 
-After that, `ninja -C build Rush2049Recompiled` rebuilds.
+`tools/recompile.sh` builds N64Recomp from the submodule the first time, then translates the game. After a change
+to `us.toml` or `syms/`, run it again before `ninja`. To change the symbols, edit `syms/names.toml` and run
+`tools/gen_syms.py`, which needs the libultra signatures:
+`git clone https://github.com/shygoo/n64sym ref/n64sym` (MIT).
 
 **Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),

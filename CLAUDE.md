@@ -52,7 +52,8 @@ here, and a finding that explains code goes beside that code.
 - `tools/extract.py` writes `roms/rush2049.us.recomp.z64`, the ROM with its deflate-compressed main code
   and two overlays appended inflated at fake ROM addresses; `gen_syms.py` writes the symbol file; N64Recomp
   (`us.toml`) turns it into `RecompiledFuncs/` and RSPRecomp (`musyx.toml`) the audio ucode into
-  `rsp/musyx.cpp`. Both are generated, not in git, and `iterate.sh` wipes and regenerates
+  `rsp/musyx.cpp`, with the recompilers built from the pinned submodule (`tools/recompile.sh`). Both are
+  generated, not in git, and `iterate.sh` wipes and regenerates
   `RecompiledFuncs/`, so never edit them.
 - `us.toml` is where game code is changed: `stubs`, `ignored`, instruction patches and `[[patches.hook]]` C text
   calling into `src/`. N64Recomp drops or reimplements libultra **by name**, so an unnamed libultra
@@ -143,9 +144,14 @@ mkdir -p roms && cp $M/roms/*.z64 roms/
 cmd //c "mklink /J .venv $(cygpath -w $M/.venv)"     # iterate.sh runs .venv/Scripts/python
 mkdir -p ref && cp -r $M/ref/n64sym ref/              # libultra signatures for gen_syms.py
 touch portable.txt                                   # keep settings, saves and mods in the checkout
-source tools/env.sh && cmake -S . -B build ...   # the README's configure line, MIPS_CC/MIPS_LD
+source tools/env.sh && bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+cmake -S . -B build ...                              # the README's configure line, MIPS_CC/MIPS_LD
 bash tools/iterate.sh 30
 ```
+
+Until 2026-10-11 the game lived in `rush2049/` (and the tools in `tools/rush2049/`, the symbols in `syms/rush2049/`).
+`copy_submodules.sh` still copies from a checkout like that. To move one over, pull, then `bash tools/copy_submodules.sh .`
+(it finds the submodules in `rush2049/lib/` and keeps their git dirs), rerun the patch script, and delete `rush2049/`.
 
 Copying the submodules from another checkout is faster than cloning them (about 2 minutes): in place of the
 submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. It also moves a
