@@ -76,6 +76,8 @@ N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without 
 N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
 plume-0001             WebGPU backend (plume_webgpu.*, in rt64/src/contrib/plume); WGSL from HLSL with dxc and naga;
                        the triangle and cube examples build for the browser
+plume-0002             WebGPU: READBACK maps that wait, texel buffers, clears of rectangles, presents paced to the
+                       display, push constants sharing group 3 with a 4th set, the adapter's limits; webgpu_checks
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -235,20 +237,22 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 **Step 2, started: drawing.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui draw
 through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks). plume's own triangle and cube
 examples (vertex buffer, cube texture upload, sampler, descriptor set, push constants) draw in headless Chrome 154
-with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. To build and look at them:
+with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. `plume-0002` adds what RT64 needs
+beyond them, and `plume_webgpu_checks.html` tests each piece by reading the results back, printing PASS or FAIL per
+check to the console (7 of 7 with ASYNCIFY and with `-sJSPI`). To build and look at them:
 
 ```sh
 cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
 emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DPLUME_BUILD_EXAMPLES=ON -DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe \
     -DPLUME_NAGA_EXECUTABLE=<naga.exe>
-cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html
+cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html, plume_webgpu_checks.html
 ```
 
 Serve `<dir>/bin` over http on localhost and open it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`;
 headless works with `--headless=new --enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that
 page, never a screen copy. Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) →
-WGSL (naga `--keep-coordinate-space`), and push constants become a uniform buffer at `@group(3) @binding(0)`.
+WGSL (naga `--keep-coordinate-space`), and push constants become a uniform buffer at `@group(3) @binding(999)`.
 
 **Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
 every plume call it makes):
@@ -259,9 +263,11 @@ every plume call it makes):
   shaders. The Vulkan path specializes SPIR-V at run time (`respv`); WebGPU does it with WGSL overrides.
 - Texture binding: `gTextures[8192]` and `gTMEM[8192]` are one bindless set bound twice, mixing 2D float and 1D
   `R8_UINT` textures (`rt64_descriptor_sets.h`, `TextureSampler.hlsli`). The common set (bindings 1-67) also exceeds
-  WebGPU's default per-stage limits.
-- plume gaps RT64 hits: blocking READBACK maps (the framebuffer change count, and `renderToRAM`, on by default),
-  texel buffers (formatted views), FillRect's one-rect clears, MSAA sample locations.
+  WebGPU's default per-stage limits (plume asks for the adapter's).
+- Waiting: RT64 reads READBACK buffers right after a submission (the framebuffer change count, and `renderToRAM`,
+  on by default) and presents in a loop. plume waits for both by handing the thread back to the browser mid-call,
+  which takes a build with `-sJSPI` (or ASYNCIFY, which bloats it); without, reads come a submission late and the
+  canvas only shows a frame when the loop itself returns to the browser.
 - Threads: about a dozen RT64 threads call plume (workload, idle, present, texture upload, streaming, shader
   compile, 11 buffer uploaders); every WebGPU call has to come from the thread that owns the device.
 - Then RT64 in the headless build, the title screen on a canvas; then the frontend: recompui (RmlUi on plume), SDL2
