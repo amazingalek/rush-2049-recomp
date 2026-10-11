@@ -1,0 +1,826 @@
+diff --git a/src/shaders/BicubicScalingCS.hlsl b/src/shaders/BicubicScalingCS.hlsl
+index 087471b..2c42302 100644
+--- a/src/shaders/BicubicScalingCS.hlsl
++++ b/src/shaders/BicubicScalingCS.hlsl
+@@ -5,6 +5,7 @@
+ //
+ 
+ #include "Color.hlsli"
++#include "WebGPU.hlsli"
+ 
+ #define BLOCK_SIZE 8
+ 
+@@ -15,7 +16,7 @@ struct BicubicCB {
+ 
+ [[vk::push_constant]] ConstantBuffer<BicubicCB> gConstants : register(b0);
+ Texture2D<float4> gInput : register(t1);
+-RWTexture2D<float4> gOutput : register(u2);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutput : register(u2);
+ SamplerState gSampler : register(s3);
+ 
+ float4 cubic(float x) {
+diff --git a/src/shaders/BoxFilterCS.hlsl b/src/shaders/BoxFilterCS.hlsl
+index 87725c0..9dd3a6d 100644
+--- a/src/shaders/BoxFilterCS.hlsl
++++ b/src/shaders/BoxFilterCS.hlsl
+@@ -2,6 +2,8 @@
+ // RT64
+ //
+ 
++#include "WebGPU.hlsli"
++
+ #define BLOCK_SIZE 8
+ 
+ struct BoxFilterCB {
+@@ -12,7 +14,7 @@ struct BoxFilterCB {
+ 
+ [[vk::push_constant]] ConstantBuffer<BoxFilterCB> gConstants : register(b0);
+ Texture2D<float4> gInput : register(t1);
+-RWTexture2D<float4> gOutput : register(u2);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutput : register(u2);
+ 
+ [numthreads(BLOCK_SIZE, BLOCK_SIZE, 1)]
+ void CSMain(uint2 coord : SV_DispatchThreadID) {
+diff --git a/src/shaders/FbReadAnyChangesCS.hlsl b/src/shaders/FbReadAnyChangesCS.hlsl
+index 88f7929..00457ea 100644
+--- a/src/shaders/FbReadAnyChangesCS.hlsl
++++ b/src/shaders/FbReadAnyChangesCS.hlsl
+@@ -4,22 +4,24 @@
+ 
+ #include "Depth.hlsli"
+ #include "FbCommon.hlsli"
++#include "WebGPU.hlsli"
+ 
+ [[vk::push_constant]] ConstantBuffer<FbCommonCB> gConstants : register(b0, space0);
+-Buffer<uint> gNewInput : register(t1, space0);
+-Buffer<uint> gCurInput : register(t2, space0);
++TYPED_BUFFER(uint) gNewInput : register(t1, space0);
++TYPED_BUFFER(uint) gCurInput : register(t2, space0);
+ RWStructuredBuffer<uint> gOutputCount : register(u3, space0);
+-RWTexture2D<float4> gOutputChangeColor : register(u0, space1);
+-RWTexture2D<float> gOutputChangeDepth : register(u1, space1);
+-RWTexture2D<uint> gOutputChangeBoolean : register(u2, space1);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutputChangeColor : register(u0, space1);
++IMAGE_FORMAT("r32f") RWTexture2D<float> gOutputChangeDepth : register(u1, space1);
++IMAGE_FORMAT("r32ui") RWTexture2D<uint> gOutputChangeBoolean : register(u2, space1);
+ 
+ [numthreads(FB_COMMON_WORKGROUP_SIZE, FB_COMMON_WORKGROUP_SIZE, 1)]
+ void CSMain(uint2 coord : SV_DispatchThreadID) {
+     if ((coord.x < gConstants.resolution.x) && (coord.y < gConstants.resolution.y)) {
+         const uint bufferIndex = coord.y * gConstants.resolution.x.x + coord.x;
+         const uint2 pixelCoord = gConstants.offset + coord.xy;
+-        if (gNewInput[bufferIndex] != gCurInput[bufferIndex]) {
+-            const uint swappedUint = EndianSwapUINT(gNewInput[bufferIndex], gConstants.siz);
++        const uint newUint = loadUintSiz(gNewInput, bufferIndex, gConstants.siz);
++        if (newUint != loadUintSiz(gCurInput, bufferIndex, gConstants.siz)) {
++            const uint swappedUint = EndianSwapUINT(newUint, gConstants.siz);
+             if (gConstants.fmt == G_IM_FMT_DEPTH) {
+                 const float newDepth = Depth16ToFloat(swappedUint);
+                 gOutputChangeDepth[pixelCoord] = newDepth;
+diff --git a/src/shaders/FbReadAnyFullCS.hlsl b/src/shaders/FbReadAnyFullCS.hlsl
+index c3b1e88..828e08f 100644
+--- a/src/shaders/FbReadAnyFullCS.hlsl
++++ b/src/shaders/FbReadAnyFullCS.hlsl
+@@ -4,19 +4,20 @@
+ 
+ #include "Depth.hlsli"
+ #include "FbCommon.hlsli"
++#include "WebGPU.hlsli"
+ 
+ [[vk::push_constant]] ConstantBuffer<FbCommonCB> gConstants : register(b0, space0);
+-Buffer<uint> gNewInput : register(t1, space0);
+-RWTexture2D<float4> gOutputChangeColor : register(u0, space1);
+-RWTexture2D<float> gOutputChangeDepth : register(u1, space1);
+-RWTexture2D<uint> gOutputChangeBoolean : register(u2, space1);
++TYPED_BUFFER(uint) gNewInput : register(t1, space0);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutputChangeColor : register(u0, space1);
++IMAGE_FORMAT("r32f") RWTexture2D<float> gOutputChangeDepth : register(u1, space1);
++IMAGE_FORMAT("r32ui") RWTexture2D<uint> gOutputChangeBoolean : register(u2, space1);
+ 
+ [numthreads(FB_COMMON_WORKGROUP_SIZE, FB_COMMON_WORKGROUP_SIZE, 1)]
+ void CSMain(uint2 coord : SV_DispatchThreadID) {
+     if ((coord.x < gConstants.resolution.x) && (coord.y < gConstants.resolution.y)) {
+         uint bufferIndex = coord.y * gConstants.resolution.x + coord.x;
+         uint2 pixelCoord = gConstants.offset + coord.xy;
+-        uint swappedUint = EndianSwapUINT(gNewInput[bufferIndex], gConstants.siz);
++        uint swappedUint = EndianSwapUINT(loadUintSiz(gNewInput, bufferIndex, gConstants.siz), gConstants.siz);
+         if (gConstants.fmt == G_IM_FMT_DEPTH) {
+             const float newDepth = Depth16ToFloat(swappedUint);
+             gOutputChangeDepth[pixelCoord] = newDepth;
+diff --git a/src/shaders/FbReinterpretCS.hlsl b/src/shaders/FbReinterpretCS.hlsl
+index 6ac3969..9d9bd70 100644
+--- a/src/shaders/FbReinterpretCS.hlsl
++++ b/src/shaders/FbReinterpretCS.hlsl
+@@ -9,11 +9,12 @@
+ #include "Depth.hlsli"
+ #include "Random.hlsli"
+ #include "TextureDecoder.hlsli"
++#include "WebGPU.hlsli"
+ 
+ [[vk::push_constant]] ConstantBuffer<FbReinterpretCB> gConstants : register(b0);
+ Texture2D<float4> gInputColor : register(t1);
+ Texture1D<uint> gInputTLUT : register(t2);
+-RWTexture2D<float4> gOutput : register(u3);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutput : register(u3);
+ 
+ float4 RGBA16toCI8(float4 inputColor, uint2 inputCoord, uint2 outputCoord) {
+     // Drop down the input color to its RGBA16 version.
+diff --git a/src/shaders/FbRendererCommon.hlsli b/src/shaders/FbRendererCommon.hlsli
+index bc250a2..225c4f6 100644
+--- a/src/shaders/FbRendererCommon.hlsli
++++ b/src/shaders/FbRendererCommon.hlsli
+@@ -29,6 +29,8 @@ SamplerState gLinearMirrorClampSampler : register(s12, space0);
+ SamplerState gLinearClampWrapSampler : register(s13, space0);
+ SamplerState gLinearClampMirrorSampler : register(s14, space0);
+ SamplerState gLinearClampClampSampler : register(s15, space0);
++// WebGPU loads texels in their place (sampleTextureNative): it guarantees only 16 samplers in a stage.
++#ifndef WEBGPU
+ SamplerState gNearestWrapWrapSampler : register(s16, space0);
+ SamplerState gNearestWrapMirrorSampler : register(s17, space0);
+ SamplerState gNearestWrapClampSampler : register(s18, space0);
+@@ -38,6 +40,7 @@ SamplerState gNearestMirrorClampSampler : register(s21, space0);
+ SamplerState gNearestClampWrapSampler : register(s22, space0);
+ SamplerState gNearestClampMirrorSampler : register(s23, space0);
+ SamplerState gNearestClampClampSampler : register(s24, space0);
++#endif
+ 
+ // Set 1 - RGBA32 texture cache.
+ Texture2D<float4> gTextures[8192] : register(t0, space1);
+diff --git a/src/shaders/FbWriteColorCS.hlsl b/src/shaders/FbWriteColorCS.hlsl
+index cbc9418..a51bc5a 100644
+--- a/src/shaders/FbWriteColorCS.hlsl
++++ b/src/shaders/FbWriteColorCS.hlsl
+@@ -4,9 +4,10 @@
+ 
+ #include "FbCommon.hlsli"
+ #include "Random.hlsli"
++#include "WebGPU.hlsli"
+ 
+ [[vk::push_constant]] ConstantBuffer<FbCommonCB> gConstants : register(b0, space0);
+-RWBuffer<uint> gOutput : register(u1, space0);
++RW_TYPED_BUFFER(uint) gOutput : register(u1, space0);
+ Texture2D<float4> gInput : register(t0, space1);
+ 
+ [numthreads(FB_COMMON_WORKGROUP_SIZE, FB_COMMON_WORKGROUP_SIZE, 1)]
+@@ -19,6 +20,6 @@ void CSMain(uint2 coord : SV_DispatchThreadID) {
+         uint randomSeed = initRand(gConstants.ditherRandomSeed, dstIndex, 16);
+         uint ditherValue = DitherPatternValue(gConstants.ditherPattern, offsetCoord, randomSeed);
+         uint nativeUint = Float4ToUINT(color, gConstants.siz, gConstants.fmt, oddColumn, ditherValue, gConstants.usesHDR);
+-        gOutput[dstIndex] = EndianSwapUINT(nativeUint, gConstants.siz);
++        storeUintSiz(gOutput, dstIndex, EndianSwapUINT(nativeUint, gConstants.siz), gConstants.siz);
+     }
+ }
+\ No newline at end of file
+diff --git a/src/shaders/FbWriteDepthCS.hlsl b/src/shaders/FbWriteDepthCS.hlsl
+index 5ee043f..449e4e3 100644
+--- a/src/shaders/FbWriteDepthCS.hlsl
++++ b/src/shaders/FbWriteDepthCS.hlsl
+@@ -4,9 +4,10 @@
+ 
+ #include "Depth.hlsli"
+ #include "FbCommon.hlsli"
++#include "WebGPU.hlsli"
+ 
+ [[vk::push_constant]] ConstantBuffer<FbCommonCB> gConstants : register(b0, space0);
+-RWBuffer<uint> gOutput : register(u1, space0);
++RW_TYPED_BUFFER(uint) gOutput : register(u1, space0);
+ #ifdef MULTISAMPLING
+ Texture2DMS<float> gInput : register(t0, space1);
+ #else
+@@ -25,6 +26,6 @@ void CSMain(uint2 coord : SV_DispatchThreadID) {
+ #   endif
+         float z = clamp(inputDepth, 0.0f, 1.0f);
+         float dz = 0.0f; // TODO
+-        gOutput[dstIndex] = EndianSwapUINT16(FloatToDepth16(z, dz));
++        storeUint16(gOutput, dstIndex, EndianSwapUINT16(FloatToDepth16(z, dz)));
+     }
+ }
+\ No newline at end of file
+diff --git a/src/shaders/GaussianFilterRGB3x3CS.hlsl b/src/shaders/GaussianFilterRGB3x3CS.hlsl
+index ada22c4..eab8bff 100644
+--- a/src/shaders/GaussianFilterRGB3x3CS.hlsl
++++ b/src/shaders/GaussianFilterRGB3x3CS.hlsl
+@@ -4,6 +4,8 @@
+ 
+ // Based on the shader from the D3D12 Raytracing Real Time Denoised Ambient Occlusion sample by Microsoft.
+ // https://github.com/microsoft/DirectX-Graphics-Samples/blob/master/Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingRealTimeDenoisedAmbientOcclusion/RTAO/Shaders/Denoising/GaussianFilterRG3x3CS.hlsl
++
++#include "WebGPU.hlsli"
+ // Copyright (c) Microsoft. All rights reserved.
+ 
+ #define BLOCK_SIZE 8
+@@ -15,7 +17,7 @@ struct TextureCB {
+ 
+ [[vk::push_constant]] ConstantBuffer<TextureCB> gConstants : register(b0);
+ Texture2D<float4> gInput : register(t1);
+-RWTexture2D<float4> gOutput : register(u2);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> gOutput : register(u2);
+ SamplerState gSampler : register(s3);
+ 
+ [numthreads(BLOCK_SIZE, BLOCK_SIZE, 1)]
+diff --git a/src/shaders/HistogramAverageCS.hlsl b/src/shaders/HistogramAverageCS.hlsl
+index 45f841d..492ad8e 100644
+--- a/src/shaders/HistogramAverageCS.hlsl
++++ b/src/shaders/HistogramAverageCS.hlsl
+@@ -7,6 +7,7 @@
+ 
+ #include "Constants.hlsli"
+ #include "Math.hlsli"
++#include "WebGPU.hlsli"
+ 
+ #define NUM_HISTOGRAM_BINS 64
+ #define HISTOGRAM_AVERAGE_THREADS_PER_DIMENSION 8
+@@ -21,7 +22,7 @@ struct HistogramAverageCB {
+ 
+ [[vk::push_constant]] ConstantBuffer<HistogramAverageCB> gConstants : register(b0);
+ ByteAddressBuffer LuminanceHistogram : register(t1);
+-RWTexture2D<float> LuminanceOutput : register(u2);
++IMAGE_FORMAT("r32f") RWTexture2D<float> LuminanceOutput : register(u2);
+ 
+ groupshared float HistogramShared[NUM_HISTOGRAM_BINS];
+ 
+@@ -43,7 +44,8 @@ void CSMain(uint groupIndex : SV_GroupIndex) {
+         float weightedAverage = (HistogramShared[0].x / max(float(gConstants.pixelCount) - countForThisBin, 1.0)) - 1.0;
+         float weightedAverageLuminance = ((weightedAverage / 62.0) * gConstants.luminanceRange) + gConstants.minLuminance;
+         float luminanceLastFrame = LuminanceOutput[uint2(0, 0)];
+-        if (isinf(luminanceLastFrame) || isnan(luminanceLastFrame)) {
++        // Infinite or NaN: an exponent of all ones. (naga can't translate isinf and isnan to WGSL.)
++        if ((asuint(luminanceLastFrame) & 0x7F800000U) == 0x7F800000U) {
+             luminanceLastFrame = 1.0;
+         }
+ 
+diff --git a/src/shaders/HistogramSetCS.hlsl b/src/shaders/HistogramSetCS.hlsl
+index 98bffd8..5f04a8b 100644
+--- a/src/shaders/HistogramSetCS.hlsl
++++ b/src/shaders/HistogramSetCS.hlsl
+@@ -5,13 +5,14 @@
+ //
+ 
+ #include "Constants.hlsli"
++#include "WebGPU.hlsli"
+ 
+ struct HistogramSetCB {
+     float luminanceValue;
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<HistogramSetCB> gConstants : register(b0);
+-RWTexture2D<float> LuminanceOutput : register(u1);
++IMAGE_FORMAT("r32f") RWTexture2D<float> LuminanceOutput : register(u1);
+ 
+ [numthreads(1, 1, 1)]
+ void CSMain(uint groupIndex : SV_GroupIndex) {
+diff --git a/src/shaders/PostBlendDitherNoisePS.hlsl b/src/shaders/PostBlendDitherNoisePS.hlsl
+index 0efa3d5..2c5b417 100644
+--- a/src/shaders/PostBlendDitherNoisePS.hlsl
++++ b/src/shaders/PostBlendDitherNoisePS.hlsl
+@@ -14,7 +14,7 @@ void PSMain(
+     , in float2 vertexUV : TEXCOORD
+     , in float4 vertexSmoothColor : COLOR0
+     , nointerpolation in float4 vertexFlatColor : COLOR1
+-    , [[vk::location(0)]] [[vk::index(0)]] out float4 resultColor : SV_TARGET0
++    , [[vk::location(0)]] out float4 resultColor : SV_TARGET0
+ )
+ {
+     int2 pixelPosSeed = floor(vertexPosition.xy);
+diff --git a/src/shaders/RSPModifyCS.hlsl b/src/shaders/RSPModifyCS.hlsl
+index 06df1a7..8bf03a1 100644
+--- a/src/shaders/RSPModifyCS.hlsl
++++ b/src/shaders/RSPModifyCS.hlsl
+@@ -2,6 +2,8 @@
+ // RT64
+ //
+ 
++#include "WebGPU.hlsli"
++
+ #define GROUP_SIZE 64
+ 
+ struct RSPModifyCB {
+@@ -9,7 +11,7 @@ struct RSPModifyCB {
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<RSPModifyCB> gConstants : register(b0);
+-Buffer<uint> srcModifyPos : register(t1);
++TYPED_BUFFER(uint) srcModifyPos : register(t1);
+ RWStructuredBuffer<float4> screenPos : register(u2);
+ 
+ [numthreads(GROUP_SIZE, 1, 1)]
+@@ -19,9 +21,9 @@ void CSMain(uint modifyIndex : SV_DispatchThreadID) {
+     }
+ 
+     const uint modifyOffset = modifyIndex * 2;
+-    const bool modifyZ = srcModifyPos[modifyOffset] & 0x1;
+-    const uint vertexIndex = srcModifyPos[modifyOffset] >> 1;
+-    const uint modifyValue = srcModifyPos[modifyOffset + 1];
++    const bool modifyZ = loadUint32(srcModifyPos, modifyOffset) & 0x1;
++    const uint vertexIndex = loadUint32(srcModifyPos, modifyOffset) >> 1;
++    const uint modifyValue = loadUint32(srcModifyPos, modifyOffset + 1);
+     if (modifyZ) {
+         screenPos[vertexIndex].z = modifyValue / 65536.0f;
+     }
+diff --git a/src/shaders/RSPProcessCS.hlsl b/src/shaders/RSPProcessCS.hlsl
+index b02446e..fd8e788 100644
+--- a/src/shaders/RSPProcessCS.hlsl
++++ b/src/shaders/RSPProcessCS.hlsl
+@@ -8,6 +8,7 @@
+ #include "shared/rt64_rsp_viewport.h"
+ 
+ #include "TextureGen.hlsli"
++#include "WebGPU.hlsli"
+ 
+ #define GROUP_SIZE 64
+ 
+@@ -19,18 +20,18 @@ struct RSPProcessCB {
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<RSPProcessCB> gConstants : register(b0);
+-Buffer<float> srcPos : register(t1);
+-Buffer<float> srcVel : register(t2);
+-Buffer<float> srcTc : register(t3);
+-Buffer<float> srcTcVel : register(t4);
+-Buffer<uint> srcCol : register(t5);
+-Buffer<int> srcNorm : register(t6);
+-Buffer<uint> srcViewProjIndices : register(t7);
+-Buffer<uint> srcWorldIndices : register(t8);
+-Buffer<uint> srcFogIndices : register(t9);
+-Buffer<uint> srcLightIndices : register(t10);
+-Buffer<uint> srcLightCounts : register(t11);
+-Buffer<uint> srcLookAtIndices : register(t12);
++TYPED_BUFFER(float) srcPos : register(t1);
++TYPED_BUFFER(float) srcVel : register(t2);
++TYPED_BUFFER(float) srcTc : register(t3);
++TYPED_BUFFER(float) srcTcVel : register(t4);
++TYPED_BUFFER(uint) srcCol : register(t5);
++TYPED_BUFFER(int) srcNorm : register(t6);
++TYPED_BUFFER(uint) srcViewProjIndices : register(t7);
++TYPED_BUFFER(uint) srcWorldIndices : register(t8);
++TYPED_BUFFER(uint) srcFogIndices : register(t9);
++TYPED_BUFFER(uint) srcLightIndices : register(t10);
++TYPED_BUFFER(uint) srcLightCounts : register(t11);
++TYPED_BUFFER(uint) srcLookAtIndices : register(t12);
+ StructuredBuffer<RSPViewport> rspViewportVector : register(t13);
+ StructuredBuffer<RSPFog> rspFogVector : register(t14);
+ StructuredBuffer<RSPLight> rspLightVector : register(t15);
+@@ -48,25 +49,25 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+ 
+     const uint vertexOffsetIndex = gConstants.vertexStart + vertexIndex;
+-    const uint viewProjIndex = srcViewProjIndices[vertexOffsetIndex];
+-    const uint transformIndex = srcWorldIndices[vertexOffsetIndex];
++    const uint viewProjIndex = loadUint16(srcViewProjIndices, vertexOffsetIndex);
++    const uint transformIndex = loadUint16(srcWorldIndices, vertexOffsetIndex);
+     const float4x4 viewProjMat = viewProjTransforms[viewProjIndex];
+     const float4x4 worldMat = worldTransforms[transformIndex];
+     const uint posIndex = vertexOffsetIndex * 3;
+     const uint normColIndex = vertexOffsetIndex * 4;
+     const float3 norm = float3(
+-        srcNorm[normColIndex + 0] / 127.0f,
+-        srcNorm[normColIndex + 1] / 127.0f,
+-        srcNorm[normColIndex + 2] / 127.0f
++        loadInt8(srcNorm, normColIndex + 0) / 127.0f,
++        loadInt8(srcNorm, normColIndex + 1) / 127.0f,
++        loadInt8(srcNorm, normColIndex + 2) / 127.0f
+     );
+ 
+     // NDC Position.
+-    const float3 pos = float3(srcPos[posIndex + 0], srcPos[posIndex + 1], srcPos[posIndex + 2]);
+-    const float3 vel = float3(srcVel[posIndex + 0], srcVel[posIndex + 1], srcVel[posIndex + 2]);
++    const float3 pos = float3(loadFloat(srcPos, posIndex + 0), loadFloat(srcPos, posIndex + 1), loadFloat(srcPos, posIndex + 2));
++    const float3 vel = float3(loadFloat(srcVel, posIndex + 0), loadFloat(srcVel, posIndex + 1), loadFloat(srcVel, posIndex + 2));
+     float4 tfPos = mul(mul(viewProjMat, worldMat), float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
+ 
+     // Fog.
+-    const uint fogIndex = srcFogIndices[vertexOffsetIndex];
++    const uint fogIndex = loadUint16(srcFogIndices, vertexOffsetIndex);
+     float4 vertexColor;
+     if (fogIndex > 0) {
+         const RSPFog rspFog = rspFogVector[fogIndex - 1];
+@@ -74,13 +75,13 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+         vertexColor.a = clamp(fogAlpha / 255.0f, 0.0f, 1.0f);
+     }
+     else {
+-        vertexColor.a = srcCol[normColIndex + 3] / 255.0f;
++        vertexColor.a = loadUint8(srcCol, normColIndex + 3) / 255.0f;
+     }
+ 
+     // Texgen.
+     const uint tcIndex = vertexOffsetIndex * 2;
+-    const uint lookAtIndex = srcLookAtIndices[vertexOffsetIndex];
+-    float2 tc = float2(srcTc[tcIndex + 0], srcTc[tcIndex + 1]);
++    const uint lookAtIndex = loadUint16(srcLookAtIndices, vertexOffsetIndex);
++    float2 tc = float2(loadFloat(srcTc, tcIndex + 0), loadFloat(srcTc, tcIndex + 1));
+     if (lookAtIndex & RSP_LOOKAT_INDEX_ENABLED) {
+         const bool textureGenLinear = lookAtIndex & RSP_LOOKAT_INDEX_LINEAR;
+         const uint extractedIndex = (lookAtIndex >> RSP_LOOKAT_INDEX_SHIFT);
+@@ -88,13 +89,13 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+         tc = computeTextureGen(tc, norm, lookAt, textureGenLinear, worldMat);
+     }
+     else {
+-        float2 tcVel = float2(srcTcVel[tcIndex + 0], srcTcVel[tcIndex + 1]);
++        float2 tcVel = float2(loadFloat(srcTcVel, tcIndex + 0), loadFloat(srcTcVel, tcIndex + 1));
+         tc -= tcVel * (1.0f - gConstants.curFrameWeight);
+     }
+ 
+     // Lighting.
+-    const uint lightIndex = srcLightIndices[vertexOffsetIndex];
+-    const uint lightCount = srcLightCounts[vertexOffsetIndex];
++    const uint lightIndex = loadUint16(srcLightIndices, vertexOffsetIndex);
++    const uint lightCount = loadUint8(srcLightCounts, vertexOffsetIndex);
+     if (lightCount > 0) {
+         const uint ambientIndex = lightIndex + lightCount - 1;
+         float3 resultColor = rspLightVector[ambientIndex].col;
+@@ -112,9 +113,9 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+     else {
+         vertexColor.rgb = float3(
+-            srcCol[normColIndex + 0] / 255.0f, 
+-            srcCol[normColIndex + 1] / 255.0f, 
+-            srcCol[normColIndex + 2] / 255.0f
++            loadUint8(srcCol, normColIndex + 0) / 255.0f, 
++            loadUint8(srcCol, normColIndex + 1) / 255.0f, 
++            loadUint8(srcCol, normColIndex + 2) / 255.0f
+         );
+     }
+     
+diff --git a/src/shaders/RSPWorldCS.hlsl b/src/shaders/RSPWorldCS.hlsl
+index 205dc4c..962ace6 100644
+--- a/src/shaders/RSPWorldCS.hlsl
++++ b/src/shaders/RSPWorldCS.hlsl
+@@ -2,6 +2,8 @@
+ // RT64
+ //
+ 
++#include "WebGPU.hlsli"
++
+ #define GROUP_SIZE 64
+ 
+ struct RSPWorldCB {
+@@ -12,10 +14,10 @@ struct RSPWorldCB {
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<RSPWorldCB> gConstants : register(b0);
+-Buffer<float> srcPos : register(t1);
+-Buffer<float> srcVel : register(t2);
+-Buffer<int> srcNorm : register(t3);
+-Buffer<uint> srcIndices : register(t4);
++TYPED_BUFFER(float) srcPos : register(t1);
++TYPED_BUFFER(float) srcVel : register(t2);
++TYPED_BUFFER(int) srcNorm : register(t3);
++TYPED_BUFFER(uint) srcIndices : register(t4);
+ StructuredBuffer<float4x4> worldMats : register(t5);
+ StructuredBuffer<float4x4> invTWorldMats : register(t6);
+ StructuredBuffer<float4x4> prevWorldMats : register(t7);
+@@ -30,12 +32,12 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+     
+     const uint vertexOffsetIndex = gConstants.vertexStart + vertexIndex;
+-    const uint transformIndex = srcIndices[vertexOffsetIndex];
++    const uint transformIndex = loadUint16(srcIndices, vertexOffsetIndex);
+     const uint posIndex = vertexOffsetIndex * 3;
+     const uint normIndex = vertexOffsetIndex * 4;
+-    const float3 pos = float3(srcPos[posIndex + 0], srcPos[posIndex + 1], srcPos[posIndex + 2]);
+-    const float3 vel = float3(srcVel[posIndex + 0], srcVel[posIndex + 1], srcVel[posIndex + 2]);
+-    const float3 norm = float3(srcNorm[normIndex + 0], srcNorm[normIndex + 1], srcNorm[normIndex + 2]);
++    const float3 pos = float3(loadFloat(srcPos, posIndex + 0), loadFloat(srcPos, posIndex + 1), loadFloat(srcPos, posIndex + 2));
++    const float3 vel = float3(loadFloat(srcVel, posIndex + 0), loadFloat(srcVel, posIndex + 1), loadFloat(srcVel, posIndex + 2));
++    const float3 norm = float3(loadInt8(srcNorm, normIndex + 0), loadInt8(srcNorm, normIndex + 1), loadInt8(srcNorm, normIndex + 2));
+     const float4 worldPos = mul(worldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
+     const float4 worldNorm = all(norm == 0.0f) ? float4(0.0f, 0.0f, 0.0f, 1.0f) : float4(normalize(mul(invTWorldMats[transformIndex], float4(norm, 0.0f)).xyz), 1.0f);
+     const float4 prevWorldPos = mul(prevWorldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.prevFrameWeight), 1.0f));
+diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
+index cea0403..81750dc 100644
+--- a/src/shaders/RasterPS.hlsl
++++ b/src/shaders/RasterPS.hlsl
+@@ -262,6 +262,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+         resultColor.a = resultCvg;
+     }
+     
++#if defined(WEBGPU) && !defined(DUAL_SOURCE_BLENDING)
++    // Without dual-source blending, which WebGPU leaves optional, an alpha-blended draw blends by the alpha of its one
++    // output, so the blend factor takes the coverage's place there.
++    if (alphaBlend) {
++        resultColor.a = resultAlpha.a;
++    }
++#endif
++
+     // Add highlight color to the last step.
+     uint highlightColorUint = instanceRenderIndices[gConstants.renderIndex].highlightColor;
+     if (highlightColorUint > 0) {
+@@ -298,8 +306,12 @@ void PSMain(
+ #if defined(DYNAMIC_RENDER_PARAMS)
+     , bool isFrontFace : SV_IsFrontFace
+ #endif
++#if defined(WEBGPU) && !defined(DUAL_SOURCE_BLENDING)
++    , [[vk::location(0)]] out float4 pixelColor : SV_TARGET0
++#else
+     , [[vk::location(0)]] [[vk::index(0)]] out float4 pixelColor : SV_TARGET0
+     , [[vk::location(0)]] [[vk::index(1)]] out float4 pixelAlpha : SV_TARGET1
++#endif
+ )
+ {
+ #if !defined(DYNAMIC_RENDER_PARAMS)
+@@ -316,6 +328,8 @@ void PSMain(
+     }
+ 
+     pixelColor = resultColor;
++#if !defined(WEBGPU) || defined(DUAL_SOURCE_BLENDING)
+     pixelAlpha = resultAlpha;
++#endif
+ }
+ #endif
+\ No newline at end of file
+diff --git a/src/shaders/RasterVS.hlsl b/src/shaders/RasterVS.hlsl
+index 74b1fa0..ca491f0 100644
+--- a/src/shaders/RasterVS.hlsl
++++ b/src/shaders/RasterVS.hlsl
+@@ -57,8 +57,13 @@ void VSMain(
+     , out float2 oUV : TEXCOORD
+     , out float4 oSmoothColor : COLOR0
+ #if defined(DYNAMIC_RENDER_PARAMS) || defined(VERTEX_FLAT_COLOR)
++#ifdef WEBGPU
++    // WebGPU requires a vertex output's interpolation to match the fragment input's, which RasterPS declares flat.
++    , nointerpolation out float4 oFlatColor : COLOR1
++#else
+     , out float4 oFlatColor : COLOR1
+ #endif
++#endif
+ )
+ {
+ #if !defined(DYNAMIC_RENDER_PARAMS) && !defined(VERTEX_FLAT_COLOR)
+diff --git a/src/shaders/TextureDecodeCS.hlsl b/src/shaders/TextureDecodeCS.hlsl
+index 19e6fad..443da27 100644
+--- a/src/shaders/TextureDecodeCS.hlsl
++++ b/src/shaders/TextureDecodeCS.hlsl
+@@ -3,6 +3,7 @@
+ //
+ 
+ #include "TextureDecoder.hlsli"
++#include "WebGPU.hlsli"
+ 
+ #define GROUP_SIZE 8
+ 
+@@ -18,7 +19,7 @@ struct TextureDecodeCB {
+ 
+ [[vk::push_constant]] ConstantBuffer<TextureDecodeCB> gConstants : register(b0);
+ Texture1D<uint> TMEM : register(t1);
+-RWTexture2D<float4> RGBA32 : register(u2);
++IMAGE_FORMAT("rgba8") RWTexture2D<float4> RGBA32 : register(u2);
+ 
+ [numthreads(GROUP_SIZE, GROUP_SIZE, 1)]
+ void CSMain(uint2 coord : SV_DispatchThreadID) {
+diff --git a/src/shaders/TextureSampler.hlsli b/src/shaders/TextureSampler.hlsli
+index 1ceb2ce..cceed70 100644
+--- a/src/shaders/TextureSampler.hlsli
++++ b/src/shaders/TextureSampler.hlsli
+@@ -114,7 +114,21 @@ static const float LowPrecision = 128.0f;
+ float4 sampleTextureNative(Texture2D texture, uint nativeSampler, int2 texelBaseInt, float2 textureSize) {
+     // Transform to native coordinate. Half pixel offset is required to reach the desired texel.
+     float2 nativeUVCoord = (float2(texelBaseInt) + 0.5f) / textureSize;
+-            
++
++#ifdef WEBGPU
++    // WebGPU guarantees only 16 samplers in a stage, and SampleGrad needs the 9 linear ones. A nearest sample at a
++    // texel's centre is that texel, so load it, with the sampler's address mode applied to the texel coordinate.
++    const int2 size = int2(textureSize);
++    const uint addressModeU = (nativeSampler - 1) / 3;
++    const uint addressModeV = (nativeSampler - 1) % 3;
++    int2 texel = texelBaseInt;
++    int2 period = int2(addressModeU == 1 ? 2 : 1, addressModeV == 1 ? 2 : 1) * size;
++    int2 wrapped = ((texel % period) + period) % period;
++    int2 mirrored = select(wrapped < size, wrapped, period - 1 - wrapped);
++    texel.x = (addressModeU == 2) ? clamp(texel.x, 0, size.x - 1) : mirrored.x;
++    texel.y = (addressModeV == 2) ? clamp(texel.y, 0, size.y - 1) : mirrored.y;
++    return texture.Load(int3(texel, 0));
++#else
+     // Choose the native sampler that was determined to be compatible.
+     switch (nativeSampler) {
+         case NATIVE_SAMPLER_WRAP_WRAP:
+@@ -137,6 +151,7 @@ float4 sampleTextureNative(Texture2D texture, uint nativeSampler, int2 texelBase
+         default:
+             return texture.SampleLevel(gNearestClampClampSampler, nativeUVCoord, 0.0f);
+     }
++#endif
+ }
+ 
+ float4 sampleTextureLevel(const RDPTile rdpTile, const GPUTile gpuTile, bool filterBilerp, bool filterAverage, bool linearFiltering, float2 uvCoord, uint tlut, bool canDecodeTMEM, uint mipLevel, bool usesHDR) {
+diff --git a/src/shaders/WebGPU.hlsli b/src/shaders/WebGPU.hlsli
+new file mode 100644
+index 0000000..f518c53
+--- /dev/null
++++ b/src/shaders/WebGPU.hlsli
+@@ -0,0 +1,94 @@
++//
++// RT64
++//
++
++#pragma once
++
++// What a shader needs to also compile to WGSL for WebGPU (the build defines WEBGPU there). Elsewhere these are the
++// declarations the shaders always had.
++//
++// WebGPU has no texel buffers, so a typed Buffer<T> or RWBuffer<T> becomes a ByteAddressBuffer and is read through
++// the load function for the element width of the formatted view RT64 creates for it (R8, R16 or R32). Writing an 8 or
++// 16-bit element clears and sets its bits in the 32-bit word atomically, since the neighbouring elements in the same
++// word belong to other threads.
++//
++// A storage texture in WGSL has a format, and naga guesses rgba32float for one SPIR-V leaves formatless, so
++// IMAGE_FORMAT gives each RWTexture2D the format of the texture RT64 binds to it on WebGPU.
++
++#ifdef WEBGPU
++#   define TYPED_BUFFER(T) ByteAddressBuffer
++#   define RW_TYPED_BUFFER(T) RWByteAddressBuffer
++#   define IMAGE_FORMAT(F) [[vk::image_format(F)]]
++
++uint loadUint32(ByteAddressBuffer buffer, uint index) {
++    return buffer.Load(index << 2);
++}
++
++float loadFloat(ByteAddressBuffer buffer, uint index) {
++    return asfloat(buffer.Load(index << 2));
++}
++
++uint loadUint16(ByteAddressBuffer buffer, uint index) {
++    return (buffer.Load((index << 1) & ~3U) >> ((index & 1U) << 4)) & 0xFFFFU;
++}
++
++uint loadUint8(ByteAddressBuffer buffer, uint index) {
++    return (buffer.Load(index & ~3U) >> ((index & 3U) << 3)) & 0xFFU;
++}
++
++int loadInt8(ByteAddressBuffer buffer, uint index) {
++    return int(loadUint8(buffer, index) << 24) >> 24;
++}
++
++void storeUint16(RWByteAddressBuffer buffer, uint index, uint value) {
++    const uint address = (index << 1) & ~3U;
++    const uint shift = (index & 1U) << 4;
++    buffer.InterlockedAnd(address, ~(0xFFFFU << shift));
++    buffer.InterlockedOr(address, (value & 0xFFFFU) << shift);
++}
++
++void storeUint8(RWByteAddressBuffer buffer, uint index, uint value) {
++    const uint address = index & ~3U;
++    const uint shift = (index & 3U) << 3;
++    buffer.InterlockedAnd(address, ~(0xFFU << shift));
++    buffer.InterlockedOr(address, (value & 0xFFU) << shift);
++}
++
++// Elements of an N64 image of size siz (G_IM_SIZ_*): 4 and 8-bit images are read and written a byte at a time.
++uint loadUintSiz(ByteAddressBuffer buffer, uint index, uint siz) {
++    if (siz == 3) {
++        return buffer.Load(index << 2);
++    }
++    else if (siz == 2) {
++        return loadUint16(buffer, index);
++    }
++    else {
++        return loadUint8(buffer, index);
++    }
++}
++
++void storeUintSiz(RWByteAddressBuffer buffer, uint index, uint value, uint siz) {
++    if (siz == 3) {
++        buffer.Store(index << 2, value);
++    }
++    else if (siz == 2) {
++        storeUint16(buffer, index, value);
++    }
++    else {
++        storeUint8(buffer, index, value);
++    }
++}
++#else
++#   define TYPED_BUFFER(T) Buffer<T>
++#   define RW_TYPED_BUFFER(T) RWBuffer<T>
++#   define IMAGE_FORMAT(F)
++
++uint loadUint32(Buffer<uint> buffer, uint index) { return buffer[index]; }
++float loadFloat(Buffer<float> buffer, uint index) { return buffer[index]; }
++uint loadUint16(Buffer<uint> buffer, uint index) { return buffer[index]; }
++uint loadUint8(Buffer<uint> buffer, uint index) { return buffer[index]; }
++int loadInt8(Buffer<int> buffer, uint index) { return buffer[index]; }
++uint loadUintSiz(Buffer<uint> buffer, uint index, uint siz) { return buffer[index]; }
++void storeUint16(RWBuffer<uint> buffer, uint index, uint value) { buffer[index] = value; }
++void storeUintSiz(RWBuffer<uint> buffer, uint index, uint value, uint siz) { buffer[index] = value; }
++#endif
+diff --git a/src/shared/rt64_gpu_tile.h b/src/shared/rt64_gpu_tile.h
+index 4548f15..54c634b 100644
+--- a/src/shared/rt64_gpu_tile.h
++++ b/src/shared/rt64_gpu_tile.h
+@@ -55,10 +55,16 @@ namespace interop {
+         float2 tcScale;
+         uint2 texelShift;
+         uint2 texelMask;
+-        uint textureIndex;
++        // textureDimensions starts on 16 bytes and the struct is a multiple of 16 long, so the D3D packing dxc gives a
++        // StructuredBuffer (-fvk-use-dx-layout) is also the layout WGSL gives a storage buffer (vec3 aligns to 16).
+         float3 textureDimensions;
++        uint textureIndex;
+         GPUTileFlags flags;
++        uint pad[3];
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(GPUTile) == 64, "GPUTile must keep the layout WGSL gives it.");
++#endif
+ #ifdef HLSL_CPU
+ };
+ #endif
+\ No newline at end of file
+diff --git a/src/shared/rt64_rdp_params.h b/src/shared/rt64_rdp_params.h
+index 56e0301..8f52990 100644
+--- a/src/shared/rt64_rdp_params.h
++++ b/src/shared/rt64_rdp_params.h
+@@ -16,10 +16,18 @@ namespace interop {
+         float4 envColor;
+         float4 fogColor;
+         float4 blendColor;
++        // Every float3 starts on 16 bytes and the struct is a multiple of 16 long, so the D3D packing dxc gives a
++        // StructuredBuffer (-fvk-use-dx-layout) is also the layout WGSL gives a storage buffer (vec3 aligns to 16).
+         float3 keyCenter;
++        float keyCenterPad;
+         float3 keyScale;
++        float keyScalePad;
+         int convertK[6];
++        int convertKPad[2];
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(RDPParams) == 144, "RDPParams must keep the layout WGSL gives it.");
++#endif
+ #ifdef HLSL_CPU
+ };
+ #endif
+\ No newline at end of file
+diff --git a/src/shared/rt64_rsp_light.h b/src/shared/rt64_rsp_light.h
+index 7bd24e4..0157e4b 100644
+--- a/src/shared/rt64_rsp_light.h
++++ b/src/shared/rt64_rsp_light.h
+@@ -10,13 +10,18 @@
+ namespace interop {
+ #endif
+     struct RSPLight {
++        // Each float3 starts on 16 bytes, so the D3D packing dxc gives a StructuredBuffer (-fvk-use-dx-layout) is also
++        // the layout WGSL gives a storage buffer (vec3 aligns to 16).
+         float3 posDir;
+-        float3 col;
+-        float3 colc;
+         uint kc;
++        float3 col;
+         uint kl;
++        float3 colc;
+         uint kq;
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(RSPLight) == 48, "RSPLight must keep the layout WGSL gives it.");
++#endif
+ 
+ #ifndef HLSL_CPU
+     float computeAttenuation(float distance, const RSPLight light) {
+diff --git a/src/shared/rt64_rsp_lookat.h b/src/shared/rt64_rsp_lookat.h
+index 1b3fbaf..545ce3b 100644
+--- a/src/shared/rt64_rsp_lookat.h
++++ b/src/shared/rt64_rsp_lookat.h
+@@ -14,9 +14,16 @@
+ namespace interop {
+ #endif
+     struct RSPLookAt {
++        // Each float3 starts on 16 bytes and the struct is 32 long, so the D3D packing dxc gives a StructuredBuffer
++        // (-fvk-use-dx-layout) is also the layout WGSL gives a storage buffer (vec3 aligns to 16).
+         float3 x;
++        float xPad;
+         float3 y;
++        float yPad;
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(RSPLookAt) == 32, "RSPLookAt must keep the layout WGSL gives it.");
++#endif
+ #ifdef HLSL_CPU
+ };
+ #endif
+\ No newline at end of file
+diff --git a/src/shared/rt64_rsp_viewport.h b/src/shared/rt64_rsp_viewport.h
+index 94135a7..94a743f 100644
+--- a/src/shared/rt64_rsp_viewport.h
++++ b/src/shared/rt64_rsp_viewport.h
+@@ -12,8 +12,12 @@
+ namespace interop {
+ #endif
+     struct RSPViewport {
++        // Each float3 starts on 16 bytes and the struct is 32 long, so the D3D packing dxc gives a StructuredBuffer
++        // (-fvk-use-dx-layout) is also the layout WGSL gives a storage buffer (vec3 aligns to 16).
+         float3 scale;
++        float scalePad;
+         float3 translate;
++        float translatePad;
+ 
+         static RSPViewport identity() {
+             RSPViewport viewport;
+@@ -63,6 +67,9 @@ namespace interop {
+         }
+ #endif
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(RSPViewport) == 32, "RSPViewport must keep the layout WGSL gives it.");
++#endif
+ #ifdef HLSL_CPU
+ };
+ #endif
+\ No newline at end of file
