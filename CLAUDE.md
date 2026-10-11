@@ -86,6 +86,7 @@ rt64-0003              GPU timings for --gpu-profile, split into the parts of ea
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
 rt64-0006              no Idle thread on Emscripten
+rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 ```
 
 ## This machine
@@ -262,9 +263,11 @@ every plume call it makes):
   breaks WGSL's 16-byte `vec3`), typed `Buffer<T>`s become structured buffers, formatless `RWTexture2D`s get a
   format, RasterPS's 18 samplers come down to 16, and dual-source blending is optional in WebGPU. No geometry
   shaders. The Vulkan path specializes SPIR-V at run time (`respv`); WebGPU does it with WGSL overrides.
-- Texture binding: `gTextures[8192]` and `gTMEM[8192]` are one bindless set bound twice, mixing 2D float and 1D
-  `R8_UINT` textures (`rt64_descriptor_sets.h`, `TextureSampler.hlsli`). The common set (bindings 1-67) also exceeds
-  WebGPU's default per-stage limits.
+- Texture binding is done (rt64-0007; `TextureSampler.hlsli` and `FramebufferRenderer::updateDrawTextureSets` say
+  how): a device without descriptor indexing gets each draw's tile textures in a set of its own and TMEM in one
+  storage buffer, so RasterPS has 10 sampled textures and 6 storage buffers, within WebGPU's defaults, and no binding
+  arrays. Configure with `-DRT64_PER_DRAW_TEXTURES=ON` to run that path on Vulkan here; Rush only samples raw TMEM
+  where a tile is too big to decode, so to test the pool, make `TMEMHasher::requiresRawTMEM` return true for a run.
 - plume gaps RT64 hits: blocking READBACK maps (the framebuffer change count, and `renderToRAM`, on by default),
   texel buffers (formatted views), FillRect's one-rect clears, MSAA sample locations.
 - Then RT64 in the headless build, the title screen on a canvas. Its threads stay as they are: it creates its
