@@ -68,6 +68,101 @@ index 8c6af2b..e793f03 100644
      return (unsigned)__builtin_ctzll(val);
  #elif defined(__ICCARM__)
      return (unsigned)__builtin_ctzll(val);
+diff --git a/src/gui/rt64_file_dialog.cpp b/src/gui/rt64_file_dialog.cpp
+index 72faede..ed1138c 100644
+--- a/src/gui/rt64_file_dialog.cpp
++++ b/src/gui/rt64_file_dialog.cpp
+@@ -6,6 +6,29 @@
+ 
+ #include <cassert>
+ 
++#if defined(__EMSCRIPTEN__)
++namespace RT64 {
++    // A page has no file dialogs of its own: every one is cancelled.
++
++    std::atomic<bool> FileDialog::isOpen = false;
++
++    void FileDialog::initialize() { }
++
++    void FileDialog::finish() { }
++
++    std::filesystem::path FileDialog::getDirectoryPath() {
++        return std::filesystem::path();
++    }
++
++    std::filesystem::path FileDialog::getOpenFilename(const std::vector<FileFilter> &) {
++        return std::filesystem::path();
++    }
++
++    std::filesystem::path FileDialog::getSaveFilename(const std::vector<FileFilter> &) {
++        return std::filesystem::path();
++    }
++};
++#else
+ #include <nfd.h>
+ 
+ namespace RT64 {
+@@ -76,4 +99,5 @@ namespace RT64 {
+         isOpen = false;
+         return path;
+     }
+-};
+\ No newline at end of file
++};
++#endif
+\ No newline at end of file
+diff --git a/src/gui/rt64_inspector.cpp b/src/gui/rt64_inspector.cpp
+index 6ceb97f..dcf0730 100644
+--- a/src/gui/rt64_inspector.cpp
++++ b/src/gui/rt64_inspector.cpp
+@@ -49,6 +49,9 @@ namespace RT64 {
+         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+ 
+         ~VulkanContext() {
++#       if defined(__EMSCRIPTEN__)
++            // A page has only WebGPU, so there is no Vulkan inspector to clean up.
++#       else
+             if (renderPass != VK_NULL_HANDLE) {
+                 vkDestroyRenderPass(device, renderPass, nullptr);
+             }
+@@ -56,6 +59,7 @@ namespace RT64 {
+             if (descriptorPool != VK_NULL_HANDLE) {
+                 vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+             }
++#       endif
+         }
+     };
+ 
+@@ -105,6 +109,10 @@ namespace RT64 {
+             break;
+         }
+         case UserConfiguration::GraphicsAPI::Vulkan: {
++#       if defined(__EMSCRIPTEN__)
++            assert(false && "Unsupported Graphics API.");
++            return;
++#       else
+             VulkanDevice *interfaceDevice = static_cast<VulkanDevice *>(device);
+             const VulkanSwapChain *interfaceSwapChain = static_cast<const VulkanSwapChain *>(swapChain);
+             ImGui_ImplVulkan_LoadFunctions([](const char *functionName, void *vulkanInstance) {
+@@ -133,6 +141,7 @@ namespace RT64 {
+             initInfo.CheckVkResultFn = &checkVulkanResult;
+ 
+             ImGui_ImplVulkan_Init(&initInfo);
++#       endif
+             break;
+         }
+         default:
+@@ -238,8 +247,10 @@ namespace RT64 {
+                 break;
+             }
+             case UserConfiguration::GraphicsAPI::Vulkan: {
++#       if !defined(__EMSCRIPTEN__)
+                 VulkanCommandList *interfaceCommandList = static_cast<VulkanCommandList *>(commandList);
+                 ImGui_ImplVulkan_RenderDrawData(drawData, interfaceCommandList->vk);
++#       endif
+                 break;
+             }
+             default:
 diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
 index 785de27..2eed9c3 100644
 --- a/src/hle/rt64_application.cpp
@@ -144,6 +239,81 @@ index 08f83e5..f1dfa46 100755
  #   endif
      }
  
+diff --git a/src/hle/rt64_framebuffer_changes.cpp b/src/hle/rt64_framebuffer_changes.cpp
+index 1c847ed..683f887 100644
+--- a/src/hle/rt64_framebuffer_changes.cpp
++++ b/src/hle/rt64_framebuffer_changes.cpp
+@@ -76,7 +76,13 @@ namespace RT64 {
+         }
+ 
+         changes.pixelTexture = renderWorker->device->createTexture(RenderTextureDesc::Texture2D(alignedWidth, alignedHeight, 1, pixelFormat, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
+-        changes.booleanTexture = renderWorker->device->createTexture(RenderTextureDesc::Texture2D(alignedWidth, alignedHeight, 1, RenderFormat::R8_UINT, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
++#   if RT64_WGSL
++        // WebGPU has no 8-bit storage textures (the shaders declare it r32ui there).
++        const RenderFormat booleanFormat = RenderFormat::R32_UINT;
++#   else
++        const RenderFormat booleanFormat = RenderFormat::R8_UINT;
++#   endif
++        changes.booleanTexture = renderWorker->device->createTexture(RenderTextureDesc::Texture2D(alignedWidth, alignedHeight, 1, booleanFormat, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
+         changes.drawDescSet = std::make_unique<FramebufferDrawChangesDescriptorSet>(renderWorker->device);
+         changes.drawDescSet->setTexture(changes.drawDescSet->gColor, changes.pixelTexture.get(), RenderTextureLayout::SHADER_READ);
+         changes.drawDescSet->setTexture(changes.drawDescSet->gDepth, changes.pixelTexture.get(), RenderTextureLayout::SHADER_READ);
+diff --git a/src/hle/rt64_state.cpp b/src/hle/rt64_state.cpp
+index 6a8ce36..b8ce36a 100644
+--- a/src/hle/rt64_state.cpp
++++ b/src/hle/rt64_state.cpp
+@@ -1254,6 +1254,10 @@ namespace RT64 {
+                             resizedTargets.emplace(colorDepthPair.second);
+                         }
+                     }
++
++#               if RT64_WGSL
++                    RenderTarget::matchColorToDepthTargets(ext.framebufferGraphicsWorker, colorDepthPairs, resizedTargets);
++#               endif
+                 }
+ 
+                 for (RenderTarget *renderTarget : resizedTargets) {
+diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
+index abed465..de759f3 100644
+--- a/src/hle/rt64_workload_queue.cpp
++++ b/src/hle/rt64_workload_queue.cpp
+@@ -585,6 +585,10 @@ namespace RT64 {
+                 }
+             }
+ 
++#       if RT64_WGSL
++            RenderTarget::matchColorToDepthTargets(ext.workloadGraphicsWorker, colorDepthPairs, resizedTargets);
++#       endif
++
+             for (RenderTarget *renderTarget : resizedTargets) {
+                 renderFramebufferManager->destroyAllWithRenderTarget(renderTarget);
+             }
+diff --git a/src/render/rt64_descriptor_sets.h b/src/render/rt64_descriptor_sets.h
+index 94f5cd0..abdfb00 100644
+--- a/src/render/rt64_descriptor_sets.h
++++ b/src/render/rt64_descriptor_sets.h
+@@ -230,6 +230,13 @@ namespace RT64 {
+             gLinearClampWrapSampler = builder.addImmutableSampler(13, samplerLibrary.linear.clampWrap.get());
+             gLinearClampMirrorSampler = builder.addImmutableSampler(14, samplerLibrary.linear.clampMirror.get());
+             gLinearClampClampSampler = builder.addImmutableSampler(15, samplerLibrary.linear.clampClamp.get());
++#       if RT64_WGSL
++            // WebGPU guarantees 16 samplers in a stage, so its shaders load texels instead of sampling them nearest
++            // (TextureSampler.hlsli) and have no nearest samplers.
++            gNearestWrapWrapSampler = gNearestWrapMirrorSampler = gNearestWrapClampSampler = 0;
++            gNearestMirrorWrapSampler = gNearestMirrorMirrorSampler = gNearestMirrorClampSampler = 0;
++            gNearestClampWrapSampler = gNearestClampMirrorSampler = gNearestClampClampSampler = 0;
++#       else
+             gNearestWrapWrapSampler = builder.addImmutableSampler(16, samplerLibrary.nearest.wrapWrap.get());
+             gNearestWrapMirrorSampler = builder.addImmutableSampler(17, samplerLibrary.nearest.wrapMirror.get());
+             gNearestWrapClampSampler = builder.addImmutableSampler(18, samplerLibrary.nearest.wrapClamp.get());
+@@ -239,6 +246,7 @@ namespace RT64 {
+             gNearestClampWrapSampler = builder.addImmutableSampler(22, samplerLibrary.nearest.clampWrap.get());
+             gNearestClampMirrorSampler = builder.addImmutableSampler(23, samplerLibrary.nearest.clampMirror.get());
+             gNearestClampClampSampler = builder.addImmutableSampler(24, samplerLibrary.nearest.clampClamp.get());
++#       endif
+             RtParams = builder.addConstantBuffer(25);
+             SceneBVH = raytracing ? builder.addAccelerationStructure(26) : 0;
+             posBuffer = builder.addByteAddressBuffer(27);
 diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.cpp
 index bea788b..ba045c7 100644
 --- a/src/render/rt64_raster_shader.cpp
@@ -346,6 +516,51 @@ index bea788b..ba045c7 100644
  #   ifdef __APPLE__
          case RenderShaderFormat::METAL:
              postBlendAddPixelShader = device->createShader(PostBlendDitherNoiseAddPSBlobMSL, std::size(PostBlendDitherNoiseAddPSBlobMSL), "PSMain", shaderFormat);
+diff --git a/src/render/rt64_render_target.cpp b/src/render/rt64_render_target.cpp
+index 81917bc..c0dc75f 100644
+--- a/src/render/rt64_render_target.cpp
++++ b/src/render/rt64_render_target.cpp
+@@ -512,4 +512,14 @@ namespace RT64 {
+     RenderFormat RenderTarget::depthBufferFormat() {
+         return RenderFormat::D32_FLOAT;
+     }
++
++    void RenderTarget::matchColorToDepthTargets(RenderWorker *worker, const std::vector<std::pair<RenderTarget *, RenderTarget *>> &colorDepthPairs, std::unordered_set<RenderTarget *> &resizedTargets) {
++        // A color target that grows loses what was drawn on it, as any target does when it grows. Targets only grow, so
++        // after the first frames this changes nothing.
++        for (auto colorDepthPair : colorDepthPairs) {
++            if (colorDepthPair.first->resize(worker, colorDepthPair.second->width, colorDepthPair.second->height)) {
++                resizedTargets.emplace(colorDepthPair.first);
++            }
++        }
++    }
+ };
+\ No newline at end of file
+diff --git a/src/render/rt64_render_target.h b/src/render/rt64_render_target.h
+index 82d8a36..080a56b 100644
+--- a/src/render/rt64_render_target.h
++++ b/src/render/rt64_render_target.h
+@@ -5,6 +5,8 @@
+ #pragma once
+ 
+ #include <stdint.h>
++#include <unordered_set>
++#include <vector>
+ 
+ #include "common/rt64_common.h"
+ #include "hle/rt64_framebuffer.h"
+@@ -74,5 +76,10 @@ namespace RT64 {
+         static hlslpp::float2 computeFixedResolutionScale(uint32_t nativeWidth, hlslpp::float2 resolutionScale);
+         static RenderFormat colorBufferFormat(bool usesHDR);
+         static RenderFormat depthBufferFormat();
++
++        // WebGPU needs every attachment of a render pass to be the same size, where elsewhere a depth target only has to
++        // be as big as its color target. Grows each pair's color target to its depth target, which must already be at
++        // least as big (the depth target a pair has none of is shared, so it may have grown for a later pair).
++        static void matchColorToDepthTargets(RenderWorker *worker, const std::vector<std::pair<RenderTarget *, RenderTarget *>> &colorDepthPairs, std::unordered_set<RenderTarget *> &resizedTargets);
+     };
+ };
+\ No newline at end of file
 diff --git a/src/render/rt64_shader_library.cpp b/src/render/rt64_shader_library.cpp
 index 80ba92b..cf74ba7 100644
 --- a/src/render/rt64_shader_library.cpp
@@ -843,6 +1058,29 @@ index 80ba92b..cf74ba7 100644
              rspVertexTestZMS.pipeline = device->createComputePipeline(RenderComputePipelineDesc(rspVertexTestZMS.pipelineLayout.get(), computeShaderMS.get(), 1, 1, 1));
          }
  
+diff --git a/src/shared/rt64_raster_params.h b/src/shared/rt64_raster_params.h
+index 0a5c332..20d48e2 100644
+--- a/src/shared/rt64_raster_params.h
++++ b/src/shared/rt64_raster_params.h
+@@ -11,10 +11,16 @@ namespace interop {
+ #endif
+     struct RasterParams {
+         uint renderIndex;
+-        uint3 padding;
++        // Three words, not a uint3: WGSL starts a vec3 on 16 bytes, which would move what follows it.
++        uint padding0;
++        uint padding1;
++        uint padding2;
+         float2 screenScale;
+         float2 screenOffset;
+     };
++#ifdef HLSL_CPU
++    static_assert(sizeof(RasterParams) == 32, "RasterParams must keep the layout WGSL gives it.");
++#endif
+ #ifdef HLSL_CPU
+ };
+ #endif
+\ No newline at end of file
 diff --git a/src/tools/file_to_c/CMakeLists.txt b/src/tools/file_to_c/CMakeLists.txt
 index 22ee3eb..eda9c23 100644
 --- a/src/tools/file_to_c/CMakeLists.txt
