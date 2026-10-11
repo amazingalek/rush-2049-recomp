@@ -322,9 +322,6 @@ What to know before changing it:
   screenshot. A specialized RasterPS (1.15 MB of WGSL) took 1.4-2.1 s per pipeline there, so a WGSL build draws with
   the ubershader only (`rt64_raster_shader_cache.cpp`): 2.3 s for the first pipeline, ~6 ms for each further render
   state. Async pipeline creation (`createRenderPipelineAsync`) would let specialized ones build behind it.
-- When display lists take seconds (as they did with specialized shaders), the boot livelocks at the Midway screen:
-  the spin hook on `func_800FD464` yields only to higher-priority threads, and the ones that clear the task counter
-  it polls are lower. The ubershader keeps lists fast enough not to hit it.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64 reads framebuffers back every frame (render to RAM, on by default, as natively). Through the device thread,

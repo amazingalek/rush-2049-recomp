@@ -160,6 +160,7 @@ target_sources(Rush2049Recompiled PRIVATE
     ${CMAKE_SOURCE_DIR}/src/mod_exports.cpp
     ${CMAKE_SOURCE_DIR}/src/code_loading.cpp
     ${CMAKE_SOURCE_DIR}/src/libultra_extra.cpp
+    ${CMAKE_SOURCE_DIR}/src/spin_yield.cpp
     ${CMAKE_SOURCE_DIR}/src/crash_handler.cpp
     ${CMAKE_SOURCE_DIR}/src/rom_finder.cpp
     ${CMAKE_SOURCE_DIR}/src/controller_pak.cpp

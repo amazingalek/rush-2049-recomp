@@ -35,8 +35,8 @@ void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr);
 /* Before the scheduler starts a task (us.toml); writes it out when --dump-dl is due. */
 void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 
-/* ultramodern (scheduling.cpp): let queued game threads run, waking after at most 1 ms. For spin loops. */
-void yield_self_1ms(uint8_t* rdram);
+/* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
+void rush2049_spin_yield(uint8_t* rdram);
 
 /* Rewind (src/rewind.cpp): around each 60 Hz race tick in thread 5, and in the frame loop (thread 7) after its wait
    for a frame and before it draws a race frame. */
