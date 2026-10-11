@@ -606,6 +606,11 @@ int main(int argc, char** argv) {
 
 #ifndef __EMSCRIPTEN__
     NFD_Init();
+#else
+    // No copy of each frame back into RDRAM on the web: nothing in the game is known to read its frames on the CPU,
+    // and in a browser the copy makes a display list in a race wait ~6 ms for the GPU process (13-14 ms a list with
+    // it, 5-6 ms without, as the desktop build takes with it). The desktop build keeps RT64's default.
+    recompui::renderer::set_render_to_ram(false);
 #endif
 
     recompui::programconfig::set_program_name(rush2049::program_name);
