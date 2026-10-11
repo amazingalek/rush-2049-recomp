@@ -16,7 +16,8 @@ one pad.
 **In a browser: it runs, not yet published.** The same game builds as a web page (see **In a browser** below), with
 the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
 uploaded. It plays the title screen, the menus and races in Chrome at close to 60 frames a second, as the desktop
-build does. It isn't hosted anywhere yet, so for now you build it and serve it yourself. The web support
+build does, and the title and demo races in Firefox. It isn't hosted anywhere yet, so for now you build it and
+serve it yourself. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
 [recomp-web](https://github.com/amazingalek/recomp-web).
 
@@ -111,8 +112,8 @@ otherwise pick it with Load ROM.
 
 ## In a browser
 
-The page needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS (Firefox and Safari
-haven't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
+The page needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
+newer on Windows (Safari hasn't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
 does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
 asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Controller Pak saves are kept in the
 same storage, written back every couple of seconds and when you leave the page. Clearing the site's data in the
