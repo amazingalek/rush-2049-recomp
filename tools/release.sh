@@ -26,9 +26,7 @@ fi
 
 source tools/env.sh
 # The recompiled code is regenerated from the committed symbols, so it matches this commit and not a dev build's.
-(rm -rf RecompiledFuncs && mkdir RecompiledFuncs &&
-    "$N64TC/n64recomp/N64Recomp.exe" us.toml > recomp.log 2>&1) || { tail -5 recomp.log; exit 1; }
-(mkdir -p rsp && rm -f rsp/musyx.cpp && "$N64TC/n64recomp/RSPRecomp.exe" musyx.toml > /dev/null)
+bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
 
 # Its own build directory, so the dev build in build keeps its RelWithDebInfo configuration.
 build=build-release

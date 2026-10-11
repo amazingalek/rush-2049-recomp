@@ -34,13 +34,14 @@ if (( $# > 0 )); then
     # A checkout from before the game moved to the repo's root (2026-10-11) has its submodules under rush2049/.
     [[ -e "$src/${paths[0]}/.git" || ! -e "$src/rush2049/${paths[0]}/.git" ]] || src="$src/rush2049"
     for p in "${paths[@]}"; do
-        [[ -e "$src/$p/.git" ]] || { echo "not checked out in $src: $p" >&2; exit 1; }
         if [[ -e "$p/.git" ]]; then
             echo "already checked out here: $p (run without an argument to make it this worktree's own)" >&2
             exit 1
         fi
     done
     for p in "${paths[@]}"; do
+        # One the other checkout doesn't have is cloned by the update below.
+        [[ -e "$src/$p/.git" ]] || { echo "not checked out in $src, so cloned: $p"; continue; }
         echo "copying $p"
         mkdir -p "$p"
         cp -r "$src/$p/." "$p/"

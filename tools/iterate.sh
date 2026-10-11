@@ -8,12 +8,8 @@ cd "$root"
 source tools/env.sh
 if [ "${2:-}" != "--no-recomp" ]; then
     .venv/Scripts/python -I tools/gen_syms.py > /dev/null || exit 1
-    (rm -rf RecompiledFuncs && mkdir RecompiledFuncs &&
-        "$LOCALAPPDATA/Programs/n64-toolchain/n64recomp/N64Recomp.exe" us.toml > recomp.log 2>&1) ||
-        { tail -5 recomp.log; exit 1; }
+    bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl || exit 1
 fi
-[ -f rsp/musyx.cpp ] || (mkdir -p rsp &&
-    "$LOCALAPPDATA/Programs/n64-toolchain/n64recomp/RSPRecomp.exe" musyx.toml) || exit 1
 ninja -C build Rush2049Recompiled > build/build.log 2>&1 ||
     { grep -E " error|FAILED|undefined" build/build.log | head -20; exit 1; }
 # `timeout` can't stop a native Windows process from MSYS bash, so stop this one by its Windows PID.
