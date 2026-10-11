@@ -82,6 +82,8 @@ plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the 
                        4th set, write-only storage textures but r32, the adapter's limits; webgpu_checks
 rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
+rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
+                       buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -289,10 +291,14 @@ r32uint and r32sint become `write`: core WebGPU can't read and write them.
 **Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
 every plume call it makes):
 
-- Shaders: 35 of 56 convert; RasterPS/VS need `RDPParams` and `GPUTile` padded (dxc's D3D packing of `float3`
-  breaks WGSL's 16-byte `vec3`), typed `Buffer<T>`s become structured buffers, formatless `RWTexture2D`s get a
-  format, RasterPS's 18 samplers come down to 16, and dual-source blending is optional in WebGPU. No geometry
-  shaders. The Vulkan path specializes SPIR-V at run time (`respv`); WebGPU does it with WGSL overrides.
+- Shaders: done in rt64-0008. RT64's CMake builds each one to `<name>.wgsl.c` with Emscripten (`emcmake cmake -S
+  rush2049/lib/rt64 -B <dir> -DRT64_NAGA_EXECUTABLE=<naga.exe>`, then ninja the `*.wgsl.c` targets), plus
+  `*DualSource` RasterPS variants for devices with `dual-source-blending`. Spec constants come out as WGSL
+  `override`s. Left: RSPProcessCS and RSPWorldCS bind 21 and 10 storage buffers against core's 8 (its own card),
+  and the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
+  the boolean texture as `R32_UINT` (8-bit storage textures don't exist), no nearest samplers 16-24 in the
+  descriptor set, and no `rgba16unorm` (HDR) target on the web. A read_write storage texture is only core in r32
+  formats, so plume declares every other one write-only.
 - Texture binding is done (rt64-0007; `TextureSampler.hlsli` and `FramebufferRenderer::updateDrawTextureSets` say
   how): a device without descriptor indexing gets each draw's tile textures in a set of its own and TMEM in one
   storage buffer, so RasterPS has 10 sampled textures and 6 storage buffers, within WebGPU's defaults, and no binding
