@@ -69,7 +69,7 @@ here, and a finding that explains code goes beside that code.
 
 The submodules are amazingalek's forks (The web target): each `web` branch is the upstream commit plus the web
 support, one commit per change, named here by the patch file it was until 2026-10-11, as the notes below still call
-them (the why is in the code they touch):
+them, and a later one by its fork and commit (the why is in the code they touch):
 
 ```
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
@@ -102,6 +102,8 @@ RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT6
 RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
 RecompFrontend-0005    Emscripten: no Mods or Exit in the launcher, no Quit icon or Mods tab in Settings, dropped files
                        aren't mods, rumble through the Gamepad API (SDL2's port has none)
+rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::SwapChainFormat), not bgra8unorm
+RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
 ```
 
 `rush2049/runtime-patches/`, this game's, on top of the forks:
@@ -343,6 +345,12 @@ headless Chrome. recomp-web's CI `wgsl` job builds and checks them on every push
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
 
+- Firefox (157 here, Windows 10) never frees the frames a `bgra8unorm` canvas presents, for any WebGPU page: one
+  canvas-sized texture a frame, ~13 MB at 1080p, until the 8 GB card is full and the page falls below a frame a
+  second. With `rgba8unorm` it holds flat and Chrome is the same either way, so the web swap chain is `rgba8unorm`
+  (rt64 cb78ecb). Firefox headless has no WebGPU adapter: drive a window of its own (`-no-remote -profile <dir>
+  --remote-debugging-port <n>`, moved off the desktop) over WebDriver BiDi, and read a process's video memory from
+  the `\GPU Process Memory(*)\Dedicated Usage` counter.
 - Chrome builds a pipeline made with `createRenderPipeline` on its GPU process's main thread, which does nothing
   else meanwhile: no frame, no readback, no screenshot, and the page's main thread blocks once its queue to the GPU
   process fills. A specialized RasterPS (1.15 MB of WGSL) takes 1.4-2.1 s there, 6-11 s cold beside another build,
