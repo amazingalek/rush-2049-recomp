@@ -46,6 +46,9 @@
 #include "rush2049_game.h"
 #include "crash_handler.h"
 #include "musyx_hle.h"
+#ifdef HEADLESS_RT64
+#include "rt64_web_renderer.h"
+#endif
 
 extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();
@@ -55,23 +58,33 @@ namespace {
     std::atomic<uint64_t> display_lists{0};
     std::atomic<uint64_t> audio_buffers{0};
 
-    class NullRenderer : public ultramodern::renderer::RendererContext {
+    // Counts what the runtime sends the renderer. With RT64 in the build (HEADLESS_RT64), it hands everything on to RT64,
+    // which draws on the page's canvas; without, it returns at once, as if the RDP were infinitely fast.
+    class CountingRenderer : public ultramodern::renderer::RendererContext {
     public:
-        NullRenderer() {
-            setup_result = ultramodern::renderer::SetupResult::Success;
+        CountingRenderer(std::unique_ptr<ultramodern::renderer::RendererContext> drawer) : drawer(std::move(drawer)) {
+            setup_result = this->drawer ? this->drawer->get_setup_result() : ultramodern::renderer::SetupResult::Success;
             chosen_api = ultramodern::renderer::GraphicsApi::Auto;
         }
-        bool valid() override { return true; }
-        bool update_config(const ultramodern::renderer::GraphicsConfig&, const ultramodern::renderer::GraphicsConfig&) override {
-            return true;
+        bool valid() override { return !drawer || drawer->valid(); }
+        bool update_config(const ultramodern::renderer::GraphicsConfig& old_config, const ultramodern::renderer::GraphicsConfig& new_config) override {
+            return !drawer || drawer->update_config(old_config, new_config);
         }
-        void enable_instant_present() override {}
-        void send_dl(const OSTask*) override { display_lists++; }
-        void send_dummy_workload(uint32_t) override {}
-        void update_screen() override { retraces++; }
-        void shutdown() override {}
-        uint32_t get_display_framerate() const override { return 60; }
-        float get_resolution_scale() const override { return 1.0f; }
+        void enable_instant_present() override { if (drawer) drawer->enable_instant_present(); }
+        void send_dl(const OSTask* task) override {
+            display_lists++;
+            if (drawer) drawer->send_dl(task);
+        }
+        void send_dummy_workload(uint32_t fb_address) override { if (drawer) drawer->send_dummy_workload(fb_address); }
+        void update_screen() override {
+            retraces++;
+            if (drawer) drawer->update_screen();
+        }
+        void shutdown() override { if (drawer) drawer->shutdown(); }
+        uint32_t get_display_framerate() const override { return drawer ? drawer->get_display_framerate() : 60; }
+        float get_resolution_scale() const override { return drawer ? drawer->get_resolution_scale() : 1.0f; }
+    private:
+        std::unique_ptr<ultramodern::renderer::RendererContext> drawer;
     };
 
     // Frames queued and not yet "played", in the game's own sample rate.
@@ -263,8 +276,13 @@ int main(int argc, char** argv) {
 
     recomp::rsp::callbacks_t rsp_callbacks{ .get_rsp_microcode = get_rsp_microcode };
     ultramodern::renderer::callbacks_t renderer_callbacks{
-        .create_render_context = [](uint8_t*, ultramodern::renderer::WindowHandle, bool) -> std::unique_ptr<ultramodern::renderer::RendererContext> {
-            return std::make_unique<NullRenderer>();
+        .create_render_context = [](uint8_t* rdram, ultramodern::renderer::WindowHandle, bool) -> std::unique_ptr<ultramodern::renderer::RendererContext> {
+#ifdef HEADLESS_RT64
+            return std::make_unique<CountingRenderer>(recompweb::create_rt64_renderer(rdram));
+#else
+            (void)rdram;
+            return std::make_unique<CountingRenderer>(nullptr);
+#endif
         },
     };
     ultramodern::gfx_callbacks_t gfx_callbacks{

@@ -1,6 +1,7 @@
-# The headless driver (main.cpp): the game, the runtime and the MusyX audio, without RT64, the menus or input. Builds
-# natively and with Emscripten (emcmake cmake -S rush2049/headless -B <dir>); CI doesn't build it. Needs the same
-# generated RecompiledFuncs/ and rsp/musyx.cpp as the game.
+# The headless driver (main.cpp): the game, the runtime and the MusyX audio, without the menus or input, and with RT64
+# only in the Emscripten build (HEADLESS_RT64). Builds natively and with Emscripten (emcmake cmake -S rush2049/headless
+# -B <dir> -DHEADLESS_ROM=<rom.z64>, which an Emscripten build preloads as /rom.z64); CI doesn't build it. Needs the
+# same generated RecompiledFuncs/ and rsp/musyx.cpp as the game.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -21,10 +22,9 @@ endif()
 if (EMSCRIPTEN)
     # Threads are pthreads (SharedArrayBuffer), main() runs on one of them so the browser's thread can wait, and the
     # runtime ends a game thread by throwing.
+    # The rest is the driver's own (below): RT64 builds a tool of its own that runs at build time.
     add_compile_options(-pthread -fwasm-exceptions)
-    add_link_options(-pthread -fwasm-exceptions -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=24 -sEXIT_RUNTIME
-        -sINITIAL_MEMORY=1024MB -sSTACK_SIZE=1MB -sDEFAULT_PTHREAD_STACK_SIZE=1MB -sUSE_SDL=2
-        -sENVIRONMENT=web,worker,node)
+    add_link_options(-pthread -fwasm-exceptions)
     add_compile_options(-sUSE_SDL=2)
 endif()
 
@@ -84,6 +84,27 @@ target_include_directories(Rush2049Headless PRIVATE
 )
 target_compile_options(Rush2049Headless PRIVATE -fno-strict-aliasing)
 target_link_libraries(Rush2049Headless PRIVATE RecompiledFuncs librecomp ultramodern)
+if (EMSCRIPTEN)
+    target_link_options(Rush2049Headless PRIVATE -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=24 -sEXIT_RUNTIME
+        -sINITIAL_MEMORY=1024MB -sSTACK_SIZE=1MB -sDEFAULT_PTHREAD_STACK_SIZE=1MB -sUSE_SDL=2
+        -sENVIRONMENT=web,worker,node "SHELL:--preload-file ${HEADLESS_ROM}@/rom.z64")
+endif()
+
+# With Emscripten, RT64 draws the game on the page's canvas through WebGPU (web/renderer): the build is then a page,
+# Rush2049Headless.html, for a browser, and no longer runs in node. HEADLESS_RT64=OFF keeps the renderer null.
+if (EMSCRIPTEN)
+    option(HEADLESS_RT64 "Draw with RT64 on the page's canvas" ON)
+endif()
+if (HEADLESS_RT64)
+    set(RT64_STATIC TRUE)
+    add_subdirectory(${GAME_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
+    target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
+    add_subdirectory(${GAME_DIR}/../web/renderer ${CMAKE_BINARY_DIR}/web_renderer)
+    target_link_libraries(Rush2049Headless PRIVATE recomp_web_renderer)
+    target_compile_definitions(Rush2049Headless PRIVATE HEADLESS_RT64)
+    set_target_properties(Rush2049Headless PROPERTIES SUFFIX ".html")
+    target_link_options(Rush2049Headless PRIVATE "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/page_arguments.js")
+endif()
 
 if (WIN32)
     include(FetchContent)

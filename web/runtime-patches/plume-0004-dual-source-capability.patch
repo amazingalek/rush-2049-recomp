@@ -1,0 +1,26 @@
+diff --git a/plume_render_interface_types.h b/plume_render_interface_types.h
+index db1c810..a47d1d5 100644
+--- a/plume_render_interface_types.h
++++ b/plume_render_interface_types.h
+@@ -1790,6 +1790,9 @@ namespace plume {
+         // Samplers.
+         bool samplerMirrorClampToEdge = false;
+ 
++        // Blending with a pixel shader's second output (SRC1). Every backend has it but WebGPU, where it's an optional feature.
++        bool dualSourceBlending = true;
++
+         // Present.
+         bool presentWait = false;
+         bool displayTiming = false;
+diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
+index ea06bd4..f42c283 100644
+--- a/plume_webgpu.cpp
++++ b/plume_webgpu.cpp
+@@ -2221,6 +2221,7 @@ namespace plume {
+         float32Filterable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Filterable);
+         float32Blendable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Blendable);
+         depthClipControl = wgpuDeviceHasFeature(device, WGPUFeatureName_DepthClipControl);
++        capabilities.dualSourceBlending = wgpuDeviceHasFeature(device, WGPUFeatureName_DualSourceBlending);
+ 
+         WGPULimits limits = WGPU_LIMITS_INIT;
+         wgpuDeviceGetLimits(device, &limits);
