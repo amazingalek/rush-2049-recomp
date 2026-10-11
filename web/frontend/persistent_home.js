@@ -11,15 +11,20 @@ if (typeof document !== 'undefined') {
     const home = '/home/web_user';
     FS.mkdirTree(home);
     FS.mount(IDBFS, { autoPersist: false }, home);
+    // Writing back only starts once the folder has been read in: a write is a mirror of the folder, so one made
+    // before then (a large ROM takes seconds to read) would delete everything not read in yet.
+    let syncing = true, again = false;
     addRunDependency('persistent-home');
     FS.syncfs(true, (error) => {
       if (error) {
-        console.error('Could not read the saved files from IndexedDB: ' + error);
+        // Never written back then, so what is stored is not replaced with an empty folder.
+        console.error('Could not read the saved files from IndexedDB, so nothing is saved this time: ' + error);
+      } else {
+        syncing = false;
       }
       removeRunDependency('persistent-home');
     });
 
-    let syncing = false, again = false;
     const save = () => {
       if (syncing) {
         again = true;
