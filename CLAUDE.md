@@ -9,8 +9,8 @@ There is no `docs/` folder. Three places, and nothing else:
 
 - `README.md`, for **humans**: what it is, the enhancements and their settings, building, controls, replacement
   music, performance, mods. Plain words, no internals.
-- **Comments beside the code**, for how something works and why: each `rush2049/src/` file's header, the comment on
-  every hook in `rush2049/us.toml`, `tools/rush2049/extract.py` (memory map), `gen_syms.py` (naming),
+- **Comments beside the code**, for how something works and why: each `src/` file's header, the comment on
+  every hook in `us.toml`, `tools/extract.py` (memory map), `gen_syms.py` (naming),
   `find_spins.py` (busy-wait loops). Read the header of the file you are changing first, and update it in the same
   commit as the code.
 - **This file**, for what an agent can't get from either: the rules, this machine, how to run and test, what has
@@ -31,31 +31,32 @@ here, and a finding that explains code goes beside that code.
 ## Rules
 
 - No ROMs, ROM-derived assets or extracted game data in git, CI, PRs or releases (`tools/ci/check_repo.py` checks).
-  The generated hi-res font pack (`rush2049/hires_font/`) and title pack (`rush2049/hires_title/`) are ROM-derived
-  too. `rush2049/assets/title.patch` is allowed (Alek's call): it describes an upscale in terms of the game's own
-  title and is noise without it. Make a new one with `tools/rush2049/title_patch.py`, never commit the picture.
+  The generated hi-res font pack (`hires_font/`) and title pack (`hires_title/`) are ROM-derived
+  too. `assets/title.patch` is allowed (Alek's call): it describes an upscale in terms of the game's own
+  title and is noise without it. Make a new one with `tools/title_patch.py`, never commit the picture.
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
   topic (General, Graphics, Sound, Controls), with a line in the README's list and a row in its settings table.
-- Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
-- The game's changes to the submodules go in `rush2049/runtime-patches/` and are applied by
-  `tools/rush2049/apply_runtime_patches.sh`; never commit them inside `rush2049/lib/`. A new change is a new patch
+- Function and variable names in `syms/` are the mod API: add names, never rename or remove one.
+- The game's changes to the submodules go in `runtime-patches/` and are applied by
+  `tools/apply_runtime_patches.sh`; never commit them inside `lib/`. A new change is a new patch
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
   of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
   code and stops short of linking. Anything that changes behaviour needs a run here before it lands. Pure code
-  (resampler, limiters, the MusyX side mix) has tests in `rush2049/tests/` that CI runs; new pure code gets one.
+  (resampler, limiters, the MusyX side mix) has tests in `tests/` that CI runs; new pure code gets one.
 
 ## How it fits together
 
-- `tools/rush2049/extract.py` writes `roms/rush2049.us.recomp.z64`, the ROM with its deflate-compressed main code
+- `tools/extract.py` writes `roms/rush2049.us.recomp.z64`, the ROM with its deflate-compressed main code
   and two overlays appended inflated at fake ROM addresses; `gen_syms.py` writes the symbol file; N64Recomp
-  (`rush2049/us.toml`) turns it into `rush2049/RecompiledFuncs/` and RSPRecomp (`musyx.toml`) the audio ucode into
-  `rush2049/rsp/musyx.cpp`. Both are generated, not in git, and `iterate.sh` wipes and regenerates
+  (`us.toml`) turns it into `RecompiledFuncs/` and RSPRecomp (`musyx.toml`) the audio ucode into
+  `rsp/musyx.cpp`, with the recompilers built from the pinned submodule (`tools/recompile.sh`). Both are
+  generated, not in git, and `iterate.sh` wipes and regenerates
   `RecompiledFuncs/`, so never edit them.
 - `us.toml` is where game code is changed: `stubs`, `ignored`, instruction patches and `[[patches.hook]]` C text
-  calling into `rush2049/src/`. N64Recomp drops or reimplements libultra **by name**, so an unnamed libultra
+  calling into `src/`. N64Recomp drops or reimplements libultra **by name**, so an unnamed libultra
   function that touches hardware is recompiled and crashes, and a game function wrongly given a libultra name
   silently disappears.
 - The runtime registers code only where the game's inflate routine is hooked (`src/code_loading.cpp`). Game
@@ -63,7 +64,7 @@ here, and a finding that explains code goes beside that code.
   register the game touched.
 - ultramodern runs one game thread at a time and delivers interrupts only inside OS calls, so a loop polling
   memory never ends unless it yields: `find_spins.py --toml` generates those hooks into `us.toml`.
-- Mods: the patches library (`rush2049/patches/`, MIPS C built with the MIPS clang) is what mods import from `"*"`,
+- Mods: the patches library (`patches/`, MIPS C built with the MIPS clang) is what mods import from `"*"`,
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
@@ -106,7 +107,7 @@ rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::
 RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
 ```
 
-`rush2049/runtime-patches/`, this game's, on top of the forks:
+`runtime-patches/`, this game's, on top of the forks:
 
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
@@ -140,29 +141,34 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 
 ```sh
 M=/c/Users/Alek/Documents/Source/n64-recomp
-git -c core.longpaths=true submodule update --init --recursive && bash tools/rush2049/apply_runtime_patches.sh
+git -c core.longpaths=true submodule update --init --recursive && bash tools/apply_runtime_patches.sh
 mkdir -p roms && cp $M/roms/*.z64 roms/
 cmd //c "mklink /J .venv $(cygpath -w $M/.venv)"     # iterate.sh runs .venv/Scripts/python
 mkdir -p ref && cp -r $M/ref/n64sym ref/              # libultra signatures for gen_syms.py
-touch rush2049/portable.txt                          # keep settings, saves and mods in rush2049/
-source tools/env.sh && cmake -S rush2049 -B rush2049/build ...   # the README's configure line, MIPS_CC/MIPS_LD
-bash tools/rush2049/iterate.sh 30
+touch portable.txt                                   # keep settings, saves and mods in the checkout
+source tools/env.sh && bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+cmake -S . -B build ...                              # the README's configure line, MIPS_CC/MIPS_LD
+bash tools/iterate.sh 30
 ```
+
+Until 2026-10-11 the game lived in `rush2049/` (and the tools in `tools/rush2049/`, the symbols in `syms/rush2049/`).
+`copy_submodules.sh` still copies from a checkout like that. To move one over, pull, then `bash tools/copy_submodules.sh .`
+(it finds the submodules in `rush2049/lib/` and keeps their git dirs), rerun the patch script, and delete `rush2049/`.
 
 Copying the submodules from another checkout is faster than cloning them (about 2 minutes): in place of the
 submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. It also moves a
 checkout from before the forks (upstream submodules with the web patches applied) onto them; by hand that is a reset
 of every submodule, `git submodule sync --recursive` and `git submodule update --init --recursive`, the last two twice
-(the nested forks are only known once their parents have moved). Never copy `rush2049/lib/`
+(the nested forks are only known once their parents have moved). Never copy `lib/`
 by hand: its `.git` files point into the other worktree's git dir, so the two share one, and git in either acts on
-the other's files. If `git -C rush2049/lib/rt64 rev-parse --show-toplevel` names another worktree, the same script
+the other's files. If `git -C lib/rt64 rev-parse --show-toplevel` names another worktree, the same script
 with no argument gives this one its own (the header says how). Without `portable.txt` the game reads and writes the user's own settings in
 `%LOCALAPPDATA%\Rush2049Recompiled\`. If `git status` then fails with `bad object HEAD` in a nested submodule, a
 fetch hit the path limit; repair it with
 `git -c core.longpaths=true submodule foreach --recursive 'git config core.longpaths true; git cat-file -e $sha1 || git fetch origin $sha1'`.
 
-**Running the game.** `iterate.sh <secs>` boots with `--boot --stacks` into `rush2049/run.log`, and
-`ninja -C rush2049/build Rush2049Recompiled` is enough after a source change. Other sessions run the game on
+**Running the game.** `iterate.sh <secs>` boots with `--boot --stacks` into `run.log`, and
+`ninja -C build Rush2049Recompiled` is enough after a source change. Other sessions run the game on
 this machine too: stop only the PID you started (`taskkill //PID <pid> //F`), never by image name, and check
 `gpu.mjs` before you measure anything.
 
@@ -174,9 +180,9 @@ there once.
 
 ## Releases
 
-Cut here, never in CI (no ROM, so no link). Bump `version_string` in `rush2049/src/main.cpp`, merge, then from a
-clean checkout of `origin/main` with a full setup: `bash tools/rush2049/release.sh` (`--dry-run` builds and zips
-only). It builds Release in `rush2049/build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
+Cut here, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp`, merge, then from a
+clean checkout of `origin/main` with a full setup: `bash tools/release.sh` (`--dry-run` builds and zips
+only). It builds Release in `build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
 and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
 no ROM.
 
@@ -242,19 +248,19 @@ for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go u
   in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web`), `N64ModernRuntime-web` (its
   `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. Upstream PRs are opened from these branches, and a fork
   goes away once upstream takes its branch.
-- `recomp-web`, the submodule `rush2049/lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
+- `recomp-web`, the submodule `lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
   a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
   page), `tests/` (the plume device thread test, `wgsl_check.mjs`, and `build/`, every library of a page built with
   Emscripten from the forks), and the CI that runs those three. Its README is the guide for another recomp. Source at a
   tag, not a package: the game's own patches go on top of the source, and everything links into one wasm with the
   game's recompiled code, built by the game's emsdk with its flags.
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
-  (CI's checks job compares them), with `rush2049/runtime-patches/` on top.
+  (CI's checks job compares them), with `runtime-patches/` on top.
 
 None of the six has a board: their work is done from cards on this board, and this repo's PR is where it is reviewed
-and lands. Nothing in them names this game, includes from `rush2049/` or needs its ROM; what is the game's stays in
-`rush2049/`: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
-branches of `rush2049/CMakeLists.txt` that make the game a page with `recomp-web/frontend/`. The link options in
+and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
+stays here: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
+branches of `CMakeLists.txt` that make the game a page with `recomp-web/frontend/`. The link options in
 `headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
 runtime's own interfaces, as every recomp does.
 
@@ -263,17 +269,17 @@ of its own in your scratch directory:
 
 1. `git clone -b web https://github.com/amazingalek/<fork>`, make the change behind `__EMSCRIPTEN__`/`__wasm__` (or
    an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
-   game first by applying the same diff to `rush2049/lib/<fork>` (plume is `rush2049/lib/rt64/src/contrib/plume`).
+   game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
    change to plume-web or N64Recomp-web also moves the submodule pointer in rt64-web or N64ModernRuntime-web: commit
    and push that too.
 3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
    for its CI: `gh run list -R amazingalek/recomp-web`.
-4. Here, move the submodules and `rush2049/lib/recomp-web` to those commits, rerun the patch script (rebase a game
+4. Here, move the submodules and `lib/recomp-web` to those commits, rerun the patch script (rebase a game
    patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag recomp-web
    (`v0.<n+1>.0`).
 
-**Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
+**Step 1, done: the CPU side.** `headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
 prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
 emsdk is installed in `%LOCALAPPDATA%\Programs\n64-toolchain\emsdk`. Its `emsdk_env.sh` finds Python 2.7 from Git Bash
@@ -284,7 +290,7 @@ and `<emsdk>/node/24.19.0_64bit/bin` on `PATH` instead. On a machine without it:
 git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
 EMSDK_PYTHON=<python 3> <python 3> emsdk.py install latest && <python 3> emsdk.py activate latest
 source emsdk_env.sh                # then, with RecompiledFuncs/ and rsp/musyx.cpp generated:
-emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
+emcmake cmake -S headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DHEADLESS_ROM=<rom.z64> -DHEADLESS_RT64=OFF     # without RT64, for node
 cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120
 ```
@@ -325,7 +331,7 @@ the Midway screen and the attract races draw as they do natively, with no WebGPU
 
 ```sh
 cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
-emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DHEADLESS_ROM=<rom.z64> \
+emcmake cmake -S headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DHEADLESS_ROM=<rom.z64> \
     -DRT64_NAGA_EXECUTABLE=<naga.exe>      # if naga isn't on PATH
 ninja -C <dir>                  # after changing a shader's .hlsli, delete <dir>/src/shaders/*.wgsl* first
 ```
@@ -335,12 +341,12 @@ Serve `<dir>` over http on localhost with the two cross-origin headers and open
 headless works with `--headless=new --enable-unsafe-webgpu`). The query is the command line (`page_arguments.js`),
 the console gets what stderr would, and you look at it with CDP `Page.captureScreenshot` of that page, never a screen
 copy. plume's own examples and `plume_webgpu_checks.html` (each piece RT64 needs, read back, PASS or FAIL in the
-console) build with `emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -DPLUME_BUILD_EXAMPLES=ON
+console) build with `emcmake cmake -S lib/rt64/src/contrib/plume -B <dir> -DPLUME_BUILD_EXAMPLES=ON
 -DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe -DPLUME_NAGA_EXECUTABLE=<naga.exe>`.
 
 Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga
 `--keep-coordinate-space`), spec constants become `override`s and push constants a uniform buffer at `@group(3)
-@binding(999)`. `node rush2049/lib/recomp-web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in
+@binding(999)`. `node lib/recomp-web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in
 headless Chrome. recomp-web's CI `wgsl` job builds and checks them on every push there, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
@@ -444,7 +450,7 @@ Every specialized run kept 59-60 lists a second. The cost is CPU in Chrome's GPU
 pipelines: ~1.2 cores in the first minute, 0.8 in the second, ~0.4 from the third on as new ones stop arriving,
 against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there).
 
-**Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
+**Step 3, done: the game with its frontend.** The game itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
 HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `recomp-web/frontend/CMakeLists.txt`'s header says
 what each part does; the README says how to build and serve it. Checked in headless Chrome 154: launcher, Load ROM,

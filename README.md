@@ -39,8 +39,6 @@ option has an Original value that runs the game as it shipped.
 - **Enhanced audio**: MusyX music and sound effects are mixed at 44.1 kHz with a better interpolator instead of the
   game's 22.05 kHz mix, loud peaks are softly limited instead of clipping, and playback no longer skips or drops
   out when the audio output falls behind.
-- **Replacement music**: drop your own recordings of the songs into a `music` folder and they play instead of the
-  game's sequenced music (see [Replacement music](#replacement-music)).
 - **Rewind**: hold Rewind (Backspace, or the left stick click) in a single-player race to run the race backwards,
   up to about a minute.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't
@@ -66,7 +64,6 @@ closed. For the game exactly as it shipped, set every Original value:
 | Anti-aliasing | MS Anti-Aliasing | `graphics.json` `msaa_option` | `"MSAA2X"` | `"None"` |
 | Hi-res menu and HUD text | Hi-res Font | `graphics.json` `hires_font` | `"On"` | `"Off"` |
 | Hi-res title screen | Hi-res Title Screen | `graphics.json` `hires_title` | `"On"` | `"Original"` (240p) |
-| Replacement music | Replacement Music | `sound.json` `music_replacement` | `"On"` (only songs that have a file) | `"Off"` |
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |
@@ -88,25 +85,28 @@ revisions are not supported.
 (CMake 4 rejects some of the submodules), Ninja, GNU make, Python 3.11, and for the mod-support library a clang
 built with the MIPS target (MSYS2's is; llvm.org's Windows builds are not) plus `ld.lld`. Make a Python venv at
 `.venv` with `spimdisasm`, `rabbitizer` and `numpy`. On Linux (Ubuntu 24.04, what CI builds; nobody has played on
-it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and configure with
-`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`.
+it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and pass
+`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++` to `tools/recompile.sh` and to the configure.
 
 **Build**, from the repo root in a bash shell:
 
 ```sh
 git submodule update --init --recursive
-bash tools/rush2049/apply_runtime_patches.sh            # our fixes to the submodules
-git clone https://github.com/shygoo/n64sym ref/n64sym    # libultra signatures for the symbol generator (MIT)
-.venv/Scripts/python -I tools/rush2049/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
-cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+bash tools/apply_runtime_patches.sh            # our fixes to the submodules
+.venv/Scripts/python -I tools/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
+bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl   # the game's code as C
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
       -DPATCHES_C_COMPILER=<MIPS clang> -DPATCHES_LD=<ld.lld>
-bash tools/rush2049/iterate.sh 30                        # symbols, recompile, build, and a 30 s test boot
+ninja -C build Rush2049Recompiled
 ```
 
-After that, `ninja -C rush2049/build Rush2049Recompiled` rebuilds.
+`tools/recompile.sh` builds N64Recomp from the submodule the first time, then translates the game. After a change
+to `us.toml` or `syms/`, run it again before `ninja`. To change the symbols, edit `syms/names.toml` and run
+`tools/gen_syms.py`, which needs the libultra signatures:
+`git clone https://github.com/shygoo/n64sym ref/n64sym` (MIT).
 
-**Run** `rush2049/build/Rush2049Recompiled.exe` from `rush2049/`. The launcher finds the ROM by itself if it sits
+**Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
 otherwise pick it with Load ROM.
 
@@ -119,8 +119,8 @@ asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Co
 same storage, written back every couple of seconds and when you leave the page. Clearing the site's data in the
 browser removes all of it.
 
-What differs from the desktop build: no mods and no replacement music (the page has no folder to put them in), no
-MSAA and no HDR output. The launcher has no Mods or Exit: close the tab to leave. The keyboard works as below, and
+What differs from the desktop build: no mods, no MSAA and no HDR output. The launcher has no Mods or Exit: close
+the tab to leave. The keyboard works as below, and
 gamepads the browser knows the layout of (it calls them standard, as it does Xbox and PlayStation pads) use the same
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
@@ -132,7 +132,7 @@ recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downl
 ```sh
 source <emsdk>/emsdk_env.sh
 embuilder build sdl2-mt freetype-legacysjlj      # once
-emcmake cmake -S rush2049 -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
+emcmake cmake -S . -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
 ninja -C <build dir> Rush2049Recompiled
 ```
 
@@ -166,46 +166,6 @@ and press L+R+Z+C-Up+C-Right together (keyboard: E+R+Q+T+H) until CHEATS appears
 Highlight ALL TRACKS, hold L+R and press Z with C-Up+C-Right, C-Down+C-Left, C-Left+C-Up, C-Down+C-Right in turn
 (C buttons first, then Z), then press right to switch it ON.
 
-## Replacement music
-
-The game's music is MusyX sequences played through samples of about 5–11 kHz, so it sounds muffled however it is
-mixed. You can play your own recordings of the songs instead. None ship with the game: bring your own.
-
-- **Where:** a `music` folder next to `Rush2049Recompiled.exe`, or in the settings folder.
-- **Names:** the song's two-digit number or its name, then anything: `06.ogg`, `title.flac`, `03 - Trancey.mp3`.
-  Case doesn't matter. A song with no file keeps the game's own music.
-
-  ```
-  00 bassy      03 trancey     06 title      09 flier
-  01 garage     04 seventies   07 retro      10 battle1
-  02 night      05 credits     08 stunted    11 battle2
-  ```
-  The menu plays 06. A race plays its track's song, or the one picked under AUDIO → MUSIC TRACK.
-- **Formats:** OGG Vorbis, FLAC, MP3 and WAV, any sample rate, mono or stereo.
-- **Looping:** the whole file loops. An OGG with `LOOPSTART` and `LOOPEND` or `LOOPLENGTH` comments (in samples)
-  plays from the start once, then loops between those points.
-- **Settings:** Sound tab → Replacement Music (takes effect from the next song) and Replacement Music Volume
-  (100% by default, up to 200%). The game's own MUSIC VOLUME, pause and fade-outs still apply.
-
-**Where better recordings come from.** Barry Leitch scored both the N64 and Dreamcast ports, and the Dreamcast
-port (also the one in *Midway Arcade Treasures 3*) has other versions of several N64 songs. A rip from a disc you
-own fills these slots:
-
-```
-N64 song      Dreamcast / MAT3 song
-00 bassy      Bassy (Downtown battle)
-01 garage     Garage (Mission)
-02 night      Night (Metro), or try Wingey
-03 trancey    Trancey (Warehouse stunt)
-06 title      Internet (web browser screen)
-08 stunted    Stunted (The Rim stunt)
-09 flier      Flier (Disco stunt)
-```
-
-They are arrangements of the same compositions, so expect differences in length and instrumentation. Seventies,
-Credits, Retro and the battle clips exist only on the N64. Any other song works too, and no official soundtrack
-album is known.
-
 ## Performance
 
 The game's own code costs next to nothing; the work is RT64 turning display lists into GPU work, and it holds
@@ -234,46 +194,47 @@ window, which costs more the bigger the window is. So on a weak GPU a smaller wi
 N64Recomp mods (`.nrm`) are **supported but untested**: an example mod builds in CI on every change, but no real
 mod has been played with yet, so expect rough edges.
 
-The game loads mods from the `mods` folder in its settings folder (`rush2049/mods/` when run from `rush2049/` with
-a `portable.txt`), enables them when found, and the launcher's mod menu turns them on and off. The mod game id is
+The game loads mods from the `mods` folder in its settings folder (`mods/` when run from the repo's
+root with a `portable.txt`), enables them when found, and the launcher's mod menu turns them on and off. The mod game id is
 `rush2049`. A mod can:
 
 - **hook any game function** with `RECOMP_HOOK("name")` (on entry, with the same arguments) or
   `RECOMP_HOOK_RETURN("name")` (just before it returns), in the boot code, the main code and both overlays. Names
-  come from `syms/rush2049/rush2049.us.syms.toml`;
+  come from `syms/rush2049.us.syms.toml`;
 - **call game functions and read or write game variables** by name, variables from
-  `syms/rush2049/rush2049.us.datasyms.toml` (`extern s32 current_song;`), or anything by its address;
-- **use what the game exports** (import from `"*"`, declared in `rush2049/mod_template/include/rush2049_api.h`):
+  `syms/rush2049.us.datasyms.toml` (`extern s32 current_song;`), or anything by its address;
+- **use what the game exports** (import from `"*"`, declared in `mod_template/include/rush2049_api.h`):
   `recomp_printf`, the window resolution and aspect ratio, the game frame rate, `recomp_alloc`/`recomp_free`, mod
   options and the runtime's config, hook and UI APIs.
 
 `RECOMP_PATCH` replaces a function outright, but with no decompilation of this game that means writing the whole
 function in C, so hooks are the practical tool. Names are the API: functions we have worked out
-(`syms/rush2049/names.toml`) keep their names for good, and everything else is `func_<address>`
+(`syms/names.toml`) keep their names for good, and everything else is `func_<address>`
 (`ovl1_func_`/`ovl2_func_` in the overlays).
 
-**Writing one:** copy `rush2049/mod_template/`, a working mod that hooks `boot_main` and `hud_draw_race_timer` and
+**Writing one:** copy `mod_template/`, a working mod that hooks `boot_main` and `hud_draw_race_timer` and
 prints to the console. With a MIPS clang (see the toolchain above):
 
 ```sh
-ninja -C rush2049/build RecompModTool             # the runtime's pinned N64Recomp, so the mod format matches
-make -C rush2049/mod_template CC=<MIPS clang> LD=<ld.lld>
-cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes build/rush2049_hello_mod.nrm
+ninja -C build RecompModTool             # the runtime's pinned N64Recomp, so the mod format matches
+make -C mod_template CC=<MIPS clang> LD=<ld.lld>
+cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush2049_hello_mod.nrm
 ```
 
 `mod.toml`'s `minimum_recomp_version` is checked against the app version (`version_string` in
-`rush2049/src/main.cpp`).
+`src/main.cpp`).
 
 ## Repo layout
 
-- `rush2049/`: the recomp itself: runtime glue and enhancements (`src/`), the patches library mods build against
-  (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
-  `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
-  build without the frontend (`headless/`): the browser test page, or with no graphics at all.
-- `rush2049/lib/`: RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a `web`
-  branch, and `recomp-web` is what turns a recomp into a page; see
-  [recomp-web](https://github.com/amazingalek/recomp-web).
-- `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
+- `src/`, `include/`: runtime glue and enhancements. `tests/`: tests of the pure code, which CI runs.
+- `us.toml`, `patches.toml`, `musyx.toml`: the N64Recomp and RSPRecomp configs, with every hook into the game.
+- `patches/`: the patches library mods build against; `mod_template/`: the example mod.
+- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a
+  `web` branch, and `recomp-web` is what turns a recomp into a page; see
+  [recomp-web](https://github.com/amazingalek/recomp-web). `runtime-patches/`: this game's fixes on top of them.
+- `headless/`: a build without the frontend: the browser test page, or with no graphics at all.
+- `assets/`: the menus' fonts, icons and stylesheet, and the hi-res title's patch, shipped beside the executable.
+- `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
 
@@ -290,4 +251,4 @@ Built on [N64Recomp](https://github.com/N64Recomp/N64Recomp), [N64ModernRuntime]
 Dario and the N64Recomp contributors; function signatures from [n64sym](https://github.com/shygoo/n64sym); MusyX
 audio through mupen64plus-rsp-hle's HLE (GPL-2.0-or-later); the title screen upscaled with
 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN). *San Francisco Rush 2049* belongs to its rights holders; this
-project ships none of it. The recomp in `rush2049/` is GPLv3, see [rush2049/COPYING](rush2049/COPYING).
+project ships none of it. This project is GPLv3, see [COPYING](COPYING).

@@ -1,0 +1,239 @@
+# N64Recomp config for San Francisco Rush 2049 (USA, NRUE).
+# Run tools/extract.py and tools/gen_syms.py first.
+
+[input]
+entrypoint = 0x80000400
+# Paths are relative to this file.
+output_func_path = "RecompiledFuncs"
+symbols_file_path = "syms/rush2049.us.syms.toml"
+rom_file_path = "roms/rush2049.us.recomp.z64"
+recomp_include = "#include \"recomp.h\"\n#include \"rush2049_hooks.h\""
+
+[patches]
+# The speech decoder's hand-written asm (gen_syms.py ASM_ISLANDS): GSM 06.10 stages, translated to C in
+# src/gsm_decoder.cpp. Calls to them stay; their bodies aren't generated.
+ignored = ["func_800277D0", "func_800278C4", "func_80027B44"]
+
+stubs = [
+    # cache 0x0D loop over a buffer; caches don't exist on PC.
+    "dcache_create_dirty_8002C5E0",
+    # Only called by osMotorInit, which the runtime reimplements; calls __osContAddressCrc, which it doesn't.
+    "__osMakeMotorData",
+]
+
+# Frame rate. The game swaps a finished frame only when at least 2 retraces have passed since the last swap
+# (sltiu $at, $t3, 2 on the retrace count delta in $t3), once when the RDP finishes (func_80000C54) and again
+# on retrace for a swap left pending (func_80000880). That is the whole 30 fps cap: the frame kick follows the
+# swap, and game logic scales with measured time (a race clock tracks wall time at either rate). At the 60 fps
+# setting the hook turns a delta of 1 into 2, so a frame swaps on the next retrace; a delta of 0 still waits.
+[[patches.hook]]
+func = "sched_on_rdp_done"
+before_vram = 0x80000CFC
+text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
+
+[[patches.hook]]
+func = "sched_on_retrace"
+before_vram = 0x800008C8
+text = "    ctx->r11 = rush2049_frame_pace(ctx->r11);"
+
+# The same count gates the next graphics task (func_80000BA4, $t2): while a swap is pending it may start only
+# once 2 retraces have passed since the last swap. Paced the same way, a frame can be drawn while the previous one
+# waits for its retrace, rather than after it.
+[[patches.hook]]
+func = "func_80000BA4"
+before_vram = 0x80000C14
+text = "    ctx->r10 = rush2049_frame_pace(ctx->r10);"
+
+# Input lag. The main thread queues a frame's graphics task (func_800EDACC, osSendMesg to the scheduler's command
+# queue at 0x8002E960) about half a millisecond after the frame starts, but the scheduler reads that queue only on a
+# retrace or on its 0x29E message, which the audio thread sends and the main thread doesn't. Then, as below, it
+# holds a graphics task while the VI's next framebuffer differs from the current one, a swap that lands on the next
+# retrace too. So every frame waited about one retrace before it was drawn. With the Input Lag option at Reduced
+# the first hook sends the 0x29E and the second skips the framebuffer check (src/frame_rate.cpp).
+[[patches.hook]]
+func = "func_800EDACC"
+before_vram = 0x800EDCBC
+text = "    rush2049_task_queued(rdram);"
+
+[[patches.hook]]
+func = "func_80000BA4"
+before_vram = 0x80000BE0
+text = "    ctx->r15 = rush2049_task_framebuffer(ctx->r15, ctx->r16);"
+
+# Above 60 fps (Match Framerate) the VI runs at the frame rate and the swap above happens on every retrace. The
+# retrace handler then sends each retrace to its clients (list at +0x260, loaded into $t8 just before this
+# branch). The hook sends them itself and empties $t8: every retrace to the main thread, which starts a frame on
+# one, and 60 a second to the others (src/config.cpp).
+[[patches.hook]]
+func = "sched_on_retrace"
+before_vram = 0x8000090C
+text = "    rush2049_retrace_clients(rdram, ctx);"
+
+# Widescreen race HUD (src/widescreen.cpp): func_80087110(x0, y0, x1, y1, ...) draws every texture rectangle and
+# returns through 0x800877FC; func_8010761C draws the race timer, so it marks a race in progress.
+[[patches.hook]]
+func = "draw_tex_rect"
+before_vram = 0x80087110
+text = "    rush2049_hud_rect_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "draw_tex_rect"
+before_vram = 0x800877FC
+text = "    rush2049_hud_rect_end(rdram);"
+
+[[patches.hook]]
+func = "hud_draw_race_timer"
+before_vram = 0x8010761C
+text = "    rush2049_hud_race_mark(rdram);"
+
+# The music thread's tick on each retrace (func_80098FB8, before the stack frame) returns at once while another retrace is already
+# queued for the thread, so a backlog on a busy PC can't run the sound-command pool dry (src/music_thread.cpp).
+[[patches.hook]]
+func = "func_80098FB8"
+before_vram = 0x80098FB8
+text = "    if (rush2049_music_tick_behind(rdram)) return;"
+
+# The scheduler is about to start the task at sctask+0x10 ($sp+0x24 holds sctask): turn on RT64's extended GBI
+# for a graphics task (src/widescreen.cpp), upscale new font textures (src/hires_font.cpp), and write it out for
+# --dump-dl (src/dl_dump.cpp).
+[[patches.hook]]
+func = "sched_start_task"
+before_vram = 0x80000EE0
+text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_hires_font_scan(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10); rush2049_dump_task(rdram, (uint32_t)MEM_W(0x24, ctx->r29) + 0x10);"
+
+# The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
+# and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
+# (src/code_loading.cpp maps the original ROM address to the extracted section).
+[[patches.hook]]
+func = "inflate_rom"
+before_vram = 0x80006814
+text = "    rush2049_inflate_begin(rdram, ctx);"
+
+# After osInvalICache over the output; dst is still in the caller's arg slot at 0x4C($sp).
+[[patches.hook]]
+func = "inflate_rom"
+before_vram = 0x80006954
+text = "    rush2049_inflate_end(rdram, ctx);"
+
+# lw $zero, 0x0($t8) (from 0x8002EB94): a load with no effect that N64Recomp emits as "0 = MEM_W(...)".
+[[patches.instruction]]
+func = "func_800CADA4"
+vram = 0x800CB408
+value = 0x00000000
+
+# Boot main reads 16 words from cart address 0xFFB000 (past the end of the 12 MiB ROM) into a stack buffer it
+# never uses. Skip the read.
+[[patches.instruction]]
+func = "boot_main"
+vram = 0x80002124
+value = 0x00000000
+
+# Busy-wait loops: a bnel/beql to itself that reloads a value in its delay slot until another thread changes it
+# (mostly the outstanding graphics-task counter, s16 at 0x8002EB70). ultramodern runs one game thread at a time
+# and only delivers RSP/RDP/VI events inside OS calls, so these never end on their own. Each yields while its
+# condition holds, to any ready thread, lower priorities too (src/spin_yield.cpp says why). Generated by
+# tools/find_spins.py --toml; rerun it after symbol changes.
+[[patches.hook]]
+func = "func_80011848"
+before_vram = 0x80011868
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_80014140"
+before_vram = 0x8001416C
+text = "    if ((int32_t)ctx->r24 > 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_80096130"
+before_vram = 0x80096184
+text = "    if (ctx->r14 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800A4B6C"
+before_vram = 0x800A4BA0
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800A4B6C"
+before_vram = 0x800A4BC8
+text = "    if (ctx->r25 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800A501C"
+before_vram = 0x800A5094
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800A5BB8"
+before_vram = 0x800A5C2C
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800E7038"
+before_vram = 0x800E7114
+text = "    if (ctx->r2 == ctx->r25) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD500
+text = "    if (ctx->r24 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "ovl1_func_8038B388"
+before_vram = 0x8038B3DC
+text = "    if (ctx->r24 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "ovl1_func_8038B3EC"
+before_vram = 0x8038B4E8
+text = "    if (ctx->r25 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "ovl1_func_8038B940"
+before_vram = 0x8038BA20
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+
+[[patches.hook]]
+func = "ovl1_func_8038B940"
+before_vram = 0x8038BA84
+text = "    if (ctx->r15 != 0) rush2049_spin_yield(rdram);"
+# ---- end of generated busy-wait hooks ----
+
+# Audio thread (func_8008AA40) spin-waits for the scheduler's current task (sc+0x274) to change from the one at
+# 0x8002AFA0 before running its audio frame. The scheduler only advances on an RDP-done message, which ultramodern
+# delivers inside OS calls, so the spin would hang the game at boot when it catches a graphics task in flight.
+[[patches.hook]]
+func = "audio_thread_main"
+before_vram = 0x8008AB44
+text = "    if (MEM_W(0x274, ctx->r16) == ctx->r2) rush2049_spin_yield(rdram);"
+
+# DEBUG: count scheduler messages (0x29A retrace, 0x29B RSP done, 0x29C RDP done, 0x29E audio task queued).
+[[patches.hook]]
+func = "func_8000063C"
+before_vram = 0x80000664
+text = "    rush2049_probe_sched_msg(rdram, MEM_W(0x24, ctx->r29));"
+
+# Rewind (src/rewind.cpp). Thread 5 (func_800E7808) steps the race 60 times a second: it waits for a retrace, reads
+# the controllers and calls func_800E6AF8, the tick. Rewind saves and restores the race in thread 7 instead, and the
+# hooks around the tick tell it whether thread 5 was stopped halfway through one.
+[[patches.hook]]
+func = "func_800E7808"
+before_vram = 0x800E78D8
+text = "    rush2049_rewind_tick_begin(rdram);"
+
+[[patches.hook]]
+func = "func_800E7808"
+before_vram = 0x800E78E0
+text = "    rush2049_rewind_tick_end(rdram);"
+
+# The frame loop (func_800FD464, thread 7): after its wait for each frame, and before it draws a race frame. There the
+# race is between frames, so that is where it is saved, and stepped back while Rewind is held.
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD524
+text = "    rush2049_rewind_frame_begin(rdram);"
+
+[[patches.hook]]
+func = "func_800FD464"
+before_vram = 0x800FD6A4
+text = "    rush2049_rewind_frame_draw(rdram);"

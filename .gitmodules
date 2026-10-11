@@ -1,16 +1,16 @@
-[submodule "rush2049/lib/N64ModernRuntime"]
-	path = rush2049/lib/N64ModernRuntime
+[submodule "lib/N64ModernRuntime"]
+	path = lib/N64ModernRuntime
 	url = https://github.com/amazingalek/N64ModernRuntime-web
 	branch = web
-[submodule "rush2049/lib/rt64"]
-	path = rush2049/lib/rt64
+[submodule "lib/rt64"]
+	path = lib/rt64
 	url = https://github.com/amazingalek/rt64-web
 	branch = web
-[submodule "rush2049/lib/RecompFrontend"]
-	path = rush2049/lib/RecompFrontend
+[submodule "lib/RecompFrontend"]
+	path = lib/RecompFrontend
 	url = https://github.com/amazingalek/RecompFrontend-web
 	branch = web
-[submodule "rush2049/lib/recomp-web"]
-	path = rush2049/lib/recomp-web
+[submodule "lib/recomp-web"]
+	path = lib/recomp-web
 	url = https://github.com/amazingalek/recomp-web
 	branch = main
