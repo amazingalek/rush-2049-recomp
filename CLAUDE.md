@@ -78,6 +78,9 @@ plume-0001             WebGPU backend (plume_webgpu.*, in rt64/src/contrib/plume
                        the triangle and cube examples build for the browser
 plume-0002             plume_device_thread: any backend run on one thread for every caller (WebGPU's device is one
                        thread's); built with -pthread, the examples draw from a thread of their own
+plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the device thread polls), texel buffers,
+                       clears of rectangles, presents paced to the display, push constants sharing group 3 with a
+                       4th set, write-only storage textures but r32, the adapter's limits; webgpu_checks
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -239,14 +242,17 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 **Step 2, started: drawing.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui draw
 through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks). plume's own triangle and cube
 examples (vertex buffer, cube texture upload, sampler, descriptor set, push constants) draw in headless Chrome 154
-with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. To build and look at them:
+with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. `plume-0003` adds what RT64 needs
+beyond them, and `plume_webgpu_checks.html` tests each piece by reading the results back, printing PASS or FAIL per
+check to the console (8 of 8 with ASYNCIFY, and with `-pthread` through the device thread). To build and look at
+them:
 
 ```sh
 cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
 emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DPLUME_BUILD_EXAMPLES=ON -DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe \
     -DPLUME_NAGA_EXECUTABLE=<naga.exe>
-cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html
+cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html, plume_webgpu_checks.html
 ```
 
 With `-DCMAKE_CXX_FLAGS=-pthread -DCMAKE_C_FLAGS=-pthread` the examples draw from a thread of their own through
@@ -254,7 +260,8 @@ plume-0002, and the page needs the two cross-origin headers above. Serve `<dir>/
 it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`; headless works with `--headless=new
 --enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that page, never a screen copy. Shaders go
 HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga `--keep-coordinate-space`),
-and push constants become a uniform buffer at `@group(3) @binding(0)`.
+and push constants become a uniform buffer at `@group(3) @binding(999)`. Storage textures in any format but r32float,
+r32uint and r32sint become `write`: core WebGPU can't read and write them.
 
 **Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
 every plume call it makes):
@@ -268,8 +275,10 @@ every plume call it makes):
   storage buffer, so RasterPS has 10 sampled textures and 6 storage buffers, within WebGPU's defaults, and no binding
   arrays. Configure with `-DRT64_PER_DRAW_TEXTURES=ON` to run that path on Vulkan here; Rush only samples raw TMEM
   where a tile is too big to decode, so to test the pool, make `TMEMHasher::requiresRawTMEM` return true for a run.
-- plume gaps RT64 hits: blocking READBACK maps (the framebuffer change count, and `renderToRAM`, on by default),
-  texel buffers (formatted views), FillRect's one-rect clears, MSAA sample locations.
+- Waiting: RT64 reads READBACK buffers right after a submission (the framebuffer change count, and `renderToRAM`,
+  on by default). Through the device thread, `map()` polls `isMapReady()` from the calling thread while the main
+  thread goes back to the browser, which delivers the data (plume-0003). A build without threads waits in place,
+  which takes `-sJSPI` (or ASYNCIFY, which bloats it); without either, reads come a submission late.
 - Then RT64 in the headless build, the title screen on a canvas. Its threads stay as they are: it creates its
   interface with `CreateDeviceThreadInterface(CreateEmscriptenDeviceThread(emscripten_main_runtime_thread_id()), ...)`
   (plume-0002, whose header says what runs where) and the program runs in pthreads (`-sPROXY_TO_PTHREAD`), so the

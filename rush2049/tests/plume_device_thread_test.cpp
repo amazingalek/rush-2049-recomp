@@ -2,7 +2,8 @@
 // that logs every call: every call reaches the backend on the device thread, in the order it was made; command lists
 // recorded on several threads at once replay their commands with the backend's objects and with copies of what their
 // arguments pointed at; push constants of size 0 take the size of their range; a swap chain's present() copies the
-// texture drawn into the backend's swap chain texture; and every backend object is destroyed on the device thread.
+// texture drawn into the backend's swap chain texture; map() of a buffer whose data isn't there yet waits for it on
+// the calling side (plume-0003); and every backend object is destroyed on the device thread.
 
 #include <atomic>
 #include <condition_variable>
@@ -107,6 +108,9 @@ struct Named {
 int counter = 0;
 std::string nextName(const char *kind) { return std::string(kind) + std::to_string(counter++); }
 
+// How many times the next buffer created answers isMapReady() with false.
+int nextBufferNotReady = 0;
+
 template<typename T>
 std::string nameOfT(const T *object) {
     return (object != nullptr) ? dynamic_cast<const Named *>(object)->name : "null";
@@ -114,7 +118,9 @@ std::string nameOfT(const T *object) {
 
 struct MockBuffer : RenderBuffer, Named {
     std::vector<uint8_t> memory = std::vector<uint8_t>(256, 0);
+    int notReady = nextBufferNotReady;
     MockBuffer() : Named(nextName("buffer")) { }
+    bool isMapReady() override { call("isMapReady " + name); return (notReady == 0) || (notReady-- == 0); }
     void *map(uint32_t, const RenderRange *) override { call("map " + name); return memory.data(); }
     void unmap(uint32_t, const RenderRange *range) override { call("unmap " + name + " " + std::to_string(range ? range->end : 0) + " " + std::to_string(memory[0])); }
     std::unique_ptr<RenderBufferFormattedView> createBufferFormattedView(RenderFormat) override { call("createBufferFormattedView"); return nullptr; }
@@ -593,6 +599,17 @@ int main() {
 
     check(sameTexture, "the texture a frame is drawn into is the one present() copies");
     check(eventsStartingWith("execute").size() >= 3 && contains("execute signal semaphore" + std::to_string(counter - 3) + " waits 0 fence null"), "acquireTexture() signals the caller's semaphore");
+
+    // A buffer whose data arrives late: map() asks isMapReady() from the calling side until it's true, then maps.
+    nextBufferNotReady = 3;
+    std::unique_ptr<RenderBuffer> readback = device->createBuffer(RenderBufferDesc::ReadbackBuffer(256));
+    nextBufferNotReady = 0;
+    readback->setName("readback");
+    const void *mapped = readback->map();
+    deviceThread->runSync([]() {});
+    std::vector<std::string> readbackEvents = eventsStartingWith("isMapReady readback");
+    check((mapped != nullptr) && (readbackEvents.size() == 4) && (eventsStartingWith("map readback").size() == 1), "map() waits on the calling side until isMapReady(), then maps once");
+    readback.reset();
 
     // Everything is destroyed on the device thread, the interface last.
     presentFence.reset(); drawn.reset(); acquired.reset(); presentList.reset(); swapChain.reset();
