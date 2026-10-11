@@ -79,8 +79,8 @@ jobs:
           persist-credentials: false
       - name: Submodules
         run: |
-          git submodule update --init --depth 1 rush2049/lib/rt64
-          git -C rush2049/lib/rt64 submodule update --init --recursive --depth 1 --jobs 8 src/contrib/dxc             src/contrib/re-spirv src/contrib/nativefiledialog-extended src/contrib/zstd src/contrib/plume
+          # Every source of the library has to exist for CMake to generate, though only the shaders are built.
+          git -c protocol.version=2 submodule update --init --recursive --depth 1 --jobs 8 rush2049/lib/rt64
           bash tools/rush2049/apply_runtime_patches.sh
       - uses: actions/cache@v4
         id: naga
