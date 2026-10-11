@@ -83,6 +83,8 @@ plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the 
 plume-0004             WebGPU for RT64: only the overrides a shader declares, bindings visible to the stages that
                        read them, depth read as unfilterable-float, copies in whole words, uniforms in 16-byte rows,
                        dual-source blending as a capability
+plume-0006             WebGPU: a pipeline created with buildInBackground is built with createRenderPipelineAsync once
+                       a draw has used its layout; the device thread's createGraphicsPipeline waits for isReady()
 rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
@@ -91,6 +93,8 @@ rt64-0009              the RSP compute shaders read their inputs from one buffer
                        (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
 rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page's canvas from the WGSL blobs,
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
+rt64-0011              specialized shaders on WebGPU, built in the background while the ubershader draws: the spec
+                       constant WGSL shaders created once, at setup; one compilation thread
 RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
                        (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
 RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
@@ -297,8 +301,8 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 
 **Step 2, done: the game on a canvas.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui
 draw through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks), `plume-0002` runs it on the
-page's main thread for every caller, `plume-0003` and `plume-0004` add what RT64 needs, and rt64-0006 to rt64-0010
-make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
+page's main thread for every caller, `plume-0003`, `plume-0004` and `plume-0006` add what RT64 needs, and rt64-0006
+to rt64-0011 make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
 headless build draws through it by default (`HEADLESS_RT64`), as a page, `Rush2049Headless.html`: the title screen,
 the Midway screen and the attract races draw as they do natively, with no WebGPU errors. To build and run it:
 
@@ -324,10 +328,17 @@ CI's `wgsl` job builds and checks them on every PR, on SwiftShader (Chrome's CPU
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
 
-- Chrome builds every pipeline in its GPU process, which does nothing else meanwhile: no frame, no readback, no
-  screenshot. A specialized RasterPS (1.15 MB of WGSL) took 1.4-2.1 s per pipeline there, so a WGSL build draws with
-  the ubershader only (`rt64_raster_shader_cache.cpp`): 2.3 s for the first pipeline, ~6 ms for each further render
-  state. Async pipeline creation (`createRenderPipelineAsync`) would let specialized ones build behind it.
+- Chrome builds a pipeline made with `createRenderPipeline` on its GPU process's main thread, which does nothing
+  else meanwhile: no frame, no readback, no screenshot, and the page's main thread blocks once its queue to the GPU
+  process fills. A specialized RasterPS (1.15 MB of WGSL) takes 1.4-2.1 s there, 6-11 s cold beside another build,
+  10-80 ms from Chrome's disk cache (per profile, `--user-data-dir`). `createRenderPipelineAsync` builds on threads
+  of its own, so RT64 builds specialized pipelines with it and draws with the ubershader until they're ready
+  (plume-0006, rt64-0011). None of them may be built the other way: before a draw has used a pipeline's layout
+  there is no WebGPU layout to build it for, so it waits for one, and the spec constant shaders are created at
+  setup, because a shader reading a binding from a new stage gives every pipeline a new layout. Without those two,
+  boot ran at 17-20 display lists a second for ~10 s and about one run in fifteen froze for good. One compilation
+  thread: six at once took ~9 cores and halved the frame rate. The wasm grows from 7.3 to 16.6 MB (the spec
+  constant shaders).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
@@ -387,12 +398,28 @@ GPU W from nvidia-smi:
            browser             60  5.2 (7.3)  0.97    124
 ```
 
-So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (measured before the
-web builds had `-msimd128`, which took ~5% off a list and nothing measurable off the CPU: see Step 3), and its GPU
-cost grows with resolution: at 2560x1920 the GPU was 74% busy against native's ~35%. That is mostly the ubershader. With RT64's Ubershaders Only flag (`workloadQueue->ubershadersOnly`)
-forced natively, `--gpu-profile`'s draws went from 0.38 to 1.25 ms a frame at 960x720 and from 0.76-1.15 to 5.1 ms
-at 2560x1920. The browser has no GPU timestamps, so its GPU side is read from nvidia-smi's power and utilization
-against the idle desktop. Render to RAM costs the desktop build too: ~1.1 ms a list and ~15 W.
+So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (measured before the web
+builds had `-msimd128`, which took ~5% off a list and nothing measurable off the CPU: see Step 3), and its GPU cost
+grows with resolution: at 2560x1920 the GPU was 74% busy against native's ~35%. That was mostly the ubershader, which
+specialized pipelines have since replaced (rt64-0011, Step 2). With RT64's Ubershaders Only flag
+(`workloadQueue->ubershadersOnly`) forced natively, `--gpu-profile`'s draws went from 0.38 to 1.25 ms a frame at 960x720
+and from 0.76-1.15 to 5.1 ms at 2560x1920. The browser has no GPU timestamps, so its GPU side is read from nvidia-smi's
+power and utilization against the idle desktop. Render to RAM costs the desktop build too: ~1.1 ms a list and ~15 W.
+
+With specialized pipelines (rt64-0011), measured on 2026-10-11 (17:00-17:45 Oslo), the same page and settings, 80 s
+per run, interleaved with the ubershader-only page; the quieter of two pairs (in the other, another session's load
+pushed the ubershader page at 2560x1920 to 93% busy and 44-57 lists a second):
+
+```
+              ubershader only      specialized
+              busy  MHz    W       busy  MHz    W
+960x720        34%  432   49        30%  307   41
+2560x1920      68% 1233  118        36%  541   65
+```
+
+Every specialized run kept 59-60 lists a second. The cost is CPU in Chrome's GPU process while it builds the
+pipelines: ~1.2 cores in the first minute, 0.8 in the second, ~0.4 from the third on as new ones stop arriving,
+against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there).
 
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
@@ -425,8 +452,6 @@ without the two headers through `coi_serviceworker.js`. What to know:
 **Still to do, each its own card:**
 
 - Publishing the page (GitHub Pages).
-- Specialized pipelines built with `createRenderPipelineAsync` behind the ubershader (see the like for like table
-  above).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
