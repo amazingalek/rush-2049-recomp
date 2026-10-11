@@ -15,8 +15,8 @@ one pad.
 
 **Plan: the browser.** The long-term goal is to play it in a web browser, with your ROM picked from disk and kept
 in the browser, never uploaded, and to make that web support work for every N64 recomp, not just this one. So far
-the game runs there without graphics, to show the CPU side keeps up, and the renderer has a first WebGPU backend
-that draws simple scenes in a browser; drawing the game with it is the work still to do.
+the game draws in a browser on a developer test page, with no menus, sound or controls yet, at about 50-60 frames
+a second where the desktop build keeps 60; those, and a page for players, are the work still to do.
 
 ## Modern enhancements
 
@@ -231,9 +231,10 @@ cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes bui
 - `rush2049/`: the recomp itself: runtime glue and enhancements (`src/`), the patches library mods build against
   (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
   `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
-  headless build with no graphics (`headless/`), the first step towards the browser.
+  build without the frontend (`headless/`): the browser test page, or with no graphics at all.
 - `web/`: the browser support, written for every N64 recomp and not just this one, to move into a project of its own
-  once it works: its changes to the runtime submodules (`runtime-patches/`) and their tests.
+  once it works: its changes to the runtime submodules (`runtime-patches/`) and their tests, and the renderer that
+  draws on the page (`renderer/`).
 - `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.

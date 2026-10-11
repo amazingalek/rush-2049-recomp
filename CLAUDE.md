@@ -80,12 +80,17 @@ plume-0002             plume_device_thread: any backend run on one thread for ev
 plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the device thread polls), texel buffers,
                        clears of rectangles, presents paced to the display, push constants sharing group 3 with a
                        4th set, write-only storage textures but r32, the adapter's limits; webgpu_checks
+plume-0004             WebGPU for RT64: only the overrides a shader declares, bindings visible to the stages that
+                       read them, depth read as unfilterable-float, copies in whole words, uniforms in 16-byte rows,
+                       dual-source blending as a capability
 rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
                        buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
 rt64-0009              the RSP compute shaders read their inputs from one buffer, copied in before the dispatch
                        (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
+rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page's canvas from the WGSL blobs,
+                       ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -225,21 +230,22 @@ between the two clean, and the move is cutting `web/` out:
   checkout, on lines a Rush patch also touches, needs rebasing: commit each patch in turn on the pinned commit,
   cherry-pick the web ones first and the Rush ones after, check the last tree is the same, and `git diff` each
   commit back out.
-- What is this game's stays in `rush2049/`: `headless/` (the game's CPU side without a renderer) and, when it comes,
-  the game's page. The Emscripten options in `headless/CMakeLists.txt` are the one generic part there: they move
-  into `web/` when the browser build needs them too. What the web side needs from a game it gets through the runtime's own interfaces, as every recomp
-  does.
+- What is this game's stays in `rush2049/`: `headless/` (the game without the frontend, as a test page or with no
+  renderer) and, when it comes, the game's page. The Emscripten options in `headless/CMakeLists.txt` are the one
+  generic part there: they move into `web/` when the frontend's build needs them too. What the web side needs from
+  a game it gets through the runtime's own interfaces, as every recomp does.
 
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
 prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
+emsdk is installed in `%LOCALAPPDATA%\Programs\n64-toolchain\emsdk`; on a machine without it:
 
 ```sh
 git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
 EMSDK_PYTHON=<python 3> <python 3> emsdk.py install latest && <python 3> emsdk.py activate latest
 source emsdk_env.sh                # then, with RecompiledFuncs/ and rsp/musyx.cpp generated:
 emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_EXE_LINKER_FLAGS="--preload-file <rom.z64>@/rom.z64"
+    -DHEADLESS_ROM=<rom.z64> -DHEADLESS_RT64=OFF     # without RT64, for node
 cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120
 ```
 
@@ -269,65 +275,74 @@ So wasm costs about 4 times the CPU of native, and a frame still uses a small pa
 keeps up. The host was 14-54% busy with other sessions; at 100% busy both builds fell to 36-54 retraces a second
 with their own CPU use unchanged, so what drops frames there is threads waiting for a core, not the work.
 
-**Step 2, started: drawing.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui draw
-through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks). plume's own triangle and cube
-examples (vertex buffer, cube texture upload, sampler, descriptor set, push constants) draw in headless Chrome 154
-with no WebGPU errors. WebGPU and not WebGL, so the rt64 patches carry over. `plume-0003` adds what RT64 needs
-beyond them, and `plume_webgpu_checks.html` tests each piece by reading the results back, printing PASS or FAIL per
-check to the console (8 of 8 with ASYNCIFY, and with `-pthread` through the device thread). To build and look at
-them:
+**Step 2, done: the game on a canvas.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui
+draw through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks), `plume-0002` runs it on the
+page's main thread for every caller, `plume-0003` and `plume-0004` add what RT64 needs, and rt64-0006 to rt64-0010
+make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
+headless build draws through it by default (`HEADLESS_RT64`), as a page, `Rush2049Headless.html`: the title screen,
+the Midway screen and the attract races draw as they do natively, with no WebGPU errors. To build and run it:
 
 ```sh
 cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
-emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DPLUME_BUILD_EXAMPLES=ON -DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe \
-    -DPLUME_NAGA_EXECUTABLE=<naga.exe>
-cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html, plume_webgpu_checks.html
+emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DHEADLESS_ROM=<rom.z64> \
+    -DRT64_NAGA_EXECUTABLE=<naga.exe>      # if naga isn't on PATH
+ninja -C <dir>                  # after changing a shader's .hlsli, delete <dir>/src/shaders/*.wgsl* first
 ```
 
-With `-DCMAKE_CXX_FLAGS=-pthread -DCMAKE_C_FLAGS=-pthread` the examples draw from a thread of their own through
-plume-0002, and the page needs the two cross-origin headers above. Serve `<dir>/bin` over http on localhost and open
-it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`; headless works with `--headless=new
---enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that page, never a screen copy. Shaders go
-HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga `--keep-coordinate-space`),
-and push constants become a uniform buffer at `@group(3) @binding(999)`. Storage textures in any format but r32float,
-r32uint and r32sint become `write`: core WebGPU can't read and write them.
+Serve `<dir>` over http on localhost with the two cross-origin headers and open
+`Rush2049Headless.html?seconds=60&canvas=960x720` in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`;
+headless works with `--headless=new --enable-unsafe-webgpu`). The query is the command line (`page_arguments.js`),
+the console gets what stderr would, and you look at it with CDP `Page.captureScreenshot` of that page, never a screen
+copy. plume's own examples and `plume_webgpu_checks.html` (each piece RT64 needs, read back, PASS or FAIL in the
+console) build with `emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -DPLUME_BUILD_EXAMPLES=ON
+-DPLUME_DXC_EXECUTABLE=<rt64>/src/contrib/dxc/bin/x64/dxc.exe -DPLUME_NAGA_EXECUTABLE=<naga.exe>`.
 
-**Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
-every plume call it makes):
+Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga
+`--keep-coordinate-space`), spec constants become `override`s and push constants a uniform buffer at `@group(3)
+@binding(999)`. `node web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in headless Chrome.
+CI's `wgsl` job builds and checks them on every PR, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
+checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
+What to know before changing it:
 
-- Shaders: done in rt64-0008. RT64's CMake builds each one to `<name>.wgsl.c` with Emscripten (`emcmake cmake -S
-  rush2049/lib/rt64 -B <dir> -DRT64_NAGA_EXECUTABLE=<naga.exe>`, then ninja the `*.wgsl.c` targets), plus
-  `*DualSource` RasterPS variants for devices with `dual-source-blending`. Spec constants come out as WGSL
-  `override`s. Without emsdk, a native configure with `-DRT64_WGSL=ON` builds the same targets. `node
-  web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` in it against core WebGPU in headless Chrome (each module,
-  and each compute pipeline, which is where binding limits fail): all 62 pass since rt64-0009 fit RSPProcessCS and
-  RSPWorldCS into 4 storage buffers (`RSPPackedInputs` in `rt64_rsp_processor.h` says how; configure with
-  `-DRT64_PACKED_RSP_INPUTS=ON` to run that path on Vulkan here, which draws the game as the stock path does).
-  CI's `wgsl` job does both on every PR, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the checker), which
-  has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
-  Left: the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
-  the boolean texture as `R32_UINT` (8-bit storage textures don't exist), no nearest samplers 16-24 in the
-  descriptor set, and no `rgba16unorm` (HDR) target on the web. A read_write storage texture is only core in r32
-  formats, so plume declares every other one write-only.
-- Texture binding is done (rt64-0007; `TextureSampler.hlsli` and `FramebufferRenderer::updateDrawTextureSets` say
-  how): a device without descriptor indexing gets each draw's tile textures in a set of its own and TMEM in one
-  storage buffer, so RasterPS has 10 sampled textures and 6 storage buffers, within WebGPU's defaults, and no binding
-  arrays. Configure with `-DRT64_PER_DRAW_TEXTURES=ON` to run that path on Vulkan here; Rush only samples raw TMEM
-  where a tile is too big to decode, so to test the pool, make `TMEMHasher::requiresRawTMEM` return true for a run.
-- Waiting: RT64 reads READBACK buffers right after a submission (the framebuffer change count, and `renderToRAM`,
-  on by default). Through the device thread, `map()` polls `isMapReady()` from the calling thread while the main
-  thread goes back to the browser, which delivers the data (plume-0003). A build without threads waits in place,
-  which takes `-sJSPI` (or ASYNCIFY, which bloats it); without either, reads come a submission late.
-- Then RT64 in the headless build, the title screen on a canvas. Its threads stay as they are: it creates its
-  interface with `CreateDeviceThreadInterface(CreateEmscriptenDeviceThread(emscripten_main_runtime_thread_id()), ...)`
-  (plume-0002, whose header says what runs where) and the program runs in pthreads (`-sPROXY_TO_PTHREAD`), so the
-  page's main thread owns the device and the canvas and does nothing but run their work and present. A call that
-  waits for the main thread costs ~7 µs from a pthread in headless Chrome 154 and a queued one ~0.4 µs (2026-10-11,
-  host 32% busy), so what to watch is how many objects RT64 creates and buffers it maps each frame.
-- Then the frontend: recompui (RmlUi on plume), SDL2 audio and input (Emscripten has both), the ROM from a file
-  picker kept in IndexedDB, never hosted. `_WIN32` branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp`
-  and `crash_handler.cpp`.
+- Chrome builds every pipeline in its GPU process, which does nothing else meanwhile: no frame, no readback, no
+  screenshot. A specialized RasterPS (1.15 MB of WGSL) took 1.4-2.1 s per pipeline there, so a WGSL build draws with
+  the ubershader only (`rt64_raster_shader_cache.cpp`): 2.3 s for the first pipeline, ~6 ms for each further render
+  state. Async pipeline creation (`createRenderPipelineAsync`) would let specialized ones build behind it.
+- When display lists take seconds (as they did with specialized shaders), the boot livelocks at the Midway screen:
+  the spin hook on `func_800FD464` yields only to higher-priority threads, and the ones that clear the task counter
+  it polls are lower. The ubershader keeps lists fast enough not to hit it.
+- WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
+  usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
+- RT64 reads framebuffers back every frame (render to RAM, on by default, as natively). Through the device thread,
+  `map()` polls `isMapReady()` while the main thread returns to the browser, which delivers the data. A build
+  without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits for the main thread costs
+  ~7 µs from a pthread and a queued one ~0.4 µs, so what to watch is how many objects RT64 creates and buffers it maps.
+- Two of the web paths run on Vulkan here, to check them against the stock ones: configure the game with
+  `-DRT64_PER_DRAW_TEXTURES=ON` (rt64-0007: a texture set per draw, TMEM in one buffer; to test that pool, make
+  `TMEMHasher::requiresRawTMEM` return true for a run) or `-DRT64_PACKED_RSP_INPUTS=ON` (rt64-0009).
+
+Measured on 2026-10-11, Chrome 154 headless against the native build (Vulkan), both at 960x720 (Auto resolution,
+no MSAA, original aspect, no texture packs), title screen and attract races, 60 display lists a second wanted;
+gpu.mjs: GPU 36-37% busy with no other session on it, host CPU 19-22%. Per display list is wall time from the list to
+the RDP's interrupt, which takes in the readback of the frame:
+
+```
+                display lists/s   per display list, median: title   races (p95)
+native (2 runs)        60                          1.1 ms           4-6 ms (5-9)
+Chrome 154           47-59                         6.1 ms           11-15 ms (14-20)
+```
+
+So on the web a list takes about 2.5 times as long, and in the busiest races it often takes more than the 16.7 ms
+a list has at 60 a second. The CPU side measured in step 1 is a small part of it; where the rest goes is not
+measured yet.
+
+**Still to do, each its own card:**
+
+- The frontend: recompui (RmlUi on plume), SDL2 audio and input (Emscripten has both), the ROM from a file picker
+  kept in IndexedDB, never hosted. `_WIN32` branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp` and
+  `crash_handler.cpp`.
+- The frame time above: where a list's 11-15 ms go (readback round trips, calls that wait for the main thread).
+- No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
 and load wasm modules instead. No other N64 recomp running in a browser was found to learn from.
