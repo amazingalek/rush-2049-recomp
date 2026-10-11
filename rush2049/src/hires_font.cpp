@@ -20,6 +20,12 @@
 // colour is the atlas's brightest value wherever alpha isn't 0, and alpha alone carries the edge. The letters'
 // insides are unchanged, and a texel that is fully transparent stays black.
 //
+// The smooth upscale also spreads a glyph's edge a little past its own texels: into an empty texel next to a full one
+// it puts a faint strip, about a tenth opaque and a quarter texel wide. Where that empty texel is the first or last
+// column of the neighbouring glyph's rectangle, the strip is drawn in that glyph's place, at full brightness, as a
+// thin line beside the letter. So a texel that is 0 in the atlas stays fully transparent in the pack: a vector glyph
+// covers none of it, and the letters lose nothing but that strip.
+//
 // Hi-res title screen. The title screen's 320x220 picture is 35 copy-mode strips of an 8-bit colour-indexed texture.
 // An upscaled picture of it (4x, by Real-ESRGAN) is cut into those strips the same way: each strip the walk finds is
 // hashed with its palette, and its replacement is read out of the picture where the strip lands on screen. A strip
@@ -64,7 +70,7 @@
 namespace {
 
 // Bump when the upscale changes, so textures made by an older version are thrown away.
-const char* const pack_version = "v2";
+const char* const pack_version = "v3";
 constexpr int scale = 4;
 constexpr float contrast = 2.5f;
 
@@ -510,6 +516,9 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
                 }
             }
             v = std::clamp((v / peak - 0.5f) * contrast + 0.5f, 0.0f, 1.0f) * peak;
+            if (src[(oy / scale) * width + ox / scale] == 0.0f) {
+                v = 0.0f;
+            }
             uint8_t i = (uint8_t)std::lround(v * 255.0f);
             uint8_t* o = &rgba[((size_t)oy * out_w + ox) * 4];
             o[0] = o[1] = o[2] = i == 0 ? 0 : colour;
