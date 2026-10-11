@@ -66,8 +66,9 @@ jobs:
 
   # RT64's shaders as WebGPU gets them (CLAUDE.md, "The web target"): rt64 configured natively with RT64_WGSL builds
   # each one with dxc and naga, and web/tests/wgsl_check.mjs checks every one against a core WebGPU device in headless
-  # Chrome. The runner has no GPU, so Chrome's WebGPU runs on SwiftShader (Vulkan on the CPU). Only the shaders are
-  # built, not the library.
+  # Chrome. The runner has no GPU, so Chrome's WebGPU runs on SwiftShader (Vulkan on the CPU), which has no dual-source
+  # blending: the checker skips the *DualSource variants, which naga still validates as it writes them. Only the
+  # shaders are built, not the library.
   wgsl:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
