@@ -387,9 +387,9 @@ GPU W from nvidia-smi:
            browser             60  5.2 (7.3)  0.97    124
 ```
 
-So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (the web builds have
-no `-msimd128`; native gets SSE4.2), and its GPU cost grows with resolution: at 2560x1920 the GPU was 74% busy against
-native's ~35%. That is mostly the ubershader. With RT64's Ubershaders Only flag (`workloadQueue->ubershadersOnly`)
+So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (measured before the
+web builds had `-msimd128`, which took ~5% off a list and nothing measurable off the CPU: see Step 3), and its GPU
+cost grows with resolution: at 2560x1920 the GPU was 74% busy against native's ~35%. That is mostly the ubershader. With RT64's Ubershaders Only flag (`workloadQueue->ubershadersOnly`)
 forced natively, `--gpu-profile`'s draws went from 0.38 to 1.25 ms a frame at 960x720 and from 0.76-1.15 to 5.1 ms
 at 2560x1920. The browser has no GPU timestamps, so its GPU side is read from nvidia-smi's power and utilization
 against the idle desktop. Render to RAM costs the desktop build too: ~1.1 ms a list and ~15 W.
@@ -425,8 +425,8 @@ without the two headers through `coi_serviceworker.js`. What to know:
 **Still to do, each its own card:**
 
 - Publishing the page (GitHub Pages).
-- Specialized pipelines built with `createRenderPipelineAsync` behind the ubershader, and `-msimd128` (see the like
-  for like table above).
+- Specialized pipelines built with `createRenderPipelineAsync` behind the ubershader (see the like for like table
+  above).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
