@@ -1,0 +1,61 @@
+# Names for functions we have worked out, applied by tools/gen_syms.py on top of the generated ones.
+# These are the names mods hook and call (RECOMP_HOOK("draw_tex_rect")), so treat them as an API: add names
+# freely, but renaming or removing one breaks every mod that uses it. Where each was worked out:
+# the comments on the hooks in us.toml and in the source files that use them.
+
+# boot
+[[func]]
+section = "boot"
+vram = 0x800020F0
+name = "boot_main"           # where the entry point jumps once bss is cleared; starts the main thread
+
+[[func]]
+section = "boot"
+vram = 0x80002238
+name = "main_thread_entry"   # the main thread: inflates the main code, adds itself as a retrace client
+
+[[func]]
+section = "boot"
+vram = 0x80006814
+name = "inflate_rom"         # u32 inflate_rom(u32 rom, void* dst, s32 flag): raw deflate from cart ROM, returns size
+
+[[func]]
+section = "boot"
+vram = 0x80000880
+name = "sched_on_retrace"    # scheduler: VI retrace, swaps a pending frame and notifies the retrace clients
+
+[[func]]
+section = "boot"
+vram = 0x80000C54
+name = "sched_on_rdp_done"   # scheduler: RDP finished a graphics task, swaps the finished frame
+
+[[func]]
+section = "boot"
+vram = 0x80000E20
+name = "sched_start_task"    # scheduler: starts the RSP task at sctask+0x10
+
+# main
+[[func]]
+section = "main"
+vram = 0x80087110
+name = "draw_tex_rect"       # draw_tex_rect(x0, y0, x1, y1, ...): every textured screen rectangle (HUD, menus, fonts)
+
+[[func]]
+section = "main"
+vram = 0x8008AA40
+name = "audio_thread_main"   # the audio thread: one MusyX audio frame per scheduler task
+
+[[func]]
+section = "main"
+vram = 0x800992AC
+name = "music_thread_main"   # the music thread: takes commands from the queue at 0x801427A8
+
+[[func]]
+section = "main"
+vram = 0x800A11E4
+name = "game_load_overlay"   # inflates ovl1 or ovl2 to 0x8038A400
+
+[[func]]
+section = "main"
+vram = 0x8010761C
+name = "hud_draw_race_timer" # draws the race timer; runs every frame of a race

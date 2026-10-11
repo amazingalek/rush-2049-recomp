@@ -21,7 +21,7 @@
 #
 # With a source, its working trees come with their patches applied and any other edits, on whatever commits it had,
 # so each is reset to its commit and cleaned (ignored files stay), then synced to the URLs and updated to the commits
-# this tree pins. Run tools/rush2049/apply_runtime_patches.sh after it.
+# this tree pins. Run tools/apply_runtime_patches.sh after it.
 set -euo pipefail
 root="$(cygpath -u "$(git rev-parse --show-toplevel)" 2>/dev/null || git rev-parse --show-toplevel)"
 cd "$root"
@@ -31,14 +31,17 @@ src=
 
 if (( $# > 0 )); then
     src="$(cd "$1" && pwd)"
+    # A checkout from before the game moved to the repo's root (2026-10-11) has its submodules under rush2049/.
+    [[ -e "$src/${paths[0]}/.git" || ! -e "$src/rush2049/${paths[0]}/.git" ]] || src="$src/rush2049"
     for p in "${paths[@]}"; do
-        [[ -e "$src/$p/.git" ]] || { echo "not checked out in $src: $p" >&2; exit 1; }
         if [[ -e "$p/.git" ]]; then
             echo "already checked out here: $p (run without an argument to make it this worktree's own)" >&2
             exit 1
         fi
     done
     for p in "${paths[@]}"; do
+        # One the other checkout doesn't have is cloned by the update below.
+        [[ -e "$src/$p/.git" ]] || { echo "not checked out in $src, so cloned: $p"; continue; }
         echo "copying $p"
         mkdir -p "$p"
         cp -r "$src/$p/." "$p/"
@@ -67,7 +70,8 @@ done | awk -F/ '{ print NF, $0 }' | sort -n | cut -d' ' -f2- | while read -r lin
         new="$old"
         ;;
     *)
-        new="$gitdir/modules/${old#*/modules/}"
+        name="${old#*/modules/}"
+        new="$gitdir/modules/${name#rush2049/}"  # named by their old paths before the move
         if [[ ! -d "$new" ]]; then
             echo "copying git dir of ${link%/.git}"
             mkdir -p "$(dirname "$new")"
