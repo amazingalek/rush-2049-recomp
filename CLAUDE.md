@@ -84,6 +84,8 @@ rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
                        buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
+rt64-0009              the RSP compute shaders read their inputs from one buffer, copied in before the dispatch
+                       (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -294,8 +296,12 @@ every plume call it makes):
 - Shaders: done in rt64-0008. RT64's CMake builds each one to `<name>.wgsl.c` with Emscripten (`emcmake cmake -S
   rush2049/lib/rt64 -B <dir> -DRT64_NAGA_EXECUTABLE=<naga.exe>`, then ninja the `*.wgsl.c` targets), plus
   `*DualSource` RasterPS variants for devices with `dual-source-blending`. Spec constants come out as WGSL
-  `override`s. Left: RSPProcessCS and RSPWorldCS bind 21 and 10 storage buffers against core's 8 (its own card),
-  and the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
+  `override`s. Without emsdk, a native configure with `-DRT64_WGSL=ON` builds the same targets. `node
+  web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` in it against core WebGPU in headless Chrome (each module,
+  and each compute pipeline, which is where binding limits fail): all 62 pass since rt64-0009 fit RSPProcessCS and
+  RSPWorldCS into 4 storage buffers (`RSPPackedInputs` in `rt64_rsp_processor.h` says how; configure with
+  `-DRT64_PACKED_RSP_INPUTS=ON` to run that path on Vulkan here, which draws the game as the stock path does).
+  Left: the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
   the boolean texture as `R32_UINT` (8-bit storage textures don't exist), no nearest samplers 16-24 in the
   descriptor set, and no `rgba16unorm` (HDR) target on the web. A read_write storage texture is only core in r32
   formats, so plume declares every other one write-only.

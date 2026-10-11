@@ -1,0 +1,708 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7fd5bcc..5384ef0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -14,6 +14,7 @@ option(RT64_STATIC "Build RT64 as a static library" OFF)
+ option(RT64_WGSL "Compile the shaders to WGSL for WebGPU, in place of DXIL, SPIR-V and Metal (always on with Emscripten)" OFF)
+ option(RT64_SDL_WINDOW_VULKAN "Build RT64 to expect an SDL Window outside of Windows" OFF)
+ option(RT64_PER_DRAW_TEXTURES "Bind textures per draw on every device, as devices without descriptor indexing (WebGPU) need; to test that path" OFF)
++option(RT64_PACKED_RSP_INPUTS "Gather the RSP compute shaders' inputs into one buffer on every device, as WebGPU's 8 storage buffers per stage need; to test that path" OFF)
+ 
+ if (NOT ${RT64_STATIC})
+     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+@@ -134,6 +135,12 @@ set (DXC_COMMON_OPTS "-I${PROJECT_SOURCE_DIR}/src")
+ if (RT64_PER_DRAW_TEXTURES OR RT64_WGSL)
+     list(APPEND DXC_COMMON_OPTS "-D" "PER_DRAW_TEXTURES")
+ endif()
++# WebGPU guarantees 8 storage buffers per shader stage, so the RSP compute shaders read their inputs from one
++# (RSPPackedInputs, rt64_rsp_processor.h).
++if (RT64_PACKED_RSP_INPUTS OR RT64_WGSL)
++    set (RT64_PACKED_RSP_INPUTS ON)
++    list(APPEND DXC_COMMON_OPTS "-D" "PACKED_RSP_INPUTS")
++endif()
+ set (DXC_DXIL_OPTS "-Wno-ignored-attributes")
+ set (DXC_SPV_OPTS "-spirv" "-fspv-target-env=vulkan1.0" "-fvk-use-dx-layout")
+ set (DXC_LB_OPTS "${DXC_COMMON_OPTS}" "-D" "LIBRARY" "-T" "lib_6_3")
+@@ -500,6 +507,10 @@ if (RT64_PER_DRAW_TEXTURES)
+     target_compile_definitions(rt64 PUBLIC RT64_PER_DRAW_TEXTURES=1)
+ endif()
+ 
++if (RT64_PACKED_RSP_INPUTS)
++    target_compile_definitions(rt64 PUBLIC RT64_PACKED_RSP_INPUTS=1)
++endif()
++
+ # Add common libraries.
+ target_link_libraries(rt64 re-spirv)
+ if (NOT EMSCRIPTEN)
+diff --git a/src/render/rt64_descriptor_sets.h b/src/render/rt64_descriptor_sets.h
+index 94f5cd0..c2196fe 100644
+--- a/src/render/rt64_descriptor_sets.h
++++ b/src/render/rt64_descriptor_sets.h
+@@ -564,6 +564,9 @@ namespace RT64 {
+     };
+ 
+     struct RSPProcessDescriptorSet : RenderDescriptorSetBase {
++#   if RT64_PACKED_RSP_INPUTS
++        uint32_t srcInputs;
++#   else
+         uint32_t srcPos;
+         uint32_t srcVel;
+         uint32_t srcTc;
+@@ -582,12 +585,16 @@ namespace RT64 {
+         uint32_t rspLookAtVector;
+         uint32_t viewProjTransforms;
+         uint32_t worldTransforms;
++#   endif
+         uint32_t dstPos;
+         uint32_t dstTc;
+         uint32_t dstCol;
+ 
+         RSPProcessDescriptorSet(RenderDevice *device = nullptr) {
+             builder.begin();
++#       if RT64_PACKED_RSP_INPUTS
++            srcInputs = builder.addByteAddressBuffer(1);
++#       else
+             srcPos = builder.addFormattedBuffer(1);
+             srcVel = builder.addFormattedBuffer(2);
+             srcTc = builder.addFormattedBuffer(3);
+@@ -606,6 +613,7 @@ namespace RT64 {
+             rspLookAtVector = builder.addStructuredBuffer(16);
+             viewProjTransforms = builder.addStructuredBuffer(17);
+             worldTransforms = builder.addStructuredBuffer(18);
++#       endif
+             dstPos = builder.addReadWriteStructuredBuffer(19);
+             dstTc = builder.addReadWriteStructuredBuffer(20);
+             dstCol = builder.addReadWriteStructuredBuffer(21);
+@@ -656,6 +664,9 @@ namespace RT64 {
+     };
+ 
+     struct RSPWorldDescriptorSet : RenderDescriptorSetBase {
++#   if RT64_PACKED_RSP_INPUTS
++        uint32_t srcInputs;
++#   else
+         uint32_t srcPos;
+         uint32_t srcVel;
+         uint32_t srcNorm;
+@@ -663,12 +674,16 @@ namespace RT64 {
+         uint32_t worldMats;
+         uint32_t invTWorldMats;
+         uint32_t prevWorldMats;
++#   endif
+         uint32_t dstPos;
+         uint32_t dstNorm;
+         uint32_t dstVel;
+ 
+         RSPWorldDescriptorSet(RenderDevice *device = nullptr) {
+             builder.begin();
++#       if RT64_PACKED_RSP_INPUTS
++            srcInputs = builder.addByteAddressBuffer(1);
++#       else
+             srcPos = builder.addFormattedBuffer(1);
+             srcVel = builder.addFormattedBuffer(2);
+             srcNorm = builder.addFormattedBuffer(3);
+@@ -676,6 +691,7 @@ namespace RT64 {
+             worldMats = builder.addStructuredBuffer(5);
+             invTWorldMats = builder.addStructuredBuffer(6);
+             prevWorldMats = builder.addStructuredBuffer(7);
++#       endif
+             dstPos = builder.addReadWriteStructuredBuffer(8);
+             dstNorm = builder.addReadWriteStructuredBuffer(9);
+             dstVel = builder.addReadWriteStructuredBuffer(10);
+diff --git a/src/render/rt64_rsp_processor.cpp b/src/render/rt64_rsp_processor.cpp
+index 5687b81..429863a 100644
+--- a/src/render/rt64_rsp_processor.cpp
++++ b/src/render/rt64_rsp_processor.cpp
+@@ -26,6 +26,19 @@ namespace RT64 {
+         p.outputBuffers->screenPosBuffer.computedSize += processCB.vertexCount * sizeof(float) * 4;
+         p.outputBuffers->genTexCoordBuffer.computedSize += processCB.vertexCount * sizeof(float) * 2;
+         p.outputBuffers->shadedColBuffer.computedSize += processCB.vertexCount * sizeof(float) * 4;
++#   if RT64_PACKED_RSP_INPUTS
++        // In the order of RSPProcessCB's offsets in RSPProcessCS.hlsl.
++        const DrawBuffers &b = *p.drawBuffers;
++        const BufferPair *inputs[ProcessInputCount] = {
++            &b.positionBuffer, &b.velocityBuffer, &b.texcoordBuffer, &b.texcoordVelocityBuffer, &b.normalColorBuffer,
++            &b.viewProjIndicesBuffer, &b.worldIndicesBuffer, &b.fogIndicesBuffer, &b.lightIndicesBuffer, &b.lightCountsBuffer,
++            &b.lookAtIndicesBuffer, &b.rspViewportsBuffer, &b.rspFogBuffer, &b.rspLightsBuffer, &b.rspLookAtBuffer,
++            &b.viewProjTransformsBuffer, &b.worldTransformsBuffer
++        };
++
++        packedInputs.update(p.worker->device, inputs, processCB.inputOffsets, ProcessInputCount);
++        processSet->setBuffer(processSet->srcInputs, packedInputs.buffer.get(), packedInputs.allocatedSize);
++#   else
+         processSet->setBuffer(processSet->srcPos, p.drawBuffers->positionBuffer.get(), p.drawBuffers->positionBuffer.getView(0));
+         processSet->setBuffer(processSet->srcVel, p.drawBuffers->velocityBuffer.get(), p.drawBuffers->velocityBuffer.getView(0));
+         processSet->setBuffer(processSet->srcTc, p.drawBuffers->texcoordBuffer.get(), p.drawBuffers->texcoordBuffer.getView(0));
+@@ -44,6 +57,7 @@ namespace RT64 {
+         processSet->setBuffer(processSet->rspLookAtVector, p.drawBuffers->rspLookAtBuffer.get(), RenderBufferStructuredView(sizeof(interop::RSPLookAt)));
+         processSet->setBuffer(processSet->viewProjTransforms, p.drawBuffers->viewProjTransformsBuffer.get(), RenderBufferStructuredView(sizeof(interop::float4x4)));
+         processSet->setBuffer(processSet->worldTransforms, p.drawBuffers->worldTransformsBuffer.get(), RenderBufferStructuredView(sizeof(interop::float4x4)));
++#   endif
+         processSet->setBuffer(processSet->dstPos, p.outputBuffers->screenPosBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 4));
+         processSet->setBuffer(processSet->dstTc, p.outputBuffers->genTexCoordBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 2));
+         processSet->setBuffer(processSet->dstCol, p.outputBuffers->shadedColBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 4));
+@@ -71,6 +85,9 @@ namespace RT64 {
+             };
+ 
+             const int dispatchCount = (processCB.vertexCount + ThreadGroupSize - 1) / ThreadGroupSize;
++#       if RT64_PACKED_RSP_INPUTS
++            packedInputs.recordCopies(worker->commandList.get());
++#       endif
+             worker->commandList->barriers(RenderBarrierStage::COMPUTE, beforeBarriers, uint32_t(std::size(beforeBarriers)));
+             worker->commandList->setPipeline(shaderLibrary->rspProcess.pipeline.get());
+             worker->commandList->setComputePipelineLayout(shaderLibrary->rspProcess.pipelineLayout.get());
+diff --git a/src/render/rt64_rsp_processor.h b/src/render/rt64_rsp_processor.h
+index 25c0cf9..3260fa0 100644
+--- a/src/render/rt64_rsp_processor.h
++++ b/src/render/rt64_rsp_processor.h
+@@ -9,12 +9,66 @@
+ #include "rt64_descriptor_sets.h"
+ 
+ namespace RT64 {
++#if RT64_PACKED_RSP_INPUTS
++    // WebGPU guarantees only 8 storage buffers per shader stage, and RSPProcessCS reads 17 inputs and RSPWorldCS 7. So
++    // those shaders, built with PACKED_RSP_INPUTS, read all their inputs from one buffer: right before the dispatch,
++    // each input's buffer is copied into it whole, one after the other, and the shader gets where each one starts in
++    // its push constants. The inputs keep their own buffers, uploads and other readers, so nothing else changes, for
++    // a few hundred KB of copies a frame. The RT64_PACKED_RSP_INPUTS build does this on every device, to test it.
++    struct RSPPackedInputs {
++        struct Copy {
++            const RenderBuffer *source;
++            uint64_t offset;
++            uint64_t size;
++        };
++
++        std::unique_ptr<RenderBuffer> buffer;
++        uint64_t allocatedSize = 0;
++        std::vector<Copy> copies;
++
++        // Lays out the inputs, writes where each one starts into offsets, and makes the buffer big enough to hold them.
++        // An input's allocated size is a multiple of 256 (BufferUploader), so every offset is aligned for any load.
++        void update(RenderDevice *device, const BufferPair *const *inputs, uint32_t *offsets, uint32_t inputCount) {
++            copies.clear();
++            uint64_t size = 0;
++            for (uint32_t i = 0; i < inputCount; i++) {
++                offsets[i] = uint32_t(size);
++                if (inputs[i]->get() != nullptr) {
++                    copies.push_back({ inputs[i]->get(), size, inputs[i]->allocatedSize });
++                    size += inputs[i]->allocatedSize;
++                }
++            }
++
++            if (allocatedSize < size) {
++                allocatedSize = (((size * 3) / 2) + 255) & ~uint64_t(255);
++                buffer = device->createBuffer(RenderBufferDesc::DefaultBuffer(allocatedSize, RenderBufferFlag::STORAGE));
++            }
++        }
++
++        void recordCopies(RenderCommandList *commandList) const {
++            commandList->barriers(RenderBarrierStage::COPY, RenderBufferBarrier(buffer.get(), RenderBufferAccess::WRITE));
++            for (const Copy &copy : copies) {
++                commandList->copyBufferRegion(buffer->at(copy.offset), copy.source->at(0), copy.size);
++            }
++
++            commandList->barriers(RenderBarrierStage::COMPUTE, RenderBufferBarrier(buffer.get(), RenderBufferAccess::READ));
++        }
++    };
++#endif
++
+     struct RSPProcessor {
++#   if RT64_PACKED_RSP_INPUTS
++        static const uint32_t ProcessInputCount = 17;
++#   endif
++
+         struct ProcessCB {
+             uint32_t vertexStart;
+             uint32_t vertexCount;
+             float prevFrameWeight;
+             float curFrameWeight;
++#       if RT64_PACKED_RSP_INPUTS
++            uint32_t inputOffsets[ProcessInputCount];
++#       endif
+         };
+ 
+         struct ModifyCB {
+@@ -34,6 +88,9 @@ namespace RT64 {
+         ModifyCB modifyCB;
+         std::unique_ptr<RSPProcessDescriptorSet> processSet;
+         std::unique_ptr<RSPModifyDescriptorSet> modifySet;
++#   if RT64_PACKED_RSP_INPUTS
++        RSPPackedInputs packedInputs;
++#   endif
+ 
+         RSPProcessor(RenderDevice *device);
+         ~RSPProcessor();
+diff --git a/src/render/rt64_shader_library.cpp b/src/render/rt64_shader_library.cpp
+index 80ba92b..baa2e88 100644
+--- a/src/render/rt64_shader_library.cpp
++++ b/src/render/rt64_shader_library.cpp
+@@ -4,6 +4,9 @@
+ 
+ #include "rt64_shader_library.h"
+ 
++#include "rt64_rsp_processor.h"
++#include "rt64_vertex_processor.h"
++
+ #include "common/rt64_common.h"
+ #include "shared/rt64_render_target_copy.h"
+ #include "shared/rt64_rsp_vertex_test_z.h"
+@@ -511,7 +514,7 @@ namespace RT64 {
+         {
+             RSPProcessDescriptorSet descriptorSet;
+             layoutBuilder.begin();
+-            layoutBuilder.addPushConstant(0, 0, sizeof(uint32_t) * 4, RenderShaderStageFlag::COMPUTE);
++            layoutBuilder.addPushConstant(0, 0, sizeof(RSPProcessor::ProcessCB), RenderShaderStageFlag::COMPUTE);
+             layoutBuilder.addDescriptorSet(descriptorSet);
+             layoutBuilder.end();
+             rspProcess.pipelineLayout = layoutBuilder.create(device);
+@@ -539,7 +542,7 @@ namespace RT64 {
+         {
+             RSPWorldDescriptorSet descriptorSet;
+             layoutBuilder.begin();
+-            layoutBuilder.addPushConstant(0, 0, sizeof(uint32_t) * 4, RenderShaderStageFlag::COMPUTE);
++            layoutBuilder.addPushConstant(0, 0, sizeof(VertexProcessor::WorldCB), RenderShaderStageFlag::COMPUTE);
+             layoutBuilder.addDescriptorSet(descriptorSet);
+             layoutBuilder.end();
+             rspWorld.pipelineLayout = layoutBuilder.create(device);
+diff --git a/src/render/rt64_vertex_processor.cpp b/src/render/rt64_vertex_processor.cpp
+index ee48dad..7ae3161 100644
+--- a/src/render/rt64_vertex_processor.cpp
++++ b/src/render/rt64_vertex_processor.cpp
+@@ -26,6 +26,17 @@ namespace RT64 {
+         p.outputBuffers->worldNormBuffer.computedSize += worldCB.vertexCount * sizeof(float) * 4;
+         p.outputBuffers->worldVelBuffer.computedSize += worldCB.vertexCount * sizeof(float) * 4;
+         
++#   if RT64_PACKED_RSP_INPUTS
++        // In the order of RSPWorldCB's offsets in RSPWorldCS.hlsl.
++        const DrawBuffers &b = *p.drawBuffers;
++        const BufferPair *inputs[WorldInputCount] = {
++            &b.positionBuffer, &b.velocityBuffer, &b.normalColorBuffer, &b.worldIndicesBuffer,
++            &b.worldTransformsBuffer, &b.invTWorldTransformsBuffer, &b.prevWorldTransformsBuffer
++        };
++
++        packedInputs.update(p.worker->device, inputs, worldCB.inputOffsets, WorldInputCount);
++        descriptorSet->setBuffer(descriptorSet->srcInputs, packedInputs.buffer.get(), packedInputs.allocatedSize);
++#   else
+         descriptorSet->setBuffer(descriptorSet->srcPos, p.drawBuffers->positionBuffer.get(), p.drawBuffers->positionBuffer.getView(0));
+         descriptorSet->setBuffer(descriptorSet->srcVel, p.drawBuffers->velocityBuffer.get(), p.drawBuffers->velocityBuffer.getView(0));
+         descriptorSet->setBuffer(descriptorSet->srcNorm, p.drawBuffers->normalColorBuffer.get(), p.drawBuffers->normalColorBuffer.getView(1));
+@@ -33,6 +44,7 @@ namespace RT64 {
+         descriptorSet->setBuffer(descriptorSet->worldMats, p.drawBuffers->worldTransformsBuffer.get(), RenderBufferStructuredView(sizeof(interop::float4x4)));
+         descriptorSet->setBuffer(descriptorSet->invTWorldMats, p.drawBuffers->invTWorldTransformsBuffer.get(), RenderBufferStructuredView(sizeof(interop::float4x4)));
+         descriptorSet->setBuffer(descriptorSet->prevWorldMats, p.drawBuffers->prevWorldTransformsBuffer.get(), RenderBufferStructuredView(sizeof(interop::float4x4)));
++#   endif
+         descriptorSet->setBuffer(descriptorSet->dstPos, p.outputBuffers->worldPosBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 4));
+         descriptorSet->setBuffer(descriptorSet->dstNorm, p.outputBuffers->worldNormBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 4));
+         descriptorSet->setBuffer(descriptorSet->dstVel, p.outputBuffers->worldVelBuffer.buffer.get(), RenderBufferStructuredView(sizeof(float) * 4));
+@@ -57,6 +69,9 @@ namespace RT64 {
+ 
+         const uint32_t ThreadGroupSize = 64;
+         const uint32_t dispatchCount = (worldCB.vertexCount + ThreadGroupSize - 1) / ThreadGroupSize;
++#   if RT64_PACKED_RSP_INPUTS
++        packedInputs.recordCopies(worker->commandList.get());
++#   endif
+         worker->commandList->barriers(RenderBarrierStage::COMPUTE, beforeBarriers, uint32_t(std::size(beforeBarriers)));
+         worker->commandList->setPipeline(shaderLibrary->rspWorld.pipeline.get());
+         worker->commandList->setComputePipelineLayout(shaderLibrary->rspWorld.pipelineLayout.get());
+diff --git a/src/render/rt64_vertex_processor.h b/src/render/rt64_vertex_processor.h
+index c90b949..fa7324d 100644
+--- a/src/render/rt64_vertex_processor.h
++++ b/src/render/rt64_vertex_processor.h
+@@ -7,14 +7,22 @@
+ #include "hle/rt64_workload.h"
+ 
+ #include "rt64_descriptor_sets.h"
++#include "rt64_rsp_processor.h"
+ 
+ namespace RT64 {
+     struct VertexProcessor {
++#   if RT64_PACKED_RSP_INPUTS
++        static const uint32_t WorldInputCount = 7;
++#   endif
++
+         struct WorldCB {
+             uint32_t vertexStart;
+             uint32_t vertexCount;
+             float prevFrameWeight;
+             float curFrameWeight;
++#       if RT64_PACKED_RSP_INPUTS
++            uint32_t inputOffsets[WorldInputCount];
++#       endif
+         };
+ 
+         struct ProcessParams {
+@@ -28,6 +36,9 @@ namespace RT64 {
+ 
+         WorldCB worldCB;
+         std::unique_ptr<RSPWorldDescriptorSet> descriptorSet;
++#   if RT64_PACKED_RSP_INPUTS
++        RSPPackedInputs packedInputs;
++#   endif
+ 
+         VertexProcessor(RenderDevice *device);
+         ~VertexProcessor();
+diff --git a/src/shaders/RSPProcessCS.hlsl b/src/shaders/RSPProcessCS.hlsl
+index fd8e788..2bb3640 100644
+--- a/src/shaders/RSPProcessCS.hlsl
++++ b/src/shaders/RSPProcessCS.hlsl
+@@ -17,9 +17,84 @@ struct RSPProcessCB {
+     uint vertexCount;
+     float prevFrameWeight;
+     float curFrameWeight;
++#ifdef PACKED_RSP_INPUTS
++    // Where each input starts in srcInputs, in bytes, in the order RSPProcessor::process() lists them.
++    uint posOffset;
++    uint velOffset;
++    uint tcOffset;
++    uint tcVelOffset;
++    uint normColOffset;
++    uint viewProjIndicesOffset;
++    uint worldIndicesOffset;
++    uint fogIndicesOffset;
++    uint lightIndicesOffset;
++    uint lightCountsOffset;
++    uint lookAtIndicesOffset;
++    uint viewportsOffset;
++    uint fogsOffset;
++    uint lightsOffset;
++    uint lookAtsOffset;
++    uint viewProjTransformsOffset;
++    uint worldTransformsOffset;
++#endif
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<RSPProcessCB> gConstants : register(b0);
++
++#ifdef PACKED_RSP_INPUTS
++// Every input in one buffer (WebGPU.hlsli says why), read where the push constants say each one starts.
++ByteAddressBuffer srcInputs : register(t1);
++float loadPos(uint i) { return loadFloatAt(srcInputs, gConstants.posOffset + i * 4); }
++float loadVel(uint i) { return loadFloatAt(srcInputs, gConstants.velOffset + i * 4); }
++float loadTc(uint i) { return loadFloatAt(srcInputs, gConstants.tcOffset + i * 4); }
++float loadTcVel(uint i) { return loadFloatAt(srcInputs, gConstants.tcVelOffset + i * 4); }
++uint loadCol(uint i) { return loadUint8At(srcInputs, gConstants.normColOffset + i); }
++int loadNorm(uint i) { return loadInt8At(srcInputs, gConstants.normColOffset + i); }
++uint loadViewProjIndex(uint i) { return loadUint16At(srcInputs, gConstants.viewProjIndicesOffset + i * 2); }
++uint loadWorldIndex(uint i) { return loadUint16At(srcInputs, gConstants.worldIndicesOffset + i * 2); }
++uint loadFogIndex(uint i) { return loadUint16At(srcInputs, gConstants.fogIndicesOffset + i * 2); }
++uint loadLightIndex(uint i) { return loadUint16At(srcInputs, gConstants.lightIndicesOffset + i * 2); }
++uint loadLightCount(uint i) { return loadUint8At(srcInputs, gConstants.lightCountsOffset + i); }
++uint loadLookAtIndex(uint i) { return loadUint16At(srcInputs, gConstants.lookAtIndicesOffset + i * 2); }
++float4x4 loadViewProjTransform(uint i) { return loadFloat4x4At(srcInputs, gConstants.viewProjTransformsOffset + i * 64); }
++float4x4 loadWorldTransform(uint i) { return loadFloat4x4At(srcInputs, gConstants.worldTransformsOffset + i * 64); }
++
++RSPViewport loadViewport(uint i) {
++    const uint address = gConstants.viewportsOffset + i * 32;
++    RSPViewport viewport;
++    viewport.scale = loadFloat4At(srcInputs, address).xyz;
++    viewport.translate = loadFloat4At(srcInputs, address + 16).xyz;
++    return viewport;
++}
++
++RSPFog loadFog(uint i) {
++    const uint address = gConstants.fogsOffset + i * 8;
++    RSPFog fog;
++    fog.mul = loadFloatAt(srcInputs, address);
++    fog.offset = loadFloatAt(srcInputs, address + 4);
++    return fog;
++}
++
++RSPLight loadLight(uint i) {
++    const uint address = gConstants.lightsOffset + i * 48;
++    RSPLight light;
++    light.posDir = loadFloat4At(srcInputs, address).xyz;
++    light.kc = loadUint32At(srcInputs, address + 12);
++    light.col = loadFloat4At(srcInputs, address + 16).xyz;
++    light.kl = loadUint32At(srcInputs, address + 28);
++    light.colc = loadFloat4At(srcInputs, address + 32).xyz;
++    light.kq = loadUint32At(srcInputs, address + 44);
++    return light;
++}
++
++RSPLookAt loadLookAt(uint i) {
++    const uint address = gConstants.lookAtsOffset + i * 32;
++    RSPLookAt lookAt;
++    lookAt.x = loadFloat4At(srcInputs, address).xyz;
++    lookAt.y = loadFloat4At(srcInputs, address + 16).xyz;
++    return lookAt;
++}
++#else
+ TYPED_BUFFER(float) srcPos : register(t1);
+ TYPED_BUFFER(float) srcVel : register(t2);
+ TYPED_BUFFER(float) srcTc : register(t3);
+@@ -38,6 +113,26 @@ StructuredBuffer<RSPLight> rspLightVector : register(t15);
+ StructuredBuffer<RSPLookAt> rspLookAtVector : register(t16);
+ StructuredBuffer<float4x4> viewProjTransforms : register(t17);
+ StructuredBuffer<float4x4> worldTransforms : register(t18);
++float loadPos(uint i) { return loadFloat(srcPos, i); }
++float loadVel(uint i) { return loadFloat(srcVel, i); }
++float loadTc(uint i) { return loadFloat(srcTc, i); }
++float loadTcVel(uint i) { return loadFloat(srcTcVel, i); }
++uint loadCol(uint i) { return loadUint8(srcCol, i); }
++int loadNorm(uint i) { return loadInt8(srcNorm, i); }
++uint loadViewProjIndex(uint i) { return loadUint16(srcViewProjIndices, i); }
++uint loadWorldIndex(uint i) { return loadUint16(srcWorldIndices, i); }
++uint loadFogIndex(uint i) { return loadUint16(srcFogIndices, i); }
++uint loadLightIndex(uint i) { return loadUint16(srcLightIndices, i); }
++uint loadLightCount(uint i) { return loadUint8(srcLightCounts, i); }
++uint loadLookAtIndex(uint i) { return loadUint16(srcLookAtIndices, i); }
++float4x4 loadViewProjTransform(uint i) { return viewProjTransforms[i]; }
++float4x4 loadWorldTransform(uint i) { return worldTransforms[i]; }
++RSPViewport loadViewport(uint i) { return rspViewportVector[i]; }
++RSPFog loadFog(uint i) { return rspFogVector[i]; }
++RSPLight loadLight(uint i) { return rspLightVector[i]; }
++RSPLookAt loadLookAt(uint i) { return rspLookAtVector[i]; }
++#endif
++
+ RWStructuredBuffer<float4> dstPos : register(u19);
+ RWStructuredBuffer<float2> dstTc : register(u20);
+ RWStructuredBuffer<float4> dstCol : register(u21);
+@@ -49,58 +144,58 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+ 
+     const uint vertexOffsetIndex = gConstants.vertexStart + vertexIndex;
+-    const uint viewProjIndex = loadUint16(srcViewProjIndices, vertexOffsetIndex);
+-    const uint transformIndex = loadUint16(srcWorldIndices, vertexOffsetIndex);
+-    const float4x4 viewProjMat = viewProjTransforms[viewProjIndex];
+-    const float4x4 worldMat = worldTransforms[transformIndex];
++    const uint viewProjIndex = loadViewProjIndex(vertexOffsetIndex);
++    const uint transformIndex = loadWorldIndex(vertexOffsetIndex);
++    const float4x4 viewProjMat = loadViewProjTransform(viewProjIndex);
++    const float4x4 worldMat = loadWorldTransform(transformIndex);
+     const uint posIndex = vertexOffsetIndex * 3;
+     const uint normColIndex = vertexOffsetIndex * 4;
+     const float3 norm = float3(
+-        loadInt8(srcNorm, normColIndex + 0) / 127.0f,
+-        loadInt8(srcNorm, normColIndex + 1) / 127.0f,
+-        loadInt8(srcNorm, normColIndex + 2) / 127.0f
++        loadNorm(normColIndex + 0) / 127.0f,
++        loadNorm(normColIndex + 1) / 127.0f,
++        loadNorm(normColIndex + 2) / 127.0f
+     );
+ 
+     // NDC Position.
+-    const float3 pos = float3(loadFloat(srcPos, posIndex + 0), loadFloat(srcPos, posIndex + 1), loadFloat(srcPos, posIndex + 2));
+-    const float3 vel = float3(loadFloat(srcVel, posIndex + 0), loadFloat(srcVel, posIndex + 1), loadFloat(srcVel, posIndex + 2));
++    const float3 pos = float3(loadPos(posIndex + 0), loadPos(posIndex + 1), loadPos(posIndex + 2));
++    const float3 vel = float3(loadVel(posIndex + 0), loadVel(posIndex + 1), loadVel(posIndex + 2));
+     float4 tfPos = mul(mul(viewProjMat, worldMat), float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
+ 
+     // Fog.
+-    const uint fogIndex = loadUint16(srcFogIndices, vertexOffsetIndex);
++    const uint fogIndex = loadFogIndex(vertexOffsetIndex);
+     float4 vertexColor;
+     if (fogIndex > 0) {
+-        const RSPFog rspFog = rspFogVector[fogIndex - 1];
++        const RSPFog rspFog = loadFog(fogIndex - 1);
+         const float fogAlpha = ((max(tfPos.z, 0) / tfPos.w) * rspFog.mul + rspFog.offset);
+         vertexColor.a = clamp(fogAlpha / 255.0f, 0.0f, 1.0f);
+     }
+     else {
+-        vertexColor.a = loadUint8(srcCol, normColIndex + 3) / 255.0f;
++        vertexColor.a = loadCol(normColIndex + 3) / 255.0f;
+     }
+ 
+     // Texgen.
+     const uint tcIndex = vertexOffsetIndex * 2;
+-    const uint lookAtIndex = loadUint16(srcLookAtIndices, vertexOffsetIndex);
+-    float2 tc = float2(loadFloat(srcTc, tcIndex + 0), loadFloat(srcTc, tcIndex + 1));
++    const uint lookAtIndex = loadLookAtIndex(vertexOffsetIndex);
++    float2 tc = float2(loadTc(tcIndex + 0), loadTc(tcIndex + 1));
+     if (lookAtIndex & RSP_LOOKAT_INDEX_ENABLED) {
+         const bool textureGenLinear = lookAtIndex & RSP_LOOKAT_INDEX_LINEAR;
+         const uint extractedIndex = (lookAtIndex >> RSP_LOOKAT_INDEX_SHIFT);
+-        const RSPLookAt lookAt = rspLookAtVector[extractedIndex];
++        const RSPLookAt lookAt = loadLookAt(extractedIndex);
+         tc = computeTextureGen(tc, norm, lookAt, textureGenLinear, worldMat);
+     }
+     else {
+-        float2 tcVel = float2(loadFloat(srcTcVel, tcIndex + 0), loadFloat(srcTcVel, tcIndex + 1));
++        float2 tcVel = float2(loadTcVel(tcIndex + 0), loadTcVel(tcIndex + 1));
+         tc -= tcVel * (1.0f - gConstants.curFrameWeight);
+     }
+ 
+     // Lighting.
+-    const uint lightIndex = loadUint16(srcLightIndices, vertexOffsetIndex);
+-    const uint lightCount = loadUint8(srcLightCounts, vertexOffsetIndex);
++    const uint lightIndex = loadLightIndex(vertexOffsetIndex);
++    const uint lightCount = loadLightCount(vertexOffsetIndex);
+     if (lightCount > 0) {
+         const uint ambientIndex = lightIndex + lightCount - 1;
+-        float3 resultColor = rspLightVector[ambientIndex].col;
++        float3 resultColor = loadLight(ambientIndex).col;
+         for (uint i = lightIndex; i < ambientIndex; i++) {
+-            const RSPLight light = rspLightVector[i];
++            const RSPLight light = loadLight(i);
+             if (light.kc > 0) {
+                 resultColor += computePosLight(pos, norm, light, worldMat);
+             }
+@@ -113,9 +208,9 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+     else {
+         vertexColor.rgb = float3(
+-            loadUint8(srcCol, normColIndex + 0) / 255.0f, 
+-            loadUint8(srcCol, normColIndex + 1) / 255.0f, 
+-            loadUint8(srcCol, normColIndex + 2) / 255.0f
++            loadCol(normColIndex + 0) / 255.0f, 
++            loadCol(normColIndex + 1) / 255.0f, 
++            loadCol(normColIndex + 2) / 255.0f
+         );
+     }
+     
+@@ -126,7 +221,7 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+ 
+     // Convert to N64 screen position.
+-    const RSPViewport rspViewport = rspViewportVector[viewProjIndex];
++    const RSPViewport rspViewport = loadViewport(viewProjIndex);
+     const float3 ndcPos = tfPos.xyz / float3(tfPos.w, -tfPos.w, tfPos.w);
+     const float4 screenPos = float4(ndcPos * rspViewport.scale + rspViewport.translate, tfPos.w);
+     dstPos[vertexOffsetIndex] = screenPos;
+diff --git a/src/shaders/RSPWorldCS.hlsl b/src/shaders/RSPWorldCS.hlsl
+index 962ace6..2aeed21 100644
+--- a/src/shaders/RSPWorldCS.hlsl
++++ b/src/shaders/RSPWorldCS.hlsl
+@@ -11,9 +11,31 @@ struct RSPWorldCB {
+     uint vertexCount;
+     float prevFrameWeight;
+     float curFrameWeight;
++#ifdef PACKED_RSP_INPUTS
++    // Where each input starts in srcInputs, in bytes, in the order VertexProcessor::process() lists them.
++    uint posOffset;
++    uint velOffset;
++    uint normOffset;
++    uint indicesOffset;
++    uint worldMatsOffset;
++    uint invTWorldMatsOffset;
++    uint prevWorldMatsOffset;
++#endif
+ };
+ 
+ [[vk::push_constant]] ConstantBuffer<RSPWorldCB> gConstants : register(b0);
++
++#ifdef PACKED_RSP_INPUTS
++// Every input in one buffer (WebGPU.hlsli says why), read where the push constants say each one starts.
++ByteAddressBuffer srcInputs : register(t1);
++float loadPos(uint i) { return loadFloatAt(srcInputs, gConstants.posOffset + i * 4); }
++float loadVel(uint i) { return loadFloatAt(srcInputs, gConstants.velOffset + i * 4); }
++int loadNorm(uint i) { return loadInt8At(srcInputs, gConstants.normOffset + i); }
++uint loadIndex(uint i) { return loadUint16At(srcInputs, gConstants.indicesOffset + i * 2); }
++float4x4 loadWorldMat(uint i) { return loadFloat4x4At(srcInputs, gConstants.worldMatsOffset + i * 64); }
++float4x4 loadInvTWorldMat(uint i) { return loadFloat4x4At(srcInputs, gConstants.invTWorldMatsOffset + i * 64); }
++float4x4 loadPrevWorldMat(uint i) { return loadFloat4x4At(srcInputs, gConstants.prevWorldMatsOffset + i * 64); }
++#else
+ TYPED_BUFFER(float) srcPos : register(t1);
+ TYPED_BUFFER(float) srcVel : register(t2);
+ TYPED_BUFFER(int) srcNorm : register(t3);
+@@ -21,6 +43,15 @@ TYPED_BUFFER(uint) srcIndices : register(t4);
+ StructuredBuffer<float4x4> worldMats : register(t5);
+ StructuredBuffer<float4x4> invTWorldMats : register(t6);
+ StructuredBuffer<float4x4> prevWorldMats : register(t7);
++float loadPos(uint i) { return loadFloat(srcPos, i); }
++float loadVel(uint i) { return loadFloat(srcVel, i); }
++int loadNorm(uint i) { return loadInt8(srcNorm, i); }
++uint loadIndex(uint i) { return loadUint16(srcIndices, i); }
++float4x4 loadWorldMat(uint i) { return worldMats[i]; }
++float4x4 loadInvTWorldMat(uint i) { return invTWorldMats[i]; }
++float4x4 loadPrevWorldMat(uint i) { return prevWorldMats[i]; }
++#endif
++
+ RWStructuredBuffer<float4> dstPos : register(u8);
+ RWStructuredBuffer<float4> dstNorm : register(u9);
+ RWStructuredBuffer<float4> dstVel : register(u10);
+@@ -32,15 +63,15 @@ void CSMain(uint vertexIndex : SV_DispatchThreadID) {
+     }
+     
+     const uint vertexOffsetIndex = gConstants.vertexStart + vertexIndex;
+-    const uint transformIndex = loadUint16(srcIndices, vertexOffsetIndex);
++    const uint transformIndex = loadIndex(vertexOffsetIndex);
+     const uint posIndex = vertexOffsetIndex * 3;
+     const uint normIndex = vertexOffsetIndex * 4;
+-    const float3 pos = float3(loadFloat(srcPos, posIndex + 0), loadFloat(srcPos, posIndex + 1), loadFloat(srcPos, posIndex + 2));
+-    const float3 vel = float3(loadFloat(srcVel, posIndex + 0), loadFloat(srcVel, posIndex + 1), loadFloat(srcVel, posIndex + 2));
+-    const float3 norm = float3(loadInt8(srcNorm, normIndex + 0), loadInt8(srcNorm, normIndex + 1), loadInt8(srcNorm, normIndex + 2));
+-    const float4 worldPos = mul(worldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
+-    const float4 worldNorm = all(norm == 0.0f) ? float4(0.0f, 0.0f, 0.0f, 1.0f) : float4(normalize(mul(invTWorldMats[transformIndex], float4(norm, 0.0f)).xyz), 1.0f);
+-    const float4 prevWorldPos = mul(prevWorldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.prevFrameWeight), 1.0f));
++    const float3 pos = float3(loadPos(posIndex + 0), loadPos(posIndex + 1), loadPos(posIndex + 2));
++    const float3 vel = float3(loadVel(posIndex + 0), loadVel(posIndex + 1), loadVel(posIndex + 2));
++    const float3 norm = float3(loadNorm(normIndex + 0), loadNorm(normIndex + 1), loadNorm(normIndex + 2));
++    const float4 worldPos = mul(loadWorldMat(transformIndex), float4(pos - vel * (1.0f - gConstants.curFrameWeight), 1.0f));
++    const float4 worldNorm = all(norm == 0.0f) ? float4(0.0f, 0.0f, 0.0f, 1.0f) : float4(normalize(mul(loadInvTWorldMat(transformIndex), float4(norm, 0.0f)).xyz), 1.0f);
++    const float4 prevWorldPos = mul(loadPrevWorldMat(transformIndex), float4(pos - vel * (1.0f - gConstants.prevFrameWeight), 1.0f));
+     dstPos[vertexOffsetIndex] = worldPos;
+     dstNorm[vertexOffsetIndex] = worldNorm;
+     dstVel[vertexOffsetIndex] = worldPos - prevWorldPos;
+diff --git a/src/shaders/WebGPU.hlsli b/src/shaders/WebGPU.hlsli
+index f518c53..3b0d71c 100644
+--- a/src/shaders/WebGPU.hlsli
++++ b/src/shaders/WebGPU.hlsli
+@@ -14,6 +14,40 @@
+ //
+ // A storage texture in WGSL has a format, and naga guesses rgba32float for one SPIR-V leaves formatless, so
+ // IMAGE_FORMAT gives each RWTexture2D the format of the texture RT64 binds to it on WebGPU.
++//
++// WebGPU also guarantees only 8 storage buffers per shader stage, so the RSP compute shaders built with
++// PACKED_RSP_INPUTS read all their inputs from one ByteAddressBuffer, each array at a byte offset of its own (see
++// RSPPackedInputs in rt64_rsp_processor.h). The *At loads read such a buffer at a byte address, on every backend.
++
++uint loadUint32At(ByteAddressBuffer buffer, uint address) {
++    return buffer.Load(address);
++}
++
++float loadFloatAt(ByteAddressBuffer buffer, uint address) {
++    return asfloat(buffer.Load(address));
++}
++
++float4 loadFloat4At(ByteAddressBuffer buffer, uint address) {
++    return asfloat(buffer.Load4(address));
++}
++
++uint loadUint16At(ByteAddressBuffer buffer, uint address) {
++    return (buffer.Load(address & ~3U) >> ((address & 2U) << 3)) & 0xFFFFU;
++}
++
++uint loadUint8At(ByteAddressBuffer buffer, uint address) {
++    return (buffer.Load(address & ~3U) >> ((address & 3U) << 3)) & 0xFFU;
++}
++
++int loadInt8At(ByteAddressBuffer buffer, uint address) {
++    return int(loadUint8At(buffer, address) << 24) >> 24;
++}
++
++// A float4x4 laid out as a StructuredBuffer<float4x4> holds it: column by column, HLSL's default packing.
++float4x4 loadFloat4x4At(ByteAddressBuffer buffer, uint address) {
++    return transpose(float4x4(loadFloat4At(buffer, address), loadFloat4At(buffer, address + 16),
++        loadFloat4At(buffer, address + 32), loadFloat4At(buffer, address + 48)));
++}
+ 
+ #ifdef WEBGPU
+ #   define TYPED_BUFFER(T) ByteAddressBuffer
+@@ -21,23 +55,23 @@
+ #   define IMAGE_FORMAT(F) [[vk::image_format(F)]]
+ 
+ uint loadUint32(ByteAddressBuffer buffer, uint index) {
+-    return buffer.Load(index << 2);
++    return loadUint32At(buffer, index << 2);
+ }
+ 
+ float loadFloat(ByteAddressBuffer buffer, uint index) {
+-    return asfloat(buffer.Load(index << 2));
++    return loadFloatAt(buffer, index << 2);
+ }
+ 
+ uint loadUint16(ByteAddressBuffer buffer, uint index) {
+-    return (buffer.Load((index << 1) & ~3U) >> ((index & 1U) << 4)) & 0xFFFFU;
++    return loadUint16At(buffer, index << 1);
+ }
+ 
+ uint loadUint8(ByteAddressBuffer buffer, uint index) {
+-    return (buffer.Load(index & ~3U) >> ((index & 3U) << 3)) & 0xFFU;
++    return loadUint8At(buffer, index);
+ }
+ 
+ int loadInt8(ByteAddressBuffer buffer, uint index) {
+-    return int(loadUint8(buffer, index) << 24) >> 24;
++    return loadInt8At(buffer, index);
+ }
+ 
+ void storeUint16(RWByteAddressBuffer buffer, uint index, uint value) {
