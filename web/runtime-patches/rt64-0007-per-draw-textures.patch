@@ -128,7 +128,7 @@ index 69a82ac..94f5cd0 100644
          uint32_t FbParams;
          uint32_t gBackgroundColor;
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 9fae0d4..f257ecb 100644
+index 9fae0d4..e62e335 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
 @@ -151,6 +151,7 @@ namespace RT64 {
@@ -216,7 +216,7 @@ index 9fae0d4..f257ecb 100644
                  
                  rasterParams.renderIndex = i;
                  rasterParams.screenScale = triangles.screenScale;
-@@ -1760,7 +1784,173 @@ namespace RT64 {
+@@ -1760,7 +1784,185 @@ namespace RT64 {
          checkRasterScene(rasterScene);
      }
  
@@ -231,7 +231,9 @@ index 9fae0d4..f257ecb 100644
 +    }
 +
 +    // Without descriptor indexing: finds the texture at every texture cache index that changed, and writes the TMEM of
-+    // the entries that are only TMEM into the pool, uploading the range that changed.
++    // the entries that are only TMEM into the pool, uploading the range that changed. An entry the cache emptied keeps
++    // its version (eviction doesn't change it), so indexTextures can still hold its deleted texture: only an index the
++    // cache has a texture at this workload is read from it (updateDrawTextureSets).
 +    void FramebufferRenderer::updateIndexTextures(std::vector<BufferUploader::Upload> &shaderUploads) {
 +        if (descriptorTextureReplacementMapEnabled != textureCacheReplacementMapEnabled) {
 +            descriptorTextureVersions.clear();
@@ -240,8 +242,8 @@ index 9fae0d4..f257ecb 100644
 +        }
 +
 +        const uint32_t cacheTextureCount = uint32_t(textureCacheVersions.size());
-+        descriptorTextureVersions.resize(std::max(textureCacheSize, cacheTextureCount), 0);
-+        indexTextures.resize(descriptorTextureVersions.size());
++        descriptorTextureVersions.resize(cacheTextureCount, 0);
++        indexTextures.resize(cacheTextureCount);
 +        if (tmemPoolBytes.size() < (std::max(cacheTextureCount, 1U) * TMEMBytes)) {
 +            tmemPoolBytes.resize(std::max(cacheTextureCount, 1U) * TMEMBytes, 0);
 +        }
@@ -255,13 +257,13 @@ index 9fae0d4..f257ecb 100644
 +                }
 +
 +                descriptorTextureVersions[i] = textureCacheVersions[i];
++                DrawTexture &indexTexture = indexTextures[i];
++                indexTexture = DrawTexture();
 +                const Texture *cacheTexture = textureCacheTextures[i];
 +                if (cacheTexture == nullptr) {
 +                    continue;
 +                }
 +
-+                DrawTexture &indexTexture = indexTextures[i];
-+                indexTexture = DrawTexture();
 +                if (textureCacheReplacementMapEnabled && (textureCacheTextureReplacements[i] != nullptr)) {
 +                    indexTexture.texture = textureCacheTextureReplacements[i]->texture.get();
 +                }
@@ -317,16 +319,26 @@ index 9fae0d4..f257ecb 100644
 +            tmemPoolBufferBound = tmemPoolBuffer.get();
 +        }
 +
-+        // Tile copies and render targets are put at an index for this workload only.
++        // Tile copies and render targets are put at an index for this workload only, a free one of the cache's or one
++        // past its end, and may be gone by the next.
++        dynamicIndexTextures.clear();
 +        for (const DynamicTextureView &dynamicView : dynamicTextureViewVector) {
-+            if (dynamicView.dstIndex >= indexTextures.size()) {
-+                indexTextures.resize(dynamicView.dstIndex + 1);
-+                descriptorTextureVersions.resize(dynamicView.dstIndex + 1, 0);
++            dynamicIndexTextures[dynamicView.dstIndex] = { dynamicView.texture, dynamicView.textureView, ++drawTextureStampCounter };
++        }
++
++        auto indexTexture = [&](uint32_t textureIndex) -> const DrawTexture * {
++            auto dynamicIt = dynamicIndexTextures.find(textureIndex);
++            if (dynamicIt != dynamicIndexTextures.end()) {
++                return &dynamicIt->second;
 +            }
 +
-+            indexTextures[dynamicView.dstIndex] = { dynamicView.texture, dynamicView.textureView, ++drawTextureStampCounter };
-+            descriptorTextureVersions[dynamicView.dstIndex] = 0;
-+        }
++            const bool inCache = (textureIndex < textureCacheTextures.size()) && (textureCacheTextures[textureIndex] != nullptr);
++            if (inCache && (textureIndex < indexTextures.size()) && (indexTextures[textureIndex].texture != nullptr)) {
++                return &indexTextures[textureIndex];
++            }
++
++            return nullptr;
++        };
 +
 +        const DrawTexture dummyTexture = { dummyTileTexture.get(), nullptr, 0 };
 +        const uint32_t TileCount = FramebufferRendererDescriptorDrawTextureSet::TileCount;
@@ -351,9 +363,9 @@ index 9fae0d4..f257ecb 100644
 +                const uint32_t tileIndex = renderIndices.rdpTileIndex + t;
 +                drawTextures[t] = dummyTexture;
 +                if ((t < renderIndices.rdpTileCount) && (tileIndex < gpuTiles.size())) {
-+                    const uint32_t textureIndex = gpuTiles[tileIndex].textureIndex;
-+                    if ((textureIndex < indexTextures.size()) && (indexTextures[textureIndex].texture != nullptr)) {
-+                        drawTextures[t] = indexTextures[textureIndex];
++                    const DrawTexture *tileTexture = indexTexture(gpuTiles[tileIndex].textureIndex);
++                    if (tileTexture != nullptr) {
++                        drawTextures[t] = *tileTexture;
 +                    }
 +                }
 +
@@ -391,7 +403,7 @@ index 9fae0d4..f257ecb 100644
          bool shaderViewRtEnabled = false;
          std::vector<BufferUploader::Upload> shaderUploads = {
              { renderIndicesVector.data(), { 0, renderIndicesVector.size() }, sizeof(interop::RenderIndices), RenderBufferFlag::STORAGE, { }, &renderIndicesBuffer},
-@@ -1816,8 +2006,16 @@ namespace RT64 {
+@@ -1816,8 +2018,16 @@ namespace RT64 {
          }
  #   endif
  
@@ -409,10 +421,10 @@ index 9fae0d4..f257ecb 100644
  
      void FramebufferRenderer::advanceFrame(bool rtEnabled) {
 diff --git a/src/render/rt64_framebuffer_renderer.h b/src/render/rt64_framebuffer_renderer.h
-index 3add9c3..68895bb 100644
+index 3add9c3..d00af11 100644
 --- a/src/render/rt64_framebuffer_renderer.h
 +++ b/src/render/rt64_framebuffer_renderer.h
-@@ -98,6 +98,36 @@ namespace RT64 {
+@@ -98,6 +98,37 @@ namespace RT64 {
          std::vector<uint32_t> descriptorTextureVersions;
          uint32_t descriptorTextureGlobalVersion = 0;
          bool descriptorTextureReplacementMapEnabled = false;
@@ -436,6 +448,7 @@ index 3add9c3..68895bb 100644
 +        bool usePerDrawTextures = false;
 +        uint64_t drawTextureStampCounter = 0;
 +        std::vector<DrawTexture> indexTextures;
++        std::unordered_map<uint32_t, DrawTexture> dynamicIndexTextures;
 +        std::vector<uint8_t> tmemPoolBytes;
 +        BufferPair tmemPoolBuffer;
 +        const RenderBuffer *tmemPoolBufferBound = nullptr;
@@ -449,7 +462,7 @@ index 3add9c3..68895bb 100644
          std::unique_ptr<RSPSmoothNormalDescriptorSet> smoothDescSet;
          std::unique_ptr<RSPVertexTestZDescriptorSet> vertexTestZSet;
          interop::FrameParams frameParams;
-@@ -166,7 +196,9 @@ namespace RT64 {
+@@ -166,7 +197,9 @@ namespace RT64 {
          bool submitDepthAccess(RenderWorker *worker, RenderFramebufferStorage *fbStorage, bool readOnly, bool &depthState);
          void submitRasterScene(RenderWorker *worker, const Framebuffer &framebuffer, RenderFramebufferStorage *fbStorage, const RasterScene &rasterScene, bool &depthState);
          void addFramebuffer(const DrawParams &p);
