@@ -47,10 +47,10 @@ index 0000000..bcc9c6f
 +)
 diff --git a/examples/webgpu_checks/main.cpp b/examples/webgpu_checks/main.cpp
 new file mode 100644
-index 0000000..bdf33f9
+index 0000000..04c1dd8
 --- /dev/null
 +++ b/examples/webgpu_checks/main.cpp
-@@ -0,0 +1,302 @@
+@@ -0,0 +1,303 @@
 +//
 +// plume
 +//
@@ -238,7 +238,8 @@ index 0000000..bdf33f9
 +    readback->unmap();
 +}
 +
-+// Full clears to red and depth 1, then green rectangles, depth 0.25 over the bottom half, and a blue triangle at
++// Full clears to red and depth 1, then green rectangles, depth 0.25 over the bottom half (asking for the stencil too,
++// as clearDepthStencil's defaults do, which D32_FLOAT hasn't got), and a blue triangle at
 +// depth 0.5 tested LESS over everything: blue on top, red and green kept below, and the depth it wrote is 0.5, which
 +// it only is if the clears gave the draw its viewport back.
 +static void checkRectangleClears(Context &ctx) {
@@ -276,7 +277,7 @@ index 0000000..bdf33f9
 +    ctx.commandList->clearColor(0, RenderColor(1.0f, 0.0f, 0.0f, 1.0f));
 +    ctx.commandList->clearDepth(true, 1.0f);
 +    ctx.commandList->clearColor(0, RenderColor(0.0f, 1.0f, 0.0f, 1.0f), greenRects, 2);
-+    ctx.commandList->clearDepth(true, 0.25f, &bottomHalf, 1);
++    ctx.commandList->clearDepthStencil(true, true, 0.25f, 0, &bottomHalf, 1);
 +    ctx.commandList->drawInstanced(3, 1, 0, 0);
 +    ctx.commandList->setFramebuffer(nullptr);
 +    ctx.commandList->copyTextureRegion(RenderTextureCopyLocation::PlacedFootprint(colorReadback.get(), RenderFormat::R8G8B8A8_UNORM, Size, Size, 1, Size), RenderTextureCopyLocation::Subresource(color.get()));
@@ -354,7 +355,7 @@ index 0000000..bdf33f9
 +    return 0;
 +}
 diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
-index 1efef41..1d332fb 100644
+index 1efef41..0b2d4c0 100644
 --- a/plume_webgpu.cpp
 +++ b/plume_webgpu.cpp
 @@ -10,9 +10,11 @@
@@ -527,7 +528,7 @@ index 1efef41..1d332fb 100644
  
          if (bindGroup != nullptr) {
              wgpuBindGroupRelease(bindGroup);
-@@ -821,6 +912,45 @@ namespace plume {
+@@ -821,6 +912,47 @@ namespace plume {
          dirty = false;
      }
  
@@ -543,8 +544,10 @@ index 1efef41..1d332fb 100644
 +        return layoutWithPushConstants;
 +    }
 +
-+    WGPUBindGroup WebGPUDescriptorSet::getBindGroupWithPushConstants(WGPUBuffer buffer, uint32_t bindingSize) {
-+        WGPUBindGroup &group = groupsWithPushConstants[{ buffer, bindingSize }];
++    // Keyed by the chunk's id and not its buffer: a command list's chunks die with it, and a later buffer at the same
++    // address must not find a group of the destroyed one.
++    WGPUBindGroup WebGPUDescriptorSet::getBindGroupWithPushConstants(WGPUBuffer buffer, uint64_t chunkId, uint32_t bindingSize) {
++        WGPUBindGroup &group = groupsWithPushConstants[{ chunkId, bindingSize }];
 +        if (group == nullptr) {
 +            std::vector<WGPUBindGroupEntry> entries = groupEntries;
 +            WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
@@ -573,7 +576,7 @@ index 1efef41..1d332fb 100644
      // WebGPUPipeline
  
      WebGPUPipeline::WebGPUPipeline(WebGPUDevice *device, Type type) {
-@@ -1052,7 +1182,7 @@ namespace plume {
+@@ -1052,7 +1184,7 @@ namespace plume {
              pushConstantsSize = std::max(pushConstantsSize, range.offset + range.size);
          }
  
@@ -582,7 +585,7 @@ index 1efef41..1d332fb 100644
      }
  
      WebGPUPipelineLayout::~WebGPUPipelineLayout() { }
-@@ -1096,8 +1226,44 @@ namespace plume {
+@@ -1096,8 +1228,44 @@ namespace plume {
          }
      }
  
@@ -628,7 +631,7 @@ index 1efef41..1d332fb 100644
          return true;
      }
  
-@@ -1197,8 +1363,15 @@ namespace plume {
+@@ -1197,8 +1365,15 @@ namespace plume {
      }
  
      uint32_t WebGPUSwapChain::getRefreshRate() const {
@@ -646,7 +649,7 @@ index 1efef41..1d332fb 100644
      }
  
      // WebGPUFramebuffer
-@@ -1283,6 +1456,8 @@ namespace plume {
+@@ -1283,6 +1458,8 @@ namespace plume {
          for (PushConstantsChunk &chunk : pushConstantsChunks) {
              chunk.used = 0;
          }
@@ -655,7 +658,7 @@ index 1efef41..1d332fb 100644
      }
  
      void WebGPUCommandList::end() {
-@@ -1330,19 +1505,21 @@ namespace plume {
+@@ -1330,19 +1507,21 @@ namespace plume {
      WGPUPipelineLayout WebGPUCommandList::resolveBindings(BindState &state) {
          assert(state.layout != nullptr);
  
@@ -680,7 +683,7 @@ index 1efef41..1d332fb 100644
              while (layouts.size() < PushConstantsGroup) {
                  layouts.emplace_back(device->emptyLayout);
              }
-@@ -1363,13 +1540,17 @@ namespace plume {
+@@ -1363,13 +1542,17 @@ namespace plume {
              }
          };
  
@@ -700,7 +703,15 @@ index 1efef41..1d332fb 100644
          if (pushConstantsSize == 0) {
              return;
          }
-@@ -1398,10 +1579,11 @@ namespace plume {
+@@ -1391,6 +1574,7 @@ namespace plume {
+             bufferDesc.size = PushConstantsChunkSize;
+             bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+             chunk.buffer = wgpuDeviceCreateBuffer(device->device, &bufferDesc);
++            chunk.id = ++device->pushConstantsChunkCount;
+             chunk.data.resize(PushConstantsChunkSize, 0);
+             pushConstantsChunks.emplace_back(std::move(chunk));
+         }
+@@ -1398,10 +1582,11 @@ namespace plume {
          // The binding's size is part of the bind group, so a chunk keeps one group per block size.
          PushConstantsChunk &chunk = pushConstantsChunks[pushConstantsChunkIndex];
          const uint32_t bindingSize = uint32_t(alignUp(pushConstantsSize, 16));
@@ -715,7 +726,7 @@ index 1efef41..1d332fb 100644
              entry.buffer = chunk.buffer;
              entry.offset = 0;
              entry.size = bindingSize;
-@@ -1409,9 +1591,11 @@ namespace plume {
+@@ -1409,9 +1594,11 @@ namespace plume {
              groupDesc.layout = device->pushConstantsLayout;
              groupDesc.entryCount = 1;
              groupDesc.entries = &entry;
@@ -723,12 +734,12 @@ index 1efef41..1d332fb 100644
 +            chunkGroup = wgpuDeviceCreateBindGroup(device->device, &groupDesc);
          }
  
-+        WGPUBindGroup bindGroup = (sharedSet != nullptr) ? sharedSet->getBindGroupWithPushConstants(chunk.buffer, bindingSize) : chunkGroup;
++        WGPUBindGroup bindGroup = (sharedSet != nullptr) ? sharedSet->getBindGroupWithPushConstants(chunk.buffer, chunk.id, bindingSize) : chunkGroup;
 +
          const uint32_t offset = chunk.used;
          state.pushConstants.resize(pushConstantsSize, 0);
          memcpy(chunk.data.data() + offset, state.pushConstants.data(), pushConstantsSize);
-@@ -1507,7 +1691,12 @@ namespace plume {
+@@ -1507,7 +1694,12 @@ namespace plume {
  
          assert((pipeline != nullptr) && (pipeline->type == WebGPUPipeline::Type::Graphics));
          WGPUPipelineLayout layout = resolveBindings(graphics);
@@ -742,7 +753,24 @@ index 1efef41..1d332fb 100644
          bindGroups(graphics, renderPass, nullptr);
  
          if (renderStateDirty) {
-@@ -1678,12 +1867,41 @@ namespace plume {
+@@ -1524,9 +1716,16 @@ namespace plume {
+                 wgpuRenderPassEncoderSetIndexBuffer(renderPass, buffer->buffer, toIndexFormat(indexBuffer.format), indexBuffer.buffer.offset, indexBuffer.size);
+             }
+ 
++            // A clear of rectangles may have left its own viewport and blend constant behind.
+             if (viewportSet) {
+                 wgpuRenderPassEncoderSetViewport(renderPass, viewport.x, viewport.y, viewport.width, viewport.height, viewport.minDepth, viewport.maxDepth);
+             }
++            else {
++                wgpuRenderPassEncoderSetViewport(renderPass, 0.0f, 0.0f, float(framebuffer->width), float(framebuffer->height), 0.0f, 1.0f);
++            }
++
++            const WGPUColor blendConstant = { 0.0, 0.0, 0.0, 0.0 };
++            wgpuRenderPassEncoderSetBlendConstant(renderPass, &blendConstant);
+ 
+             // The scissor has to lie inside the attachments.
+             RenderRect rect = scissorSet ? scissor : RenderRect(0, 0, framebuffer->width, framebuffer->height);
+@@ -1678,12 +1877,41 @@ namespace plume {
          return false;
      }
  
@@ -786,7 +814,7 @@ index 1efef41..1d332fb 100644
              return;
          }
  
-@@ -1701,7 +1919,7 @@ namespace plume {
+@@ -1701,7 +1929,7 @@ namespace plume {
          assert(framebuffer != nullptr);
  
          if (!coversFramebuffer(framebuffer, clearRects, clearRectsCount)) {
@@ -795,7 +823,7 @@ index 1efef41..1d332fb 100644
              return;
          }
  
-@@ -1724,6 +1942,15 @@ namespace plume {
+@@ -1724,6 +1952,15 @@ namespace plume {
          const WebGPUBuffer *dst = static_cast<const WebGPUBuffer *>(dstBuffer.ref);
          const WebGPUBuffer *src = static_cast<const WebGPUBuffer *>(srcBuffer.ref);
          wgpuCommandEncoderCopyBufferToBuffer(encoder, src->buffer, srcBuffer.offset, dst->buffer, dstBuffer.offset, size);
@@ -811,7 +839,7 @@ index 1efef41..1d332fb 100644
      }
  
      void WebGPUCommandList::copyTextureRegion(const RenderTextureCopyLocation &dstLocation, const RenderTextureCopyLocation &srcLocation, uint32_t dstX, uint32_t dstY, uint32_t dstZ, const RenderBox *srcBox) {
-@@ -1786,6 +2013,7 @@ namespace plume {
+@@ -1786,6 +2023,7 @@ namespace plume {
              WGPUTexelCopyTextureInfo src = textureInfo(srcLocation, srcX, srcY, srcZ);
              WGPUTexelCopyBufferInfo dst = bufferInfo(dstLocation);
              wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
@@ -819,7 +847,7 @@ index 1efef41..1d332fb 100644
          }
          else if (srcIsTexture && dstIsTexture) {
              WGPUTexelCopyTextureInfo src = textureInfo(srcLocation, srcX, srcY, srcZ);
-@@ -1802,6 +2030,7 @@ namespace plume {
+@@ -1802,6 +2040,7 @@ namespace plume {
          const WebGPUBuffer *dst = static_cast<const WebGPUBuffer *>(dstBuffer);
          const WebGPUBuffer *src = static_cast<const WebGPUBuffer *>(srcBuffer);
          wgpuCommandEncoderCopyBufferToBuffer(encoder, src->buffer, 0, dst->buffer, 0, alignUp(std::min(dst->desc.size, src->desc.size), 4));
@@ -827,7 +855,7 @@ index 1efef41..1d332fb 100644
      }
  
      void WebGPUCommandList::copyTexture(const RenderTexture *dstTexture, const RenderTexture *srcTexture) {
-@@ -1886,13 +2115,24 @@ namespace plume {
+@@ -1886,13 +2125,24 @@ namespace plume {
          device->flushMappedBuffers();
  
          std::vector<WGPUCommandBuffer> commandBuffers;
@@ -852,7 +880,15 @@ index 1efef41..1d332fb 100644
  
          for (uint32_t i = 0; i < commandListCount; i++) {
              WebGPUCommandList *commandList = const_cast<WebGPUCommandList *>(static_cast<const WebGPUCommandList *>(commandLists[i]));
-@@ -1967,8 +2207,8 @@ namespace plume {
+@@ -1956,6 +2206,7 @@ namespace plume {
+ 
+         queue = wgpuDeviceGetQueue(device);
+         float32Filterable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Filterable);
++        float32Blendable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Blendable);
+         depthClipControl = wgpuDeviceHasFeature(device, WGPUFeatureName_DepthClipControl);
+ 
+         WGPULimits limits = WGPU_LIMITS_INIT;
+@@ -1967,8 +2218,8 @@ namespace plume {
          emptyGroupDesc.layout = emptyLayout;
          emptyBindGroup = wgpuDeviceCreateBindGroup(device, &emptyGroupDesc);
  
@@ -863,7 +899,7 @@ index 1efef41..1d332fb 100644
          pushConstantsEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
          pushConstantsEntry.buffer.type = WGPUBufferBindingType_Uniform;
          pushConstantsEntry.buffer.hasDynamicOffset = true;
-@@ -1980,6 +2220,16 @@ namespace plume {
+@@ -1980,6 +2231,16 @@ namespace plume {
      }
  
      WebGPUDevice::~WebGPUDevice() {
@@ -880,17 +916,23 @@ index 1efef41..1d332fb 100644
          if (emptyBindGroup != nullptr) {
              wgpuBindGroupRelease(emptyBindGroup);
          }
-@@ -2035,6 +2285,105 @@ namespace plume {
+@@ -2035,6 +2296,115 @@ namespace plume {
          }
      }
  
 +    // The pipeline that clears rectangles of one color attachment (colorAttachment >= 0) or of the depth and stencil
 +    // (colorAttachment < 0) of framebuffers like this one: every other target is in it with nothing written, since a
-+    // pipeline has to match all of the pass's attachments. Null for integer color targets, which can't blend.
++    // pipeline has to match all of the pass's attachments. Null for color targets that can't blend: integer ones, and
++    // 32-bit float ones without float32-blendable.
 +    WGPURenderPipeline WebGPUDevice::getClearPipeline(const WebGPUFramebuffer *framebuffer, int32_t colorAttachment, bool clearDepth, bool clearStencil) {
 +        WGPUBlendState blend = WGPU_BLEND_STATE_INIT;
 +        blend.color = { WGPUBlendOperation_Add, WGPUBlendFactor_Constant, WGPUBlendFactor_Zero };
 +        blend.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_Constant, WGPUBlendFactor_Zero };
++
++        // A pipeline may not write the depth or stencil of a format without one.
++        const RenderFormat depthFormat = (framebuffer->depthTexture != nullptr) ? framebuffer->depthTexture->desc.format : RenderFormat::UNKNOWN;
++        clearDepth = clearDepth && RenderFormatIsDepth(depthFormat);
++        clearStencil = clearStencil && RenderFormatIsStencil(depthFormat);
 +
 +        std::string key = std::to_string(colorAttachment) + (clearDepth ? "d" : "") + (clearStencil ? "s" : "");
 +        uint32_t sampleCount = 1;
@@ -906,6 +948,10 @@ index 1efef41..1d332fb 100644
 +                bool isSigned = false;
 +                if (isIntegerFormat(format, isSigned)) {
 +                    PLUME_WEBGPU_UNSUPPORTED("clears of rectangles of integer color targets are ignored");
++                    return nullptr;
++                }
++                else if (isFloat32Format(format) && !float32Blendable) {
++                    PLUME_WEBGPU_UNSUPPORTED("clears of rectangles of 32-bit float color targets need float32-blendable");
 +                    return nullptr;
 +                }
 +
@@ -987,10 +1033,10 @@ index 1efef41..1d332fb 100644
          return std::make_unique<WebGPUDescriptorSet>(this, desc);
      }
 diff --git a/plume_webgpu.h b/plume_webgpu.h
-index fd13cf6..432a0dd 100644
+index fd13cf6..0af78e8 100644
 --- a/plume_webgpu.h
 +++ b/plume_webgpu.h
-@@ -9,24 +9,39 @@
+@@ -9,24 +9,41 @@
  //
  // What core WebGPU lacks, and what this backend does instead:
  // - Push constants: a shader has one push constant block, as in Vulkan, with each range at its offset in it. Here
@@ -1016,7 +1062,8 @@ index fd13cf6..432a0dd 100644
 +//   the other backends. A build that can't wait gets whatever arrived before the call, possibly a submission old.
 +// - Formatted buffer views (texel buffers) don't exist. A formatted view binds its buffer as a read-only storage
 +//   buffer of raw bytes, the binding padded to a multiple of 4, so the shader reads array<u32> and unpacks R8 or R16
-+//   elements itself: element i of an n-byte format is at byte i * n, little-endian.
++//   elements itself: element i of an n-byte format is at byte i * n, little-endian. A writable formatted view of
++//   elements under 4 bytes shares each u32 between neighbours, so a shader writing it needs atomicOr/atomicAnd.
  // - A command list is recorded straight into a WGPUCommandEncoder. Render passes open on the first draw or clear
  //   after setFramebuffer() and close on anything that can't happen inside one (copies, dispatches, barriers). A clear
 -//   is the load op of the next pass, and a pass with only clears in it is opened when it closes.
@@ -1027,7 +1074,8 @@ index fd13cf6..432a0dd 100644
 +//   of a whole target is the load op of the next pass, and a pass with only clears in it is opened when it closes. A
 +//   clear of rectangles draws a triangle over the target clipped to each rectangle, with a pipeline of the backend's
 +//   own: the color is the blend constant, the depth both ends of the viewport, the stencil value the reference.
-+//   Integer color targets can't blend, so rectangle clears of those are ignored.
++//   Integer color targets can't blend, nor 32-bit float ones without float32-blendable, so rectangle clears of
++//   those are ignored.
 +// - Resolving part of a texture, MSAA sample locations, timestamp queries, geometry shaders, binding arrays,
 +//   triangle fans, logic ops and dynamic depth bias are not supported, and the capabilities say so where plume has
 +//   one (resolveRegion, sampleLocations, queryPools, triangleFan, dynamicDepthBias).
@@ -1040,7 +1088,7 @@ index fd13cf6..432a0dd 100644
  // - Every call must come from the thread that owns the device's JavaScript object: WebGPU objects can't be shared
  //   between workers.
  // - Shaders are WGSL text (RenderShaderFormat::WGSL). Specialization constants are WGSL overrides named by their id.
-@@ -50,6 +65,7 @@
+@@ -50,6 +67,7 @@
  
  namespace plume {
      static const uint32_t PushConstantsGroup = 3;
@@ -1048,7 +1096,7 @@ index fd13cf6..432a0dd 100644
  
      struct WebGPUBuffer;
      struct WebGPUCommandQueue;
-@@ -68,11 +84,20 @@ namespace plume {
+@@ -68,11 +86,20 @@ namespace plume {
          ~WebGPUBufferFormattedView() override;
      };
  
@@ -1069,7 +1117,7 @@ index fd13cf6..432a0dd 100644
          bool mapped = false;
  
          WebGPUBuffer(WebGPUDevice *device, WebGPUPool *pool, const RenderBufferDesc &desc);
-@@ -83,6 +108,9 @@ namespace plume {
+@@ -83,6 +110,9 @@ namespace plume {
          void setName(const std::string &name) override;
          uint64_t getDeviceAddress() const override;
          void flush(uint64_t begin, uint64_t end);
@@ -1079,7 +1127,7 @@ index fd13cf6..432a0dd 100644
      };
  
      struct WebGPUTexture : RenderTexture {
-@@ -143,6 +171,11 @@ namespace plume {
+@@ -143,6 +173,11 @@ namespace plume {
          std::vector<Binding> bindings;
          WGPUBindGroupLayout layout = nullptr;
          WGPUBindGroup bindGroup = nullptr;
@@ -1087,21 +1135,21 @@ index fd13cf6..432a0dd 100644
 +        std::vector<WGPUBindGroupEntry> groupEntries;
 +        std::string layoutKey;
 +        WGPUBindGroupLayout layoutWithPushConstants = nullptr;
-+        std::map<std::pair<WGPUBuffer, uint32_t>, WGPUBindGroup> groupsWithPushConstants;
++        std::map<std::pair<uint64_t, uint32_t>, WGPUBindGroup> groupsWithPushConstants;
          bool dirty = true;
  
          WebGPUDescriptorSet(WebGPUDevice *device, const RenderDescriptorSetDesc &desc);
-@@ -152,6 +185,9 @@ namespace plume {
+@@ -152,6 +187,9 @@ namespace plume {
          void setSampler(uint32_t descriptorIndex, const RenderSampler *sampler) override;
          void setAccelerationStructure(uint32_t descriptorIndex, const RenderAccelerationStructure *accelerationStructure) override;
          void update();
 +        WGPUBindGroupLayout getLayoutWithPushConstants();
-+        WGPUBindGroup getBindGroupWithPushConstants(WGPUBuffer buffer, uint32_t bindingSize);
++        WGPUBindGroup getBindGroupWithPushConstants(WGPUBuffer buffer, uint64_t chunkId, uint32_t bindingSize);
 +        void releaseGroupsWithPushConstants();
      };
  
      // A pipeline is created when it is first drawn with, after the RenderShader may be gone, so it keeps its own
-@@ -234,6 +270,9 @@ namespace plume {
+@@ -234,6 +272,9 @@ namespace plume {
          uint32_t width = 0;
          uint32_t height = 0;
          bool vsyncEnabled = true;
@@ -1111,7 +1159,15 @@ index fd13cf6..432a0dd 100644
  
          WebGPUSwapChain(WebGPUCommandQueue *commandQueue, const RenderSwapChainDesc &desc);
          ~WebGPUSwapChain() override;
-@@ -352,8 +391,12 @@ namespace plume {
+@@ -276,6 +317,7 @@ namespace plume {
+ 
+         struct PushConstantsChunk {
+             WGPUBuffer buffer = nullptr;
++            uint64_t id = 0;
+             std::map<uint32_t, WGPUBindGroup> bindGroups;
+             std::vector<uint8_t> data;
+             uint32_t used = 0;
+@@ -352,8 +394,12 @@ namespace plume {
          void resetQueryPool(const RenderQueryPool *queryPool, uint32_t queryFirstIndex, uint32_t queryCount) override;
          void writeTimestamp(const RenderQueryPool *queryPool, uint32_t queryIndex) override;
  
@@ -1124,7 +1180,12 @@ index fd13cf6..432a0dd 100644
          bool prepareDraw();
          void setPushConstants(BindState &state, uint32_t rangeIndex, const void *data, uint32_t offset, uint32_t size);
          WGPUPipelineLayout resolveBindings(BindState &state);
-@@ -401,10 +444,13 @@ namespace plume {
+@@ -398,13 +444,18 @@ namespace plume {
+         RenderDeviceCapabilities capabilities;
+         RenderDeviceDescription description;
+         bool float32Filterable = false;
++        bool float32Blendable = false;
++        uint64_t pushConstantsChunkCount = 0;
          bool depthClipControl = false;
          WGPUBindGroupLayout emptyLayout = nullptr;
          WGPUBindGroup emptyBindGroup = nullptr;
@@ -1138,7 +1199,7 @@ index fd13cf6..432a0dd 100644
  
          WebGPUDevice(WebGPUInterface *renderInterface);
          ~WebGPUDevice() override;
-@@ -435,6 +481,7 @@ namespace plume {
+@@ -435,6 +486,7 @@ namespace plume {
          WGPUBindGroupLayout getBindGroupLayout(const std::string &key, const std::vector<WGPUBindGroupLayoutEntry> &entries);
          WGPUPipelineLayout getPipelineLayout(const std::vector<WGPUBindGroupLayout> &layouts);
          void flushMappedBuffers();
@@ -1147,7 +1208,7 @@ index fd13cf6..432a0dd 100644
  
      struct WebGPUInterface : RenderInterface {
 diff --git a/plume_webgpu_device.js b/plume_webgpu_device.js
-index d308c62..b9b12d9 100644
+index d308c62..61dc396 100644
 --- a/plume_webgpu_device.js
 +++ b/plume_webgpu_device.js
 @@ -1,7 +1,8 @@
@@ -1161,9 +1222,12 @@ index d308c62..b9b12d9 100644
  Module['preRun'] = [].concat(Module['preRun'] || []);
  Module['preRun'].push(() => {
    addRunDependency('plume-webgpu-device');
-@@ -17,7 +18,16 @@ Module['preRun'].push(() => {
+@@ -15,9 +16,18 @@ Module['preRun'].push(() => {
+       throw new Error('No WebGPU adapter.');
+     }
  
-     const optionalFeatures = ['float32-filterable', 'depth-clip-control', 'dual-source-blending', 'texture-compression-bc', 'timestamp-query'];
+-    const optionalFeatures = ['float32-filterable', 'depth-clip-control', 'dual-source-blending', 'texture-compression-bc', 'timestamp-query'];
++    const optionalFeatures = ['float32-filterable', 'float32-blendable', 'depth-clip-control', 'dual-source-blending', 'texture-compression-bc', 'timestamp-query'];
      const requiredFeatures = optionalFeatures.filter((feature) => adapter.features.has(feature));
 -    const device = await adapter.requestDevice({ requiredFeatures });
 +    const raisedLimits = ['maxSampledTexturesPerShaderStage', 'maxSamplersPerShaderStage', 'maxStorageBuffersPerShaderStage',
