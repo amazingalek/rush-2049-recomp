@@ -19,7 +19,8 @@ uploaded. It plays the title screen, the menus and races in Chrome at close to 6
 build does, and the title and demo races in Firefox. It isn't hosted anywhere yet, so for now you build it and
 serve it yourself. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
-[recomp-web](https://github.com/amazingalek/recomp-web).
+[recomp-web](https://github.com/amazingalek/recomp-web). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
+of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team).
 
 ## Modern enhancements
 

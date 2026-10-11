@@ -101,8 +101,6 @@ rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
 rt64-0011              specialized shaders on WebGPU, built in the background while the ubershader draws: the spec
                        constant WGSL shaders created once, at setup; one compilation thread
-hlslpp-web             rt64-web's src/contrib/hlslpp: the wasm SIMD backend's movehl, dot4, load3 of int3 and
-                       shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
                        (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
 RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
@@ -110,6 +108,8 @@ RecompFrontend-0005    Emscripten: no Mods or Exit in the launcher, no Quit icon
                        aren't mods, rumble through the Gamepad API (SDL2's port has none)
 rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::SwapChainFormat), not bgra8unorm
 RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
+rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
+                       int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 ```
 
 `runtime-patches/`, this game's, on top of the forks:
