@@ -1,8 +1,8 @@
 diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
-index 784c336..429f04b 100644
+index 66e83ba..3d1a225 100644
 --- a/examples/CMakeLists.txt
 +++ b/examples/CMakeLists.txt
-@@ -28,3 +28,6 @@ plume_shaders_init()
+@@ -34,3 +34,6 @@ plume_shaders_init()
  # Add example subdirectories
  add_subdirectory(triangle)
  add_subdirectory(cube)
@@ -10,24 +10,29 @@ index 784c336..429f04b 100644
 +    add_subdirectory(webgpu_checks)
 +endif()
 diff --git a/examples/cmake/modules/PlumeWGSL.cmake b/examples/cmake/modules/PlumeWGSL.cmake
-index 13baeba..8dc4fec 100644
+index 13baeba..1477dec 100644
 --- a/examples/cmake/modules/PlumeWGSL.cmake
 +++ b/examples/cmake/modules/PlumeWGSL.cmake
-@@ -7,7 +7,7 @@
+@@ -7,7 +7,9 @@
  # naga reads the SPIR-V that dxc writes for Vulkan. --keep-coordinate-space stops it negating the vertex position's y,
  # because the shader is compiled without -fvk-invert-y: WebGPU's clip space is D3D's. naga declares the push
  # constant block as var<immediate> (var<push_constant> before naga 30), which core WebGPU doesn't have, so the line
 -# becomes the uniform buffer plume_webgpu.h puts push constants in, @group(3) @binding(0).
-+# becomes the uniform buffer plume_webgpu.h puts push constants in, @group(3) @binding(999).
++# becomes the uniform buffer plume_webgpu.h puts push constants in, @group(3) @binding(999). dxc never marks an HLSL
++# RWTexture2D as write-only, so naga declares every storage texture read_write, which core WebGPU allows only in
++# r32float, r32uint and r32sint: any other format becomes write, as plume_webgpu.cpp binds it.
  
  foreach(ARG NAGA INPUT OUTPUT VAR_NAME OUTPUT_C OUTPUT_H)
      if(NOT DEFINED ${ARG})
-@@ -26,7 +26,7 @@ if(NOT NAGA_RESULT EQUAL 0)
+@@ -26,7 +28,10 @@ if(NOT NAGA_RESULT EQUAL 0)
  endif()
  
  file(READ "${OUTPUT}" WGSL)
 -string(REGEX REPLACE "var<(immediate|push_constant)>" "@group(3) @binding(0) var<uniform>" WGSL "${WGSL}")
 +string(REGEX REPLACE "var<(immediate|push_constant)>" "@group(3) @binding(999) var<uniform>" WGSL "${WGSL}")
++string(REGEX REPLACE "(texture_storage_[123]d(_array)?<r32(float|uint|sint)),read_write>" "\\1,PLUME_READ_WRITE>" WGSL "${WGSL}")
++string(REPLACE ",read_write>" ",write>" WGSL "${WGSL}")
++string(REPLACE ",PLUME_READ_WRITE>" ",read_write>" WGSL "${WGSL}")
  file(WRITE "${OUTPUT}" "${WGSL}")
  
  # The same layout as plume_file_to_c's, with the text zero-terminated.
@@ -47,10 +52,10 @@ index 0000000..bcc9c6f
 +)
 diff --git a/examples/webgpu_checks/main.cpp b/examples/webgpu_checks/main.cpp
 new file mode 100644
-index 0000000..04c1dd8
+index 0000000..03b3ea0
 --- /dev/null
 +++ b/examples/webgpu_checks/main.cpp
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,374 @@
 +//
 +// plume
 +//
@@ -63,9 +68,12 @@ index 0000000..04c1dd8
 +// - a formatted R8_UINT buffer of 7 bytes, bound as storage and unpacked by the shader;
 +// - clears of rectangles of color and depth, with a draw after them that needs its own viewport back;
 +// - push constants beside 4 descriptor sets, sharing bind group 3 with the 4th;
++// - a compute shader writing an rgba8unorm storage texture, which WebGPU only allows write-only;
 +// - present() paced to animation frames, and the refresh rate it measures.
 +// Each check prints a line, then "plume WebGPU checks: N of M passed", and the canvas ends green when all passed.
-+// Its shaders are WGSL written by hand, so it needs no shader tools.
++// Its shaders are WGSL written by hand, so it needs no shader tools. Built with -pthread, the checks run on a thread
++// of their own through plume_device_thread.h, as RT64 would, and the page's main thread runs the device; presents
++// aren't paced then, so that check only counts them.
 +
 +#include "plume_render_interface.h"
 +
@@ -77,6 +85,10 @@ index 0000000..04c1dd8
 +#include <vector>
 +
 +#include <emscripten.h>
++#ifdef __EMSCRIPTEN_PTHREADS__
++#include <thread>
++#include "plume_device_thread.h"
++#endif
 +
 +namespace plume {
 +    extern std::unique_ptr<RenderInterface> CreateWebGPUInterface();
@@ -104,6 +116,13 @@ index 0000000..04c1dd8
 +@group(3) @binding(999) var<uniform> pushConstants: PushConstants;
 +@compute @workgroup_size(1) fn main() {
 +    sums[pushConstants.slot] = a[0] + b[0] + c[0] + pushConstants.add;
++}
++)";
++
++static const char StorageTextureShader[] = R"(
++@group(0) @binding(0) var output: texture_storage_2d<rgba8unorm, write>;
++@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
++    textureStore(output, id.xy, vec4f(f32(id.x) / 255.0, f32(id.y) / 255.0, 1.0, 1.0));
 +}
 +)";
 +
@@ -238,6 +257,42 @@ index 0000000..04c1dd8
 +    readback->unmap();
 +}
 +
++// A compute shader writes each texel of a 64x64 rgba8unorm storage texture with its own coordinates, and the
++// texture comes back through a READBACK buffer.
++static void checkStorageTexture(Context &ctx) {
++    const uint32_t Size = 64;
++    const RenderDescriptorRange ranges[] = { RenderDescriptorRange(RenderDescriptorRangeType::READ_WRITE_TEXTURE, 0, 1) };
++    const RenderDescriptorSetDesc setDesc(ranges, 1);
++    auto layout = ctx.device->createPipelineLayout(RenderPipelineLayoutDesc(nullptr, 0, &setDesc, 1));
++    auto shader = ctx.device->createShader(StorageTextureShader, strlen(StorageTextureShader), "main", RenderShaderFormat::WGSL);
++    auto pipeline = ctx.device->createComputePipeline(RenderComputePipelineDesc(layout.get(), shader.get(), 8, 8, 1));
++    auto texture = ctx.device->createTexture(RenderTextureDesc::Texture2D(Size, Size, 1, RenderFormat::R8G8B8A8_UNORM, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
++    auto readback = ctx.device->createBuffer(RenderBufferDesc::ReadbackBuffer(Size * Size * 4));
++    auto set = ctx.device->createDescriptorSet(setDesc);
++    set->setTexture(0, texture.get(), RenderTextureLayout::GENERAL);
++
++    ctx.commandList->begin();
++    ctx.commandList->setPipeline(pipeline.get());
++    ctx.commandList->setComputePipelineLayout(layout.get());
++    ctx.commandList->setComputeDescriptorSet(set.get(), 0);
++    ctx.commandList->dispatch(Size / 8, Size / 8, 1);
++    ctx.commandList->copyTextureRegion(RenderTextureCopyLocation::PlacedFootprint(readback.get(), RenderFormat::R8G8B8A8_UNORM, Size, Size, 1, Size), RenderTextureCopyLocation::Subresource(texture.get()));
++    ctx.execute();
++
++    const uint32_t *texels = static_cast<const uint32_t *>(readback->map());
++    uint32_t wrong = 0;
++    for (uint32_t y = 0; y < Size; y++) {
++        for (uint32_t x = 0; x < Size; x++) {
++            wrong += (texels[y * Size + x] != (0xFFFF0000U | (y << 8) | x)) ? 1 : 0;
++        }
++    }
++
++    char detail[160];
++    snprintf(detail, sizeof(detail), "(5,9) %08X (63,63) %08X, %u of %u texels wrong", texels[9 * Size + 5], texels[Size * Size - 1], wrong, Size * Size);
++    check(wrong == 0, "an rgba8unorm storage texture written by a compute shader", detail);
++    readback->unmap();
++}
++
 +// Full clears to red and depth 1, then green rectangles, depth 0.25 over the bottom half (asking for the stencil too,
 +// as clearDepthStencil's defaults do, which D32_FLOAT hasn't got), and a blue triangle at
 +// depth 0.5 tested LESS over everything: blue on top, red and green kept below, and the depth it wrote is 0.5, which
@@ -330,32 +385,130 @@ index 0000000..04c1dd8
 +    const uint32_t refreshRate = swapChain->getRefreshRate();
 +    char detail[160];
 +    snprintf(detail, sizeof(detail), "%u frames in %.0f ms, refresh rate %u Hz", presented, elapsed, refreshRate);
++#ifdef __EMSCRIPTEN_PTHREADS__
++    check(presented == Frames, "presents through the device thread", detail);
++#else
 +    const double expected = 1000.0 * Frames / refreshRate;
 +    check((presented == Frames) && (elapsed > 0.8 * expected) && (refreshRate >= 24), "present paced to animation frames", detail);
++#endif
 +}
 +
-+int main(int argc, char *argv[]) {
-+    Context ctx;
-+    ctx.renderInterface = CreateWebGPUInterface();
++// Kept, like the swap chain.
++static Context ctx;
++
++static void runChecks(std::unique_ptr<RenderInterface> renderInterface) {
++    ctx.renderInterface = std::move(renderInterface);
 +    ctx.device = ctx.renderInterface->createDevice();
 +    if (ctx.device == nullptr) {
 +        printf("FAIL no WebGPU device\n");
-+        return 1;
++        return;
 +    }
 +
 +    ctx.queue = ctx.device->createCommandQueue(RenderCommandListType::DIRECT);
 +    ctx.commandList = ctx.queue->createCommandList();
 +    ctx.fence = ctx.device->createCommandFence();
++#ifdef __EMSCRIPTEN_PTHREADS__
++    printf("this build runs the checks on a thread of their own, through the device thread\n");
++#else
 +    printf("this build %s wait (emscripten_has_asyncify() = %d)\n", emscripten_has_asyncify() ? "can" : "can't", emscripten_has_asyncify());
++#endif
 +    checkFormattedBufferAndReadback(ctx);
 +    checkPushConstantsWithFourSets(ctx);
++    checkStorageTexture(ctx);
 +    checkRectangleClears(ctx);
 +    checkPresent(ctx);
 +    printf("plume WebGPU checks: %u of %u passed\n", passed, checked);
++}
++
++int main(int argc, char *argv[]) {
++#ifdef __EMSCRIPTEN_PTHREADS__
++    // This is the page's main thread, which owns the device: it goes back to its event loop and runs the device's work.
++    auto renderInterface = CreateDeviceThreadInterface(CreateEmscriptenDeviceThread(pthread_self()), []() { return CreateWebGPUInterface(); });
++    std::thread([renderInterface = std::move(renderInterface)]() mutable { runChecks(std::move(renderInterface)); }).detach();
++#else
++    runChecks(CreateWebGPUInterface());
++#endif
 +    return 0;
 +}
+diff --git a/plume_device_thread.cpp b/plume_device_thread.cpp
+index 0e8cd30..3cd1d1b 100644
+--- a/plume_device_thread.cpp
++++ b/plume_device_thread.cpp
+@@ -10,7 +10,9 @@
+ #include "plume_device_thread.h"
+ 
+ #include <algorithm>
++#include <chrono>
+ #include <cstring>
++#include <thread>
+ #include <type_traits>
+ 
+ #if defined(__EMSCRIPTEN_PTHREADS__)
+@@ -59,8 +61,32 @@ namespace plume {
+         DTBuffer(DeviceThread *thread, std::unique_ptr<RenderBuffer> inner) : thread(thread), inner(inner.release()) { }
+         ~DTBuffer() override { destroyAsync(thread, inner); }
+ 
++        // Data the backend delivers asynchronously (WebGPU's READBACK buffers) arrives while the device thread is back
++        // in its event loop, so this thread polls isMapReady() between calls rather than holding the device thread. On
++        // the device thread itself, the backend's map() is all there is.
+         void *map(uint32_t subresource, const RenderRange *readRange) override {
+-            return runSync(thread, [&]() { return inner->map(subresource, readRange); });
++            const std::thread::id caller = std::this_thread::get_id();
++            for (;;) {
++                void *data = nullptr;
++                const bool ready = runSync(thread, [&]() {
++                    if ((std::this_thread::get_id() != caller) && !inner->isMapReady()) {
++                        return false;
++                    }
++
++                    data = inner->map(subresource, readRange);
++                    return true;
++                });
++
++                if (ready) {
++                    return data;
++                }
++
++                std::this_thread::sleep_for(std::chrono::microseconds(100));
++            }
++        }
++
++        bool isMapReady() override {
++            return runSync(thread, [&]() { return inner->isMapReady(); });
+         }
+ 
+         void unmap(uint32_t subresource, const RenderRange *writtenRange) override {
+diff --git a/plume_device_thread.h b/plume_device_thread.h
+index 8b70d73..5d3edc6 100644
+--- a/plume_device_thread.h
++++ b/plume_device_thread.h
+@@ -11,7 +11,8 @@
+ // thread in the order they were made.
+ //
+ // - A call that returns something (create*(), map(), a swap chain's resize() and needsResize(), ...) runs on the
+-//   device thread while the caller waits.
++//   device thread while the caller waits. map() of a buffer whose data the backend delivers asynchronously waits on
++//   the calling side until isMapReady(), so the device thread keeps returning to its event loop meanwhile.
+ // - A call that returns nothing (unmap(), setName(), descriptor writes, executeCommandLists(), present(), destroying
+ //   an object) is queued and the caller goes on. The queue is first in, first out, so whatever happened before a call
+ //   on the calling side, under the caller's own locks or on another thread it waited for, reaches the backend first.
+diff --git a/plume_render_interface.h b/plume_render_interface.h
+index 2048557..9563259 100644
+--- a/plume_render_interface.h
++++ b/plume_render_interface.h
+@@ -26,6 +26,10 @@ namespace plume {
+         virtual void setName(const std::string &name) = 0;
+         virtual uint64_t getDeviceAddress() const = 0;
+ 
++        // False while map() would return data the GPU has yet to deliver, on a backend that delivers it asynchronously
++        // (WebGPU's READBACK buffers). A thread other than the device's can wait for it to turn true.
++        virtual bool isMapReady() { return true; }
++
+         // Concrete implementation shortcuts.
+         inline RenderBufferReference at(uint64_t offset) const {
+             return RenderBufferReference(this, offset);
 diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
-index 1efef41..0b2d4c0 100644
+index 1efef41..ea06bd4 100644
 --- a/plume_webgpu.cpp
 +++ b/plume_webgpu.cpp
 @@ -10,9 +10,11 @@
@@ -370,21 +523,27 @@ index 1efef41..0b2d4c0 100644
  #include <emscripten/html5.h>
  
  namespace plume {
-@@ -31,6 +33,13 @@ namespace plume {
+@@ -31,6 +33,19 @@ namespace plume {
  
  #define PLUME_WEBGPU_UNSUPPORTED(message) do { static bool warned = false; warnOnce(warned, message); } while (0)
  
 +    // Whether a call can hand the thread back to the browser and resume (ASYNCIFY or JSPI), which waiting for a
-+    // READBACK buffer or an animation frame needs.
++    // READBACK buffer or an animation frame needs. Not in a build with threads: there plume runs behind
++    // plume_device_thread.h, in tasks of the device thread's event loop that can't be suspended, and the thread that
++    // called waits instead (isMapReady()).
 +    static bool canWait() {
++#if defined(__EMSCRIPTEN_PTHREADS__)
++        return false;
++#else
 +        static const bool result = emscripten_has_asyncify() != 0;
 +        return result;
++#endif
 +    }
 +
      static uint64_t alignUp(uint64_t value, uint64_t alignment) {
          return (value + alignment - 1) / alignment * alignment;
      }
-@@ -339,6 +348,11 @@ namespace plume {
+@@ -339,6 +354,11 @@ namespace plume {
          if ((desc.heapType == RenderHeapType::UPLOAD) || (desc.heapType == RenderHeapType::GPU_UPLOAD) || (desc.heapType == RenderHeapType::READBACK)) {
              shadow.resize(bufferDesc.size, 0);
          }
@@ -396,7 +555,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      WebGPUBuffer::~WebGPUBuffer() {
-@@ -347,6 +361,10 @@ namespace plume {
+@@ -347,6 +367,10 @@ namespace plume {
              mappedBuffers.erase(std::remove(mappedBuffers.begin(), mappedBuffers.end(), this), mappedBuffers.end());
          }
  
@@ -407,7 +566,7 @@ index 1efef41..0b2d4c0 100644
          if (buffer != nullptr) {
              wgpuBufferDestroy(buffer);
              wgpuBufferRelease(buffer);
-@@ -360,7 +378,7 @@ namespace plume {
+@@ -360,7 +384,7 @@ namespace plume {
          }
  
          if (desc.heapType == RenderHeapType::READBACK) {
@@ -416,7 +575,7 @@ index 1efef41..0b2d4c0 100644
          }
          else if (!mapped) {
              device->mappedBuffers.emplace_back(this);
-@@ -399,6 +417,70 @@ namespace plume {
+@@ -399,6 +423,74 @@ namespace plume {
          }
      }
  
@@ -472,8 +631,12 @@ index 1efef41..0b2d4c0 100644
 +            }
 +        }
 +        else {
-+            PLUME_WEBGPU_UNSUPPORTED("this build can't wait (no ASYNCIFY or JSPI): READBACK buffers read what arrived before the call");
++            PLUME_WEBGPU_UNSUPPORTED("a READBACK buffer was mapped before its data arrived and this build can't wait for it (no ASYNCIFY or JSPI, or threads without plume_device_thread.h): it reads what arrived before the call");
 +        }
++    }
++
++    bool WebGPUBuffer::isMapReady() {
++        return (readback == nullptr) || !readback->pending;
 +    }
 +
 +    void WebGPUBuffer::cancelReadback() {
@@ -487,7 +650,7 @@ index 1efef41..0b2d4c0 100644
      std::unique_ptr<RenderBufferFormattedView> WebGPUBuffer::createBufferFormattedView(RenderFormat format) {
          return std::make_unique<WebGPUBufferFormattedView>(this, format);
      }
-@@ -649,6 +731,7 @@ namespace plume {
+@@ -649,6 +741,7 @@ namespace plume {
      }
  
      WebGPUDescriptorSet::~WebGPUDescriptorSet() {
@@ -495,7 +658,7 @@ index 1efef41..0b2d4c0 100644
          if (bindGroup != nullptr) {
              wgpuBindGroupRelease(bindGroup);
          }
-@@ -695,8 +778,8 @@ namespace plume {
+@@ -695,8 +788,8 @@ namespace plume {
              return;
          }
  
@@ -506,7 +669,7 @@ index 1efef41..0b2d4c0 100644
          std::string key;
          for (const Binding &binding : bindings) {
              WGPUBindGroupLayoutEntry layoutEntry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
-@@ -733,6 +816,11 @@ namespace plume {
+@@ -733,6 +826,11 @@ namespace plume {
                  groupEntry.buffer = binding.buffer->buffer;
                  groupEntry.offset = binding.bufferOffset;
                  groupEntry.size = binding.bufferSize;
@@ -518,7 +681,19 @@ index 1efef41..0b2d4c0 100644
                  snprintf(entryKey, sizeof(entryKey), "b%u:%d;", binding.binding, int(layoutEntry.buffer.type));
                  break;
              }
-@@ -808,6 +896,9 @@ namespace plume {
+@@ -747,7 +845,10 @@ namespace plume {
+                 const RenderFormat format = ((viewDesc != nullptr) && (viewDesc->format != RenderFormat::UNKNOWN)) ? viewDesc->format : textureDesc.format;
+                 const WGPUTextureViewDimension dimension = viewDimension(textureDesc, viewDesc);
+                 if (binding.type == RenderDescriptorRangeType::READ_WRITE_TEXTURE) {
+-                    layoutEntry.storageTexture.access = WGPUStorageTextureAccess_ReadWrite;
++                    // Core WebGPU reads and writes one storage texture only in r32float, r32uint and r32sint, so
++                    // any other format is write-only, as PlumeWGSL.cmake declares it in the shader too.
++                    const bool readWrite = (format == RenderFormat::R32_FLOAT) || (format == RenderFormat::R32_UINT) || (format == RenderFormat::R32_SINT);
++                    layoutEntry.storageTexture.access = readWrite ? WGPUStorageTextureAccess_ReadWrite : WGPUStorageTextureAccess_WriteOnly;
+                     layoutEntry.storageTexture.format = toWGPU(format);
+                     layoutEntry.storageTexture.viewDimension = dimension;
+                     layoutEntry.visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
+@@ -808,6 +909,9 @@ namespace plume {
          }
  
          layout = device->getBindGroupLayout(key, layoutEntries);
@@ -528,7 +703,7 @@ index 1efef41..0b2d4c0 100644
  
          if (bindGroup != nullptr) {
              wgpuBindGroupRelease(bindGroup);
-@@ -821,6 +912,47 @@ namespace plume {
+@@ -821,6 +925,47 @@ namespace plume {
          dirty = false;
      }
  
@@ -576,7 +751,7 @@ index 1efef41..0b2d4c0 100644
      // WebGPUPipeline
  
      WebGPUPipeline::WebGPUPipeline(WebGPUDevice *device, Type type) {
-@@ -1052,7 +1184,7 @@ namespace plume {
+@@ -1052,7 +1197,7 @@ namespace plume {
              pushConstantsSize = std::max(pushConstantsSize, range.offset + range.size);
          }
  
@@ -585,7 +760,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      WebGPUPipelineLayout::~WebGPUPipelineLayout() { }
-@@ -1096,8 +1228,44 @@ namespace plume {
+@@ -1096,8 +1241,44 @@ namespace plume {
          }
      }
  
@@ -631,7 +806,7 @@ index 1efef41..0b2d4c0 100644
          return true;
      }
  
-@@ -1197,8 +1365,15 @@ namespace plume {
+@@ -1197,8 +1378,15 @@ namespace plume {
      }
  
      uint32_t WebGPUSwapChain::getRefreshRate() const {
@@ -649,7 +824,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      // WebGPUFramebuffer
-@@ -1283,6 +1458,8 @@ namespace plume {
+@@ -1283,6 +1471,8 @@ namespace plume {
          for (PushConstantsChunk &chunk : pushConstantsChunks) {
              chunk.used = 0;
          }
@@ -658,7 +833,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      void WebGPUCommandList::end() {
-@@ -1330,19 +1507,21 @@ namespace plume {
+@@ -1330,19 +1520,21 @@ namespace plume {
      WGPUPipelineLayout WebGPUCommandList::resolveBindings(BindState &state) {
          assert(state.layout != nullptr);
  
@@ -683,7 +858,7 @@ index 1efef41..0b2d4c0 100644
              while (layouts.size() < PushConstantsGroup) {
                  layouts.emplace_back(device->emptyLayout);
              }
-@@ -1363,13 +1542,17 @@ namespace plume {
+@@ -1363,13 +1555,17 @@ namespace plume {
              }
          };
  
@@ -703,7 +878,7 @@ index 1efef41..0b2d4c0 100644
          if (pushConstantsSize == 0) {
              return;
          }
-@@ -1391,6 +1574,7 @@ namespace plume {
+@@ -1391,6 +1587,7 @@ namespace plume {
              bufferDesc.size = PushConstantsChunkSize;
              bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
              chunk.buffer = wgpuDeviceCreateBuffer(device->device, &bufferDesc);
@@ -711,7 +886,7 @@ index 1efef41..0b2d4c0 100644
              chunk.data.resize(PushConstantsChunkSize, 0);
              pushConstantsChunks.emplace_back(std::move(chunk));
          }
-@@ -1398,10 +1582,11 @@ namespace plume {
+@@ -1398,10 +1595,11 @@ namespace plume {
          // The binding's size is part of the bind group, so a chunk keeps one group per block size.
          PushConstantsChunk &chunk = pushConstantsChunks[pushConstantsChunkIndex];
          const uint32_t bindingSize = uint32_t(alignUp(pushConstantsSize, 16));
@@ -726,7 +901,7 @@ index 1efef41..0b2d4c0 100644
              entry.buffer = chunk.buffer;
              entry.offset = 0;
              entry.size = bindingSize;
-@@ -1409,9 +1594,11 @@ namespace plume {
+@@ -1409,9 +1607,11 @@ namespace plume {
              groupDesc.layout = device->pushConstantsLayout;
              groupDesc.entryCount = 1;
              groupDesc.entries = &entry;
@@ -739,7 +914,7 @@ index 1efef41..0b2d4c0 100644
          const uint32_t offset = chunk.used;
          state.pushConstants.resize(pushConstantsSize, 0);
          memcpy(chunk.data.data() + offset, state.pushConstants.data(), pushConstantsSize);
-@@ -1507,7 +1694,12 @@ namespace plume {
+@@ -1507,7 +1707,12 @@ namespace plume {
  
          assert((pipeline != nullptr) && (pipeline->type == WebGPUPipeline::Type::Graphics));
          WGPUPipelineLayout layout = resolveBindings(graphics);
@@ -753,7 +928,7 @@ index 1efef41..0b2d4c0 100644
          bindGroups(graphics, renderPass, nullptr);
  
          if (renderStateDirty) {
-@@ -1524,9 +1716,16 @@ namespace plume {
+@@ -1524,9 +1729,16 @@ namespace plume {
                  wgpuRenderPassEncoderSetIndexBuffer(renderPass, buffer->buffer, toIndexFormat(indexBuffer.format), indexBuffer.buffer.offset, indexBuffer.size);
              }
  
@@ -770,7 +945,7 @@ index 1efef41..0b2d4c0 100644
  
              // The scissor has to lie inside the attachments.
              RenderRect rect = scissorSet ? scissor : RenderRect(0, 0, framebuffer->width, framebuffer->height);
-@@ -1678,12 +1877,41 @@ namespace plume {
+@@ -1678,12 +1890,41 @@ namespace plume {
          return false;
      }
  
@@ -814,7 +989,7 @@ index 1efef41..0b2d4c0 100644
              return;
          }
  
-@@ -1701,7 +1929,7 @@ namespace plume {
+@@ -1701,7 +1942,7 @@ namespace plume {
          assert(framebuffer != nullptr);
  
          if (!coversFramebuffer(framebuffer, clearRects, clearRectsCount)) {
@@ -823,7 +998,7 @@ index 1efef41..0b2d4c0 100644
              return;
          }
  
-@@ -1724,6 +1952,15 @@ namespace plume {
+@@ -1724,6 +1965,15 @@ namespace plume {
          const WebGPUBuffer *dst = static_cast<const WebGPUBuffer *>(dstBuffer.ref);
          const WebGPUBuffer *src = static_cast<const WebGPUBuffer *>(srcBuffer.ref);
          wgpuCommandEncoderCopyBufferToBuffer(encoder, src->buffer, srcBuffer.offset, dst->buffer, dstBuffer.offset, size);
@@ -839,7 +1014,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      void WebGPUCommandList::copyTextureRegion(const RenderTextureCopyLocation &dstLocation, const RenderTextureCopyLocation &srcLocation, uint32_t dstX, uint32_t dstY, uint32_t dstZ, const RenderBox *srcBox) {
-@@ -1786,6 +2023,7 @@ namespace plume {
+@@ -1786,6 +2036,7 @@ namespace plume {
              WGPUTexelCopyTextureInfo src = textureInfo(srcLocation, srcX, srcY, srcZ);
              WGPUTexelCopyBufferInfo dst = bufferInfo(dstLocation);
              wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &extent);
@@ -847,7 +1022,7 @@ index 1efef41..0b2d4c0 100644
          }
          else if (srcIsTexture && dstIsTexture) {
              WGPUTexelCopyTextureInfo src = textureInfo(srcLocation, srcX, srcY, srcZ);
-@@ -1802,6 +2040,7 @@ namespace plume {
+@@ -1802,6 +2053,7 @@ namespace plume {
          const WebGPUBuffer *dst = static_cast<const WebGPUBuffer *>(dstBuffer);
          const WebGPUBuffer *src = static_cast<const WebGPUBuffer *>(srcBuffer);
          wgpuCommandEncoderCopyBufferToBuffer(encoder, src->buffer, 0, dst->buffer, 0, alignUp(std::min(dst->desc.size, src->desc.size), 4));
@@ -855,7 +1030,7 @@ index 1efef41..0b2d4c0 100644
      }
  
      void WebGPUCommandList::copyTexture(const RenderTexture *dstTexture, const RenderTexture *srcTexture) {
-@@ -1886,13 +2125,24 @@ namespace plume {
+@@ -1886,13 +2138,24 @@ namespace plume {
          device->flushMappedBuffers();
  
          std::vector<WGPUCommandBuffer> commandBuffers;
@@ -880,7 +1055,7 @@ index 1efef41..0b2d4c0 100644
  
          for (uint32_t i = 0; i < commandListCount; i++) {
              WebGPUCommandList *commandList = const_cast<WebGPUCommandList *>(static_cast<const WebGPUCommandList *>(commandLists[i]));
-@@ -1956,6 +2206,7 @@ namespace plume {
+@@ -1956,6 +2219,7 @@ namespace plume {
  
          queue = wgpuDeviceGetQueue(device);
          float32Filterable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Filterable);
@@ -888,7 +1063,7 @@ index 1efef41..0b2d4c0 100644
          depthClipControl = wgpuDeviceHasFeature(device, WGPUFeatureName_DepthClipControl);
  
          WGPULimits limits = WGPU_LIMITS_INIT;
-@@ -1967,8 +2218,8 @@ namespace plume {
+@@ -1967,8 +2231,8 @@ namespace plume {
          emptyGroupDesc.layout = emptyLayout;
          emptyBindGroup = wgpuDeviceCreateBindGroup(device, &emptyGroupDesc);
  
@@ -899,7 +1074,7 @@ index 1efef41..0b2d4c0 100644
          pushConstantsEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
          pushConstantsEntry.buffer.type = WGPUBufferBindingType_Uniform;
          pushConstantsEntry.buffer.hasDynamicOffset = true;
-@@ -1980,6 +2231,16 @@ namespace plume {
+@@ -1980,6 +2244,16 @@ namespace plume {
      }
  
      WebGPUDevice::~WebGPUDevice() {
@@ -916,7 +1091,7 @@ index 1efef41..0b2d4c0 100644
          if (emptyBindGroup != nullptr) {
              wgpuBindGroupRelease(emptyBindGroup);
          }
-@@ -2035,6 +2296,115 @@ namespace plume {
+@@ -2035,6 +2309,115 @@ namespace plume {
          }
      }
  
@@ -1033,10 +1208,10 @@ index 1efef41..0b2d4c0 100644
          return std::make_unique<WebGPUDescriptorSet>(this, desc);
      }
 diff --git a/plume_webgpu.h b/plume_webgpu.h
-index fd13cf6..0af78e8 100644
+index fd13cf6..0ced2b7 100644
 --- a/plume_webgpu.h
 +++ b/plume_webgpu.h
-@@ -9,24 +9,41 @@
+@@ -9,24 +9,44 @@
  //
  // What core WebGPU lacks, and what this backend does instead:
  // - Push constants: a shader has one push constant block, as in Vulkan, with each range at its offset in it. Here
@@ -1057,9 +1232,11 @@ index fd13cf6..0af78e8 100644
 -//   their CPU copy as it is.
 +//   D3D12-style upload buffer never says what changed. A READBACK buffer that a submitted command list copied into
 +//   is mapped asynchronously right after the submission, and the callback copies it into the CPU copy, which map()
-+//   returns. map() waits for that callback when the build can wait (ASYNCIFY or JSPI: emscripten_sleep() hands the
-+//   thread back to its event loop, where the callback runs), so execute, wait, map reads what the GPU wrote, as on
-+//   the other backends. A build that can't wait gets whatever arrived before the call, possibly a submission old.
++//   returns, and isMapReady() is false until it has run. Behind plume_device_thread.h (a build with threads), the
++//   calling thread polls isMapReady() while the device thread is back in its event loop, where the callback runs.
++//   Without threads, map() waits for it itself when the build can (ASYNCIFY or JSPI: emscripten_sleep() hands the
++//   thread back to its event loop). Either way execute, wait, map reads what the GPU wrote, as on the other backends.
++//   A build that can't wait gets whatever arrived before the call, possibly a submission old.
 +// - Formatted buffer views (texel buffers) don't exist. A formatted view binds its buffer as a read-only storage
 +//   buffer of raw bytes, the binding padded to a multiple of 4, so the shader reads array<u32> and unpacks R8 or R16
 +//   elements itself: element i of an n-byte format is at byte i * n, little-endian. A writable formatted view of
@@ -1084,11 +1261,12 @@ index fd13cf6..0af78e8 100644
 +// - The browser shows the canvas once the thread that drew it returns to its event loop. When the build can wait,
 +//   present() does that until the next animation frame, which paces presents to the display, keeps at most one frame
 +//   in flight, and times the display for getRefreshRate(). Otherwise present() returns at once and the caller has to
-+//   give the thread back to the browser itself (emscripten_set_main_loop or similar), and the rate reads 60.
++//   give the thread back to the browser itself (emscripten_set_main_loop or similar), and the rate reads 60. Behind
++//   plume_device_thread.h the device thread does that between any two of its tasks, and presents aren't paced.
  // - Every call must come from the thread that owns the device's JavaScript object: WebGPU objects can't be shared
  //   between workers.
  // - Shaders are WGSL text (RenderShaderFormat::WGSL). Specialization constants are WGSL overrides named by their id.
-@@ -50,6 +67,7 @@
+@@ -50,6 +70,7 @@
  
  namespace plume {
      static const uint32_t PushConstantsGroup = 3;
@@ -1096,7 +1274,7 @@ index fd13cf6..0af78e8 100644
  
      struct WebGPUBuffer;
      struct WebGPUCommandQueue;
-@@ -68,11 +86,20 @@ namespace plume {
+@@ -68,11 +89,20 @@ namespace plume {
          ~WebGPUBufferFormattedView() override;
      };
  
@@ -1117,9 +1295,11 @@ index fd13cf6..0af78e8 100644
          bool mapped = false;
  
          WebGPUBuffer(WebGPUDevice *device, WebGPUPool *pool, const RenderBufferDesc &desc);
-@@ -83,6 +110,9 @@ namespace plume {
+@@ -82,7 +112,11 @@ namespace plume {
+         std::unique_ptr<RenderBufferFormattedView> createBufferFormattedView(RenderFormat format) override;
          void setName(const std::string &name) override;
          uint64_t getDeviceAddress() const override;
++        bool isMapReady() override;
          void flush(uint64_t begin, uint64_t end);
 +        void requestReadback();
 +        void waitForReadback();
@@ -1127,7 +1307,7 @@ index fd13cf6..0af78e8 100644
      };
  
      struct WebGPUTexture : RenderTexture {
-@@ -143,6 +173,11 @@ namespace plume {
+@@ -143,6 +177,11 @@ namespace plume {
          std::vector<Binding> bindings;
          WGPUBindGroupLayout layout = nullptr;
          WGPUBindGroup bindGroup = nullptr;
@@ -1139,7 +1319,7 @@ index fd13cf6..0af78e8 100644
          bool dirty = true;
  
          WebGPUDescriptorSet(WebGPUDevice *device, const RenderDescriptorSetDesc &desc);
-@@ -152,6 +187,9 @@ namespace plume {
+@@ -152,6 +191,9 @@ namespace plume {
          void setSampler(uint32_t descriptorIndex, const RenderSampler *sampler) override;
          void setAccelerationStructure(uint32_t descriptorIndex, const RenderAccelerationStructure *accelerationStructure) override;
          void update();
@@ -1149,7 +1329,7 @@ index fd13cf6..0af78e8 100644
      };
  
      // A pipeline is created when it is first drawn with, after the RenderShader may be gone, so it keeps its own
-@@ -234,6 +272,9 @@ namespace plume {
+@@ -234,6 +276,9 @@ namespace plume {
          uint32_t width = 0;
          uint32_t height = 0;
          bool vsyncEnabled = true;
@@ -1159,7 +1339,7 @@ index fd13cf6..0af78e8 100644
  
          WebGPUSwapChain(WebGPUCommandQueue *commandQueue, const RenderSwapChainDesc &desc);
          ~WebGPUSwapChain() override;
-@@ -276,6 +317,7 @@ namespace plume {
+@@ -276,6 +321,7 @@ namespace plume {
  
          struct PushConstantsChunk {
              WGPUBuffer buffer = nullptr;
@@ -1167,7 +1347,7 @@ index fd13cf6..0af78e8 100644
              std::map<uint32_t, WGPUBindGroup> bindGroups;
              std::vector<uint8_t> data;
              uint32_t used = 0;
-@@ -352,8 +394,12 @@ namespace plume {
+@@ -352,8 +398,12 @@ namespace plume {
          void resetQueryPool(const RenderQueryPool *queryPool, uint32_t queryFirstIndex, uint32_t queryCount) override;
          void writeTimestamp(const RenderQueryPool *queryPool, uint32_t queryIndex) override;
  
@@ -1180,7 +1360,7 @@ index fd13cf6..0af78e8 100644
          bool prepareDraw();
          void setPushConstants(BindState &state, uint32_t rangeIndex, const void *data, uint32_t offset, uint32_t size);
          WGPUPipelineLayout resolveBindings(BindState &state);
-@@ -398,13 +444,18 @@ namespace plume {
+@@ -398,13 +448,18 @@ namespace plume {
          RenderDeviceCapabilities capabilities;
          RenderDeviceDescription description;
          bool float32Filterable = false;
@@ -1199,7 +1379,7 @@ index fd13cf6..0af78e8 100644
  
          WebGPUDevice(WebGPUInterface *renderInterface);
          ~WebGPUDevice() override;
-@@ -435,6 +486,7 @@ namespace plume {
+@@ -435,6 +490,7 @@ namespace plume {
          WGPUBindGroupLayout getBindGroupLayout(const std::string &key, const std::vector<WGPUBindGroupLayoutEntry> &entries);
          WGPUPipelineLayout getPipelineLayout(const std::vector<WGPUBindGroupLayout> &layouts);
          void flushMappedBuffers();
