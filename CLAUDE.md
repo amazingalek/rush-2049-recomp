@@ -93,6 +93,7 @@ rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
 RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
                        (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
+RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -324,10 +325,13 @@ What to know before changing it:
   state. Async pipeline creation (`createRenderPipelineAsync`) would let specialized ones build behind it.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
-- RT64 reads framebuffers back every frame (render to RAM, on by default, as natively). Through the device thread,
-  `map()` polls `isMapReady()` while the main thread returns to the browser, which delivers the data. A build
-  without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits for the main thread costs
-  ~7 µs from a pthread and a queued one ~0.4 µs, so what to watch is how many objects RT64 creates and buffers it maps.
+- RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
+  into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so the
+  game's pages turn it off (`set_render_to_ram`, RecompFrontend-0004; `create_rt64_renderer`'s argument;
+  `?render-to-ram=1` on the headless page turns it back on). A game that reads its frames on the CPU needs it on.
+  Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
+  delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
+  for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.
 - Two of the web paths run on Vulkan here, to check them against the stock ones: configure the game with
   `-DRT64_PER_DRAW_TEXTURES=ON` (rt64-0007: a texture set per draw, TMEM in one buffer; to test that pool, make
   `TMEMHasher::requiresRawTMEM` return true for a run) or `-DRT64_PACKED_RSP_INPUTS=ON` (rt64-0009).
@@ -343,9 +347,22 @@ native (2 runs)        60                          1.1 ms           4-6 ms (5-9)
 Chrome 154           47-59                         6.1 ms           11-15 ms (14-20)
 ```
 
-So on the web a list takes about 2.5 times as long, and in the busiest races it often takes more than the 16.7 ms
-a list has at 60 a second. The CPU side measured in step 1 is a small part of it; where the rest goes is not
-measured yet.
+Those runs had render to RAM on. Where a race list's 13-14 ms went, then without it (same page and settings, host
+16-18% busy, no other session on the GPU):
+
+```
+part                               render to RAM on    off
+parsing the display list               ~2.5 ms        ~2.5
+the second pass at N64 resolution      ~3-4 ms          -
+waiting for its readback               ~6 ms            -
+uploads and tiles                      ~1.5 ms        ~2.6
+per race list                         13-14 ms        5.2-5.6 (title 6 → 0.9)
+display lists a second                  ~55           59.8 of 60
+```
+
+So without render to RAM a list in the browser takes about what it takes natively with it, and the page keeps 60.
+The game's page (`Rush2049Recompiled.html`, 1256x805) presented 57-60 frames a second through the title and attract
+races with the host 100% busy with other sessions.
 
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
@@ -368,7 +385,6 @@ without the two headers through `coi_serviceworker.js`. What to know:
 **Still to do, each its own card:**
 
 - Publishing the page (GitHub Pages), gamepads on the page, and hiding the launcher's Mods and Exit buttons there.
-- The frame time above: where a list's 11-15 ms go (readback round trips, calls that wait for the main thread).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
@@ -393,4 +409,6 @@ and load wasm modules instead. No other N64 recomp running in a browser was foun
 - Inserting `gEXSetRectAlign` before HUD rects: callers keep their own display list pointer and overwrite it.
   Rewrite commands in place instead.
 - Stretching the menu background: the emblem goes oval and the circuit lines smear. It is mirrored instead.
+- Making the browser's render-to-RAM readback cheaper: upload buffers mapped without a trip to the main thread, and
+  polling the readback without sleeps, left the time per list where it was. Chrome paces the readback itself.
 - SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.

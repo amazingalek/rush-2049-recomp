@@ -31,7 +31,7 @@ namespace {
 
     class RT64WebRenderer : public ultramodern::renderer::RendererContext {
     public:
-        RT64WebRenderer(uint8_t *rdram) {
+        RT64WebRenderer(uint8_t *rdram, bool render_to_ram) {
             RT64::Application::Core core{};
             core.window = "#canvas";
             core.checkInterrupts = check_interrupts;
@@ -68,6 +68,7 @@ namespace {
             RT64::ApplicationConfiguration app_config;
             app_config.useConfigurationFile = false;
             app = std::make_unique<RT64::Application>(core, app_config);
+            app->emulatorConfig.framebuffer.renderToRAM = render_to_ram;
 
             // The defaults of a recomp's settings: the canvas's resolution in whole multiples of 240 lines, the original
             // aspect ratio, no MSAA (WebGPU has no sample positions), and the game's own frame pacing.
@@ -149,7 +150,7 @@ namespace {
 }
 
 namespace recompweb {
-    std::unique_ptr<ultramodern::renderer::RendererContext> create_rt64_renderer(uint8_t *rdram) {
-        return std::make_unique<RT64WebRenderer>(rdram);
+    std::unique_ptr<ultramodern::renderer::RendererContext> create_rt64_renderer(uint8_t *rdram, bool render_to_ram) {
+        return std::make_unique<RT64WebRenderer>(rdram, render_to_ram);
     }
 }
