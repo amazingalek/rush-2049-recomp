@@ -2,8 +2,9 @@
 storing or calling anything.
 
 ultramodern runs one game thread at a time and only delivers external messages inside OS calls, so such a loop
-never ends unless it yields. Each hit in game code needs a yield hook in us.toml (libultra's own hardware polls are
-in functions N64Recomp drops). Usage: find_spins.py [max_loop_instructions]
+never ends unless it yields: each hit in game code needs a hook in us.toml calling rush2049_spin_yield
+(src/spin_yield.cpp), which lets threads of lower priority run too (libultra's own hardware polls are in functions
+N64Recomp drops). Usage: find_spins.py [max_loop_instructions]
 """
 import bisect
 import os
@@ -89,7 +90,7 @@ def emit_hooks():
             print("[[patches.hook]]")
             print(f'func = "{func}"')
             print(f"before_vram = 0x{ins.vram:08X}")
-            print(f'text = "    if ({conds[mnemonic](ins)}) yield_self_1ms(rdram);"')
+            print(f'text = "    if ({conds[mnemonic](ins)}) rush2049_spin_yield(rdram);"')
             print()
 
 

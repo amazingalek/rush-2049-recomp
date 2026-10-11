@@ -60,6 +60,7 @@ add_executable(Rush2049Headless
     ${GAME_DIR}/src/register_overlays.cpp
     ${GAME_DIR}/src/code_loading.cpp
     ${GAME_DIR}/src/libultra_extra.cpp
+    ${GAME_DIR}/src/spin_yield.cpp
     ${GAME_DIR}/src/crash_handler.cpp
     ${GAME_DIR}/src/controller_pak.cpp
     ${GAME_DIR}/src/debug_probe.cpp
