@@ -113,7 +113,7 @@ index 0000000..4f34678
 +
 +        // Once the command list has run: adds each part's time to sums and returns the total in milliseconds.
 +        double collect(double *sums) {
-+            queryPool->queryResults();
++            queryPool->queryFirstResults(uint32_t(parts.size() + 1));
 +            const uint64_t *timestamps = queryPool->getResults();
 +            if (detailed) {
 +                std::scoped_lock lock(gpuTimings.mutex);

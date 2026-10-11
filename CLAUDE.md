@@ -102,6 +102,7 @@ N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI even
 N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
+plume-0005             a query pool read of only the queries written (Vulkan calls a read with an unwritten one not ready)
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass

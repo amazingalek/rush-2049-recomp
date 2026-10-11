@@ -1,0 +1,56 @@
+diff --git a/plume_render_interface.h b/plume_render_interface.h
+index 9563259..3a8aea7 100644
+--- a/plume_render_interface.h
++++ b/plume_render_interface.h
+@@ -223,6 +223,11 @@ namespace plume {
+     struct RenderQueryPool {
+         virtual ~RenderQueryPool() { }
+         virtual void queryResults() = 0;
++
++        // Reads only the first count queries. Vulkan reports the whole read as not ready while any query in it was
++        // never written, so a pool written only in part needs this. Backends that don't override it read them all.
++        virtual void queryFirstResults(uint32_t count) { queryResults(); }
++
+         virtual const uint64_t *getResults() const = 0;
+         virtual uint32_t getCount() const = 0;
+     };
+diff --git a/plume_vulkan.cpp b/plume_vulkan.cpp
+index f1dd503..6d7b627 100644
+--- a/plume_vulkan.cpp
++++ b/plume_vulkan.cpp
+@@ -2704,7 +2704,12 @@ namespace plume {
+     }
+ 
+     void VulkanQueryPool::queryResults() {
+-	    VkResult res = vkGetQueryPoolResults(device->vk, vk, 0, uint32_t(results.size()), sizeof(uint64_t) * results.size(), results.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
++        queryFirstResults(uint32_t(results.size()));
++    }
++
++    void VulkanQueryPool::queryFirstResults(uint32_t count) {
++        count = std::min(count, uint32_t(results.size()));
++	    VkResult res = vkGetQueryPoolResults(device->vk, vk, 0, count, sizeof(uint64_t) * count, results.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+         if (res != VK_SUCCESS) {
+             fprintf(stderr, "vkGetQueryPoolResults failed with error code 0x%X.\n", res);
+             return;
+@@ -2735,7 +2740,8 @@ namespace plume {
+         constexpr uint64_t shift_bits = 16;
+         double timestampPeriod = double(device->physicalDeviceProperties.limits.timestampPeriod);
+         uint64_t h = 0, l = 0;
+-        for (uint64_t &result : results) {
++        for (uint32_t i = 0; i < count; i++) {
++            uint64_t &result = results[i];
+             mult64to128(result, uint64_t(timestampPeriod * double(1 << shift_bits)), h, l);
+             result = l;
+             result >>= shift_bits;
+diff --git a/plume_vulkan.h b/plume_vulkan.h
+index 0a1edbe..973e766 100644
+--- a/plume_vulkan.h
++++ b/plume_vulkan.h
+@@ -289,6 +289,7 @@ namespace plume {
+         VulkanQueryPool(VulkanDevice *device, uint32_t queryCount);
+         virtual ~VulkanQueryPool() override;
+         virtual void queryResults() override;
++        virtual void queryFirstResults(uint32_t count) override;
+         virtual const uint64_t *getResults() const override;
+         virtual uint32_t getCount() const override;
+     };
