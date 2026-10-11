@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Applies rush2049/runtime-patches/<Submodule>-*.patch to the matching submodule under rush2049/lib, in order,
-# skipping patches that are already applied. A submodule nested one level down (N64ModernRuntime/N64Recomp), or in a
-# submodule's src/contrib (rt64/src/contrib/plume), is found by its name too; a patch for one inside a submodule that
-# isn't checked out is skipped. Run after cloning or updating submodules.
+# Applies the runtime patches, <Submodule>-*.patch, to the matching submodule under rush2049/lib: first
+# web/runtime-patches/ (the web target, game-agnostic, so each applies to the clean upstream submodule), then
+# rush2049/runtime-patches/ (this game's) on top, each folder in order of name. Patches already applied are skipped.
+# A submodule nested one level down (N64ModernRuntime/N64Recomp), or in a submodule's src/contrib
+# (rt64/src/contrib/plume), is found by its name too; a patch for one inside a submodule that isn't checked out is
+# skipped. Run after cloning or updating submodules.
 # A later patch can change lines an earlier one added, and then the earlier one no longer reverses on its own. So the
-# newest patch of a submodule that reverses cleanly marks it and every patch before it as applied.
+# last patch of a submodule, in that order, that reverses cleanly marks it and every patch before it as applied.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-patches=("$root"/rush2049/runtime-patches/*.patch)
+patches=("$root"/web/runtime-patches/*.patch "$root"/rush2049/runtime-patches/*.patch)
 declare -A applied_through
 sub_dir() {
     local dir
@@ -18,22 +20,23 @@ sub_dir() {
         fi
     done
 }
-for patch in "${patches[@]}"; do
-    name="$(basename "$patch")"
+for i in "${!patches[@]}"; do
+    name="$(basename "${patches[$i]}")"
     sub="${name%%-[0-9]*}"
     dir="$(sub_dir "$sub")"
-    if [[ -n "$dir" ]] && git -C "$dir" apply --reverse --check "$patch" 2>/dev/null; then
-        applied_through[$sub]="$name"
+    if [[ -n "$dir" ]] && git -C "$dir" apply --reverse --check "${patches[$i]}" 2>/dev/null; then
+        applied_through[$sub]=$i
     fi
 done
-for patch in "${patches[@]}"; do
+for i in "${!patches[@]}"; do
+    patch="${patches[$i]}"
     name="$(basename "$patch")"
     sub="${name%%-[0-9]*}"
-    last="${applied_through[$sub]:-}"
+    last="${applied_through[$sub]:--1}"
     dir="$(sub_dir "$sub")"
     if [[ -z "$dir" ]]; then
         echo "not checked out, skipped: $name"
-    elif [[ -n "$last" && ! "$name" > "$last" ]]; then
+    elif (( i <= last )); then
         echo "already applied: $name"
     else
         git -C "$dir" apply "$patch"
