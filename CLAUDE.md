@@ -122,8 +122,9 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
 - RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
-- The desktop is 3840x2160 at **30 Hz**, so Framerate Display presents 30 frames a second while the game renders
-  60, and interpolation can't be seen or measured here.
+- The desktop is 3840x2160 at **30 Hz**: the monitor is a 60 Hz one, but Windows drives it at 29 Hz (`EnumDisplaySettings`,
+  2026-10-11). So Framerate Display presents 30 frames a second while the game renders 60, and interpolation can't be
+  seen or measured here.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
@@ -368,6 +369,30 @@ So without render to RAM a list in the browser takes about what it takes nativel
 The game's page (`Rush2049Recompiled.html`, 1256x805) presented 57-60 frames a second through the title and attract
 races with the host 100% busy with other sessions.
 
+Like for like, measured on 2026-10-11 (14:20-15:20 Oslo): the native build against the headless page in Chrome 154,
+render to RAM off on both unless marked, no MSAA, original aspect, no texture packs, 100 s of title and attract races
+per run, two runs each, interleaved; no other session on the GPU, host 23-32% busy, the idle desktop alone 26% GPU
+busy and 25 W. Per list is the wall time of `send_dl` in a race, median (p95); CPU in cores (Chrome's 8 processes);
+GPU W from nvidia-smi:
+
+```
+                          lists/s  per list    CPU  GPU W
+960x720    native RTR on       60  5.0 (7.0)  0.48     61
+           native              60  3.9 (5.5)  0.38     45
+           browser             60  5.4 (7.5)  1.03     67
+1600x1200  native              60  3.9 (5.3)  0.39     60
+           browser             60  5.4 (7.6)  1.01     93
+2560x1920  native              60  3.7 (5.2)  0.36     64
+           browser             60  5.2 (7.3)  0.97    124
+```
+
+So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (the web builds have
+no `-msimd128`; native gets SSE4.2), and its GPU cost grows with resolution: at 2560x1920 the GPU was 74% busy against
+native's ~35%. That is mostly the ubershader. With RT64's Ubershaders Only flag (`workloadQueue->ubershadersOnly`)
+forced natively, `--gpu-profile`'s draws went from 0.38 to 1.25 ms a frame at 960x720 and from 0.76-1.15 to 5.1 ms
+at 2560x1920. The browser has no GPU timestamps, so its GPU side is read from nvidia-smi's power and utilization
+against the idle desktop. Render to RAM costs the desktop build too: ~1.1 ms a list and ~15 W.
+
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
 HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `web/frontend/CMakeLists.txt`'s header says
@@ -394,6 +419,8 @@ without the two headers through `coi_serviceworker.js`. What to know:
 **Still to do, each its own card:**
 
 - Publishing the page (GitHub Pages).
+- Specialized pipelines built with `createRenderPipelineAsync` behind the ubershader, and `-msimd128` (see the like
+  for like table above).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
