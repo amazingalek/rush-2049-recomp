@@ -15,7 +15,9 @@
 #include <thread>
 #include <vector>
 
-#include "nfd.h"
+#ifndef __EMSCRIPTEN__
+#include "nfd.h" // a browser has no native file dialogs; RecompFrontend asks the page instead
+#endif
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
@@ -216,7 +218,8 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
 #if defined(_WIN32)
     return ultramodern::renderer::WindowHandle{ wmInfo.info.win.window, GetCurrentThreadId() };
-#elif defined(__linux__) || defined(__ANDROID__)
+#elif defined(__linux__) || defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    // In a browser the window is the page's canvas, sized by the page (SDL follows its CSS size).
     return ultramodern::renderer::WindowHandle{ window };
 #elif defined(__APPLE__)
     SDL_MetalView view = SDL_Metal_CreateView(window);
@@ -594,7 +597,9 @@ int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "wasapi", true);
 #endif
 
+#ifndef __EMSCRIPTEN__
     NFD_Init();
+#endif
 
     recompui::programconfig::set_program_name(rush2049::program_name);
     recompui::programconfig::set_program_id(rush2049::program_id);
@@ -618,7 +623,9 @@ int main(int argc, char** argv) {
     }
 
     rush2049::register_overlays();
+#ifdef RUSH2049_PATCHES
     rush2049::register_patches();
+#endif
     rush2049::register_mod_exports();
 
     recompinput::players::set_single_player_mode(true);
@@ -680,7 +687,9 @@ int main(int argc, char** argv) {
         ultramodern::threads::callbacks_t{ .get_game_thread_name = rush2049::game_thread_name }
     );
 
+#ifndef __EMSCRIPTEN__
     NFD_Quit();
+#endif
 
 #ifdef _WIN32
     timeEndPeriod(1);

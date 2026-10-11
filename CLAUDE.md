@@ -91,6 +91,8 @@ rt64-0009              the RSP compute shaders read their inputs from one buffer
                        (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
 rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page's canvas from the WGSL blobs,
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
+RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
+                       (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -219,9 +221,20 @@ measured.
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
 for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
 
-**It moves out.** Once it works, the web support leaves this repo, is released on its own, and this repo uses it
-like any other dependency. It is built here until then because the game is how it is tested, so keep the line
-between the two clean, and the move is cutting `web/` out:
+**It moves out.** Once the game draws in a browser (or another recomp wants it), the web support leaves this repo
+as Alek chose on 2026-10-11:
+
+- A fork of each upstream it patches (rt64, plume, N64ModernRuntime, N64Recomp; RecompFrontend once it does), each
+  with a `web` branch: the web patches as commits on the pinned upstream commit. The rt64 fork's `src/contrib/plume`
+  and the N64ModernRuntime fork's `N64Recomp` point at the sibling forks. These branches are what upstream PRs are
+  opened from, and a fork goes away once upstream takes its branch.
+- One small repo for what isn't a patch: the Emscripten build options, the page and its loader, `web/tests/`, and CI
+  building the forks with emsdk. Its tags are the releases and pin fork commits that work together. Source at a
+  tag, not a package (NuGet or a prebuilt library): the game's own patches go on top of the source, and everything
+  links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
+- This repo then points its submodules at the forks, drops `web/`, and keeps `rush2049/runtime-patches/` on top.
+
+It is built here until then because the game is how it is tested, so keep the line between the two clean:
 
 - `web/` is what moves: the web runtime patches, their tests, and from now on any build glue or code that another
   recomp would need as is. Nothing in it names this game, includes from `rush2049/` or needs its ROM; `rush2049/`
@@ -232,9 +245,9 @@ between the two clean, and the move is cutting `web/` out:
   cherry-pick the web ones first and the Rush ones after, check the last tree is the same, and `git diff` each
   commit back out.
 - What is this game's stays in `rush2049/`: `headless/` (the game without the frontend, as a test page or with no
-  renderer) and, when it comes, the game's page. The Emscripten options in `headless/CMakeLists.txt` are the one
-  generic part there: they move into `web/` when the frontend's build needs them too. What the web side needs from
-  a game it gets through the runtime's own interfaces, as every recomp does.
+  renderer) and the `EMSCRIPTEN` branches of `rush2049/CMakeLists.txt` that make the game a page with
+  `web/frontend/`. The link options in `headless/CMakeLists.txt` predate `web/frontend/` and overlap it. What the web
+  side needs from a game it gets through the runtime's own interfaces, as every recomp does.
 
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
@@ -337,11 +350,27 @@ So on the web a list takes about 2.5 times as long, and in the busiest races it 
 a list has at 60 a second. The CPU side measured in step 1 is a small part of it; where the rest goes is not
 measured yet.
 
+**Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
+`Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
+HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `web/frontend/CMakeLists.txt`'s header says
+what each part does; the README says how to build and serve it. Checked in headless Chrome 154: launcher, Load ROM,
+title, menus, a race on the keyboard, audio playing (RMS 0.1-0.2), a reload that boots from the stored ROM, and
+without the two headers through `coi_serviceworker.js`. What to know:
+
+- To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
+  with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
+  port: IndexedDB belongs to the origin, port included, so a random port starts every run empty.
+- Emscripten's SDL2 port opens audio on the page's thread except one line that reads the audio context's rate on the
+  calling thread, which fails from a pthread: `sdl_audio.js` works around it.
+- RmlUi's FreeType must be the `freetype-legacysjlj` build (setjmp with wasm exceptions); the plain one leaves
+  `emscripten_longjmp` undefined. Emscripten's `bits/limits.h` defines `PAGESIZE`, which breaks `slot_map.h`.
+- The `--pre-js` files and the shell are read at link time, so the page lists them in `LINK_DEPENDS`.
+- CI builds no Emscripten target, so the page, recompui's `Interface*.wgsl` and `file.cpp`'s picker are checked only
+  by a build and a run here.
+
 **Still to do, each its own card:**
 
-- The frontend: recompui (RmlUi on plume), SDL2 audio and input (Emscripten has both), the ROM from a file picker
-  kept in IndexedDB, never hosted. `_WIN32` branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp` and
-  `crash_handler.cpp`.
+- Publishing the page (GitHub Pages), gamepads on the page, and hiding the launcher's Mods and Exit buttons there.
 - The frame time above: where a list's 11-15 ms go (readback round trips, calls that wait for the main thread).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
