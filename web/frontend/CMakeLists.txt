@@ -1,5 +1,6 @@
 # recomp_web_frontend: what a recomp's executable built on RecompFrontend needs to be a page, as link options. Compile
-# everything, libraries too, with -pthread -fwasm-exceptions (add_compile_options), and make the executable a page with
+# everything, libraries too, with -pthread -fwasm-exceptions -msimd128 "-DXXH_HAS_INCLUDE(x)=0" (add_compile_options;
+# the last keeps xxHash off a NEON path that doesn't compile in C++ there), and make the executable a page with
 # recomp_web_frontend_page(<target>) below, which links it with this and copies coi_serviceworker.js beside it. It brings:
 # - threads as pthreads, with main() on one of them (-sPROXY_TO_PTHREAD), so the page's own thread is free for the
 #   WebGPU device (plume_device_thread.h), the file picker and the browser's events,
