@@ -406,6 +406,21 @@ specialized pipelines have since replaced (rt64-0011, Step 2). With RT64's Ubers
 and from 0.76-1.15 to 5.1 ms at 2560x1920. The browser has no GPU timestamps, so its GPU side is read from nvidia-smi's
 power and utilization against the idle desktop. Render to RAM costs the desktop build too: ~1.1 ms a list and ~15 W.
 
+With specialized pipelines (rt64-0011), measured on 2026-10-11 (17:00-17:45 Oslo), the same page and settings, 80 s
+per run, interleaved with the ubershader-only page; the quieter of two pairs (in the other, another session's load
+pushed the ubershader page at 2560x1920 to 93% busy and 44-57 lists a second):
+
+```
+              ubershader only      specialized
+              busy  MHz    W       busy  MHz    W
+960x720        34%  432   49        30%  307   41
+2560x1920      68% 1233  118        36%  541   65
+```
+
+Every specialized run kept 59-60 lists a second. The cost is CPU in Chrome's GPU process while it builds the
+pipelines: ~1.2 cores in the first minute, 0.8 in the second, ~0.4 from the third on as new ones stop arriving,
+against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there).
+
 **Step 3, done: the game with its frontend.** `rush2049/` itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
 HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `web/frontend/CMakeLists.txt`'s header says
