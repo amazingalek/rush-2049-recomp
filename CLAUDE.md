@@ -86,6 +86,8 @@ rt64-0003              GPU timings for --gpu-profile, split into the parts of ea
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
 rt64-0006              no Idle thread on Emscripten
+rt64-0007              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
+                       buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
 ```
 
 ## This machine
@@ -258,10 +260,14 @@ and push constants become a uniform buffer at `@group(3) @binding(0)`.
 **Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
 every plume call it makes):
 
-- Shaders: 35 of 56 convert; RasterPS/VS need `RDPParams` and `GPUTile` padded (dxc's D3D packing of `float3`
-  breaks WGSL's 16-byte `vec3`), typed `Buffer<T>`s become structured buffers, formatless `RWTexture2D`s get a
-  format, RasterPS's 18 samplers come down to 16, and dual-source blending is optional in WebGPU. No geometry
-  shaders. The Vulkan path specializes SPIR-V at run time (`respv`); WebGPU does it with WGSL overrides.
+- Shaders: done in rt64-0007. RT64's CMake builds each one to `<name>.wgsl.c` with Emscripten (`emcmake cmake -S
+  rush2049/lib/rt64 -B <dir> -DRT64_NAGA_EXECUTABLE=<naga.exe>`, then ninja the `*.wgsl.c` targets), plus
+  `*DualSource` RasterPS variants for devices with `dual-source-blending`. Spec constants come out as WGSL
+  `override`s. Left: RSPProcessCS and RSPWorldCS bind 21 and 10 storage buffers against core's 8 (its own card),
+  and the C++ side: the shader library picking the WGSL blobs, `SRC1` blend factors when dual-source is missing,
+  the boolean texture as `R32_UINT` (8-bit storage textures don't exist), no nearest samplers 16-24 in the
+  descriptor set, and no `rgba16unorm` (HDR) target on the web. A read_write storage texture is only core in r32
+  formats, so plume declares every other one write-only.
 - Texture binding: `gTextures[8192]` and `gTMEM[8192]` are one bindless set bound twice, mixing 2D float and 1D
   `R8_UINT` textures (`rt64_descriptor_sets.h`, `TextureSampler.hlsli`). The common set (bindings 1-67) also exceeds
   WebGPU's default per-stage limits.
