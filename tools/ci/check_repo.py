@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 ROM_EXTENSIONS = {".z64", ".n64", ".v64", ".rom"}
 # Generated from the ROM by N64Recomp / RSPRecomp, or the ROM itself (see .gitignore).
-ROM_DERIVED_DIRS = ("roms/", "extracted/", "RecompiledFuncs/", "rush2049/RecompiledFuncs/", "rush2049/rsp/")
+ROM_DERIVED_DIRS = ("roms/", "extracted/", "RecompiledFuncs/", "rsp/")
 # The first word of an N64 ROM in .z64, .v64 and .n64 byte order.
 ROM_MAGICS = (b"\x80\x37\x12\x40", b"\x37\x80\x40\x12", b"\x40\x12\x37\x80")
 # The largest tracked file is a ~1 MB font; RDRAM dumps are 4 or 8 MB and ROMs larger.

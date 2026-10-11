@@ -8,39 +8,34 @@
 /baserom*
 /roms/
 /extracted/
+/RecompiledFuncs/
+/RecompiledPatches/
+/rsp/
+# Generated at runtime from the ROM: the hi-res font's and title's packs (src/hires_font.cpp)
+/hires_font/
+/hires_title/
 
 # Build output
 /build/
+/build-release/
 /out/
-/RecompiledFuncs/
-/rsp/*.cpp
+/patches/*.o
+/patches/*.d
+/patches/patches.map
+/mod_template/build/
+*.nrm
 .vs/
 *.user
+__pycache__/
 
-# Reference repos cloned for study
+# Reference repos cloned for study, and the Python venv
 /ref/
 /.venv/
-/rush2049/RecompiledFuncs/
-/rush2049/build/
-/rush2049/build-release/
 
-# Portable run directory files (rush2049/portable.txt makes the app keep its data here)
-/rush2049/portable.txt
-/rush2049/*.json
-/rush2049/saves/
-/rush2049/mods/
-/rush2049/*.log
-/rush2049/recomp.log
-/rush2049/*.bak
-/rush2049/rsp/
-# Generated at runtime from the ROM by the hi-res font (src/hires_font.cpp)
-/rush2049/hires_font/
-__pycache__/
-/rush2049/RecompiledPatches/
-/rush2049/patches/*.o
-/rush2049/patches/*.d
-/rush2049/patches/patches.map
-/rush2049/mod_template/build/
-*.nrm
-# The hi-res title's pack, cut at runtime, and a picture to make a patch from (src/hires_font.cpp)
-/rush2049/hires_title/
+# What a run from the checkout writes (portable.txt makes the app keep its data here)
+/portable.txt
+/*.json
+/saves/
+/mods/
+/*.log
+/*.bak

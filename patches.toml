@@ -1,0 +1,18 @@
+# N64Recomp config for the patches library (patches/, built by patches/Makefile). Paths are relative to this file.
+[input]
+elf_path = "patches/patches.elf"
+output_func_path = "RecompiledPatches"
+single_file_output = true
+# The natives in patches/syms.ld are absolute symbols used as call targets.
+use_absolute_symbols = true
+# Game functions a patch calls are resolved by name from the game's symbol file.
+func_reference_syms_file = "syms/rush2049.us.syms.toml"
+data_reference_syms_files = [ "syms/rush2049.us.datasyms.toml" ]
+# Written by N64Recomp rather than objcopy so it can patch MIPS32 relocs.
+output_binary_path = "patches/patches.bin"
+# clang emits many unpaired LO16 relocs.
+unpaired_lo16_warnings = false
+# RECOMP_EXPORT functions and RECOMP_DECLARE_EVENT events are made available to mods.
+allow_exports = true
+# A RECOMP_PATCH must replace a function in the symbol file, and nothing else may share a name with one.
+strict_patch_mode = true
