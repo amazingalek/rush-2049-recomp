@@ -82,7 +82,14 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) > 0) {
+    // Emscripten's SDL2 is built without haptics, and asking for them there fails the whole call, gamepads with it.
+    // Nothing uses them: rumble goes through SDL_JoystickRumble.
+#ifdef __EMSCRIPTEN__
+    const Uint32 sdl_subsystems = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK;
+#else
+    const Uint32 sdl_subsystems = SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC;
+#endif
+    if (SDL_Init(sdl_subsystems) < 0) {
         exit_error("Failed to initialize SDL2: %s\n", SDL_GetError());
     }
 
