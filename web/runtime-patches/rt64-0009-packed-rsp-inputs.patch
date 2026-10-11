@@ -341,7 +341,7 @@ index c90b949..fa7324d 100644
          VertexProcessor(RenderDevice *device);
          ~VertexProcessor();
 diff --git a/src/shaders/RSPProcessCS.hlsl b/src/shaders/RSPProcessCS.hlsl
-index fd8e788..26e87ac 100644
+index fd8e788..2bb3640 100644
 --- a/src/shaders/RSPProcessCS.hlsl
 +++ b/src/shaders/RSPProcessCS.hlsl
 @@ -17,9 +17,84 @@ struct RSPProcessCB {
@@ -433,12 +433,12 @@ index fd8e788..26e87ac 100644
  StructuredBuffer<RSPLookAt> rspLookAtVector : register(t16);
  StructuredBuffer<float4x4> viewProjTransforms : register(t17);
  StructuredBuffer<float4x4> worldTransforms : register(t18);
-+float loadPos(uint i) { return loadPos(i); }
-+float loadVel(uint i) { return loadVel(i); }
-+float loadTc(uint i) { return loadTc(i); }
-+float loadTcVel(uint i) { return loadTcVel(i); }
-+uint loadCol(uint i) { return loadCol(i); }
-+int loadNorm(uint i) { return loadNorm(i); }
++float loadPos(uint i) { return loadFloat(srcPos, i); }
++float loadVel(uint i) { return loadFloat(srcVel, i); }
++float loadTc(uint i) { return loadFloat(srcTc, i); }
++float loadTcVel(uint i) { return loadFloat(srcTcVel, i); }
++uint loadCol(uint i) { return loadUint8(srcCol, i); }
++int loadNorm(uint i) { return loadInt8(srcNorm, i); }
 +uint loadViewProjIndex(uint i) { return loadUint16(srcViewProjIndices, i); }
 +uint loadWorldIndex(uint i) { return loadUint16(srcWorldIndices, i); }
 +uint loadFogIndex(uint i) { return loadUint16(srcFogIndices, i); }
@@ -558,7 +558,7 @@ index fd8e788..26e87ac 100644
      const float4 screenPos = float4(ndcPos * rspViewport.scale + rspViewport.translate, tfPos.w);
      dstPos[vertexOffsetIndex] = screenPos;
 diff --git a/src/shaders/RSPWorldCS.hlsl b/src/shaders/RSPWorldCS.hlsl
-index 962ace6..5be56fb 100644
+index 962ace6..2aeed21 100644
 --- a/src/shaders/RSPWorldCS.hlsl
 +++ b/src/shaders/RSPWorldCS.hlsl
 @@ -11,9 +11,31 @@ struct RSPWorldCB {
@@ -597,9 +597,9 @@ index 962ace6..5be56fb 100644
  StructuredBuffer<float4x4> worldMats : register(t5);
  StructuredBuffer<float4x4> invTWorldMats : register(t6);
  StructuredBuffer<float4x4> prevWorldMats : register(t7);
-+float loadPos(uint i) { return loadPos(i); }
-+float loadVel(uint i) { return loadVel(i); }
-+int loadNorm(uint i) { return loadNorm(i); }
++float loadPos(uint i) { return loadFloat(srcPos, i); }
++float loadVel(uint i) { return loadFloat(srcVel, i); }
++int loadNorm(uint i) { return loadInt8(srcNorm, i); }
 +uint loadIndex(uint i) { return loadUint16(srcIndices, i); }
 +float4x4 loadWorldMat(uint i) { return worldMats[i]; }
 +float4x4 loadInvTWorldMat(uint i) { return invTWorldMats[i]; }
