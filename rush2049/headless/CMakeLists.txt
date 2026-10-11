@@ -92,8 +92,8 @@ if (EMSCRIPTEN)
         -sENVIRONMENT=web,worker,node "SHELL:--preload-file ${HEADLESS_ROM}@/rom.z64")
 endif()
 
-# With Emscripten, RT64 draws the game on the page's canvas through WebGPU (web/renderer): the build is then a page,
-# Rush2049Headless.html, for a browser, and no longer runs in node. HEADLESS_RT64=OFF keeps the renderer null.
+# With Emscripten, RT64 draws the game on the page's canvas through WebGPU (lib/recomp-web/renderer): the build is then
+# a page, Rush2049Headless.html, for a browser, and no longer runs in node. HEADLESS_RT64=OFF keeps the renderer null.
 if (EMSCRIPTEN)
     option(HEADLESS_RT64 "Draw with RT64 on the page's canvas" ON)
 endif()
@@ -101,7 +101,7 @@ if (HEADLESS_RT64)
     set(RT64_STATIC TRUE)
     add_subdirectory(${GAME_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
     target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
-    add_subdirectory(${GAME_DIR}/../web/renderer ${CMAKE_BINARY_DIR}/web_renderer)
+    add_subdirectory(${GAME_DIR}/lib/recomp-web/renderer ${CMAKE_BINARY_DIR}/web_renderer)
     target_link_libraries(Rush2049Headless PRIVATE recomp_web_renderer)
     target_compile_definitions(Rush2049Headless PRIVATE HEADLESS_RT64)
     set_target_properties(Rush2049Headless PROPERTIES SUFFIX ".html")

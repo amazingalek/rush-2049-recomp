@@ -17,7 +17,8 @@ one pad.
 the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
 uploaded. It plays the title screen, the menus and races in Chrome at close to 60 frames a second, as the desktop
 build does. It isn't hosted anywhere yet, so for now you build it and serve it yourself. The web support
-is written to work for every N64 recomp, not just this one.
+works for every N64 recomp, not just this one, and lives in a project of its own,
+[recomp-web](https://github.com/amazingalek/recomp-web).
 
 ## Modern enhancements
 
@@ -268,9 +269,9 @@ cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes bui
   (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
   `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
   build without the frontend (`headless/`): the browser test page, or with no graphics at all.
-- `web/`: the browser support, written for every N64 recomp and not just this one, to move into a project of its own
-  once it works: its changes to the runtime submodules (`runtime-patches/`) and their tests, the renderer the test
-  page draws through (`renderer/`), and what turns a recomp built on RecompFrontend into a page (`frontend/`).
+- `rush2049/lib/`: RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a `web`
+  branch, and `recomp-web` is what turns a recomp into a page; see
+  [recomp-web](https://github.com/amazingalek/recomp-web).
 - `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
