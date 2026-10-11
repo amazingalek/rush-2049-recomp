@@ -60,7 +60,7 @@ jobs:
           git submodule update --init --depth 1 rush2049/lib/rt64
           git -C rush2049/lib/rt64 submodule update --init --depth 1 src/contrib/plume
           bash tools/rush2049/apply_runtime_patches.sh
-          g++ -std=c++20 -O2 -Wall -pthread -Irush2049/lib/rt64/src/contrib/plume rush2049/tests/plume_device_thread_test.cpp \
+          g++ -std=c++20 -O2 -Wall -pthread -Irush2049/lib/rt64/src/contrib/plume web/tests/plume_device_thread_test.cpp \
             rush2049/lib/rt64/src/contrib/plume/plume_device_thread.cpp -o device_thread_test
           ./device_thread_test
 
@@ -85,7 +85,7 @@ jobs:
         run: |
           prefix="build-v3-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('web/runtime-patches/*.patch', 'rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:
@@ -170,7 +170,7 @@ jobs:
         run: |
           prefix="build-v3-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
-          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+          echo "key=$prefix$ImageVersion-$(git ls-tree HEAD rush2049/lib | git hash-object --stdin)-${{ hashFiles('web/runtime-patches/*.patch', 'rush2049/runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:

@@ -46,18 +46,18 @@ index 2970e71..6a8ce36 100644
  
                  // Record the command list for the framebuffer pairs.
 diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
-index 9fc4b2f..5deb645 100644
+index 0ed097e..abed465 100644
 --- a/src/hle/rt64_workload_queue.cpp
 +++ b/src/hle/rt64_workload_queue.cpp
-@@ -708,7 +708,7 @@ namespace RT64 {
-             RenderCommandList *timedCommandList = ext.workloadGraphicsWorker->commandList.get();
-             timedCommandList->resetQueryPool(queryPool.get(), 0, queryPool->getCount());
-             partTimer.begin(timedCommandList, queryPool.get());
+@@ -705,7 +705,7 @@ namespace RT64 {
+             ext.workloadGraphicsWorker->commandList->begin();
+             ext.workloadGraphicsWorker->commandList->resetQueryPool(queryPool.get(), 0, 2);
+             ext.workloadGraphicsWorker->commandList->writeTimestamp(queryPool.get(), 0);
 -            framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workloadConfig.raytracingEnabled);
 +            framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workload.drawData.gpuTiles, workloadConfig.raytracingEnabled);
              framebufferRenderer->recordSetup(ext.workloadGraphicsWorker, bufferUploaders, processRSP ? rspProcessor.get() : nullptr, processWorldVertices ? vertexProcessor.get() : nullptr, &workload.outputBuffers, workloadConfig.raytracingEnabled);
-             partTimer.mark(GPUTimings::RenderSetup);
-             uint64_t drawCallsRecorded = 0;
+             
+             // Record all framebuffer pairs.
 diff --git a/src/render/rt64_descriptor_sets.h b/src/render/rt64_descriptor_sets.h
 index 69a82ac..94f5cd0 100644
 --- a/src/render/rt64_descriptor_sets.h
@@ -128,10 +128,10 @@ index 69a82ac..94f5cd0 100644
          uint32_t FbParams;
          uint32_t gBackgroundColor;
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 2d55587..66d62dc 100644
+index 9fae0d4..f257ecb 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
-@@ -152,6 +152,7 @@ namespace RT64 {
+@@ -151,6 +151,7 @@ namespace RT64 {
  
          shaderUploader = std::make_unique<BufferUploader>(worker->device);
          descCommonSet = std::make_unique<FramebufferRendererDescriptorCommonSet>(shaderLibrary->samplerLibrary, worker->device->getCapabilities().raytracing, worker->device);
@@ -139,7 +139,7 @@ index 2d55587..66d62dc 100644
  
  #   if RT_ENABLED
          if (rtSupport) {
-@@ -162,6 +163,8 @@ namespace RT64 {
+@@ -161,6 +162,8 @@ namespace RT64 {
      }
  
      FramebufferRenderer::~FramebufferRenderer() {
@@ -148,7 +148,7 @@ index 2d55587..66d62dc 100644
          dummyColorTargetView.reset();
          dummyDepthTargetView.reset();
          dummyColorTarget.reset();
-@@ -311,12 +314,12 @@ namespace RT64 {
+@@ -310,12 +313,12 @@ namespace RT64 {
          assert(worker != nullptr);
          assert(drawBuffers != nullptr);
          
@@ -163,7 +163,7 @@ index 2d55587..66d62dc 100644
              descriptorTextureVersions.clear();
              descriptorTextureGlobalVersion = 0;
              descriptorTextureReplacementMapEnabled = textureCacheReplacementMapEnabled;
-@@ -379,6 +382,11 @@ namespace RT64 {
+@@ -378,6 +381,11 @@ namespace RT64 {
          descCommonSet->setBuffer(descCommonSet->GPUTiles, drawBuffers->gpuTilesBuffer.get(), RenderBufferStructuredView(sizeof(interop::GPUTile)));
          descCommonSet->setBuffer(descCommonSet->DynamicRenderParams, drawBuffers->renderParamsBuffer.get(), RenderBufferStructuredView(sizeof(interop::RenderParams)));
  
@@ -175,7 +175,7 @@ index 2d55587..66d62dc 100644
          // Make sure the versions vector matches the texture cache size.
          descriptorTextureVersions.resize(textureCacheSize, 0);
  
-@@ -474,6 +482,7 @@ namespace RT64 {
+@@ -473,6 +481,7 @@ namespace RT64 {
          interop::RasterParams rasterParams;
          RenderDescriptorSet *descRealFbSet = framebuffer.descRealFbSet->get();
          RenderDescriptorSet *descDummyFbSet = framebuffer.descDummyFbSet->get();
@@ -183,7 +183,7 @@ index 2d55587..66d62dc 100644
  
          auto switchToGraphicsPipeline = [&]() {
              previousCallType = InstanceDrawCall::Type::Unknown;
-@@ -482,8 +491,15 @@ namespace RT64 {
+@@ -481,8 +490,15 @@ namespace RT64 {
              previousScissor = RenderRect();
              worker->commandList->setGraphicsPipelineLayout(rendererPipelineLayout);
              worker->commandList->setGraphicsDescriptorSet(descCommonSet->get(), 0);
@@ -201,7 +201,7 @@ index 2d55587..66d62dc 100644
              worker->commandList->setGraphicsDescriptorSet(depthState ? descRealFbSet : descDummyFbSet, 3);
              worker->commandList->setViewports(framebuffer.viewport);
          };
-@@ -571,6 +587,14 @@ namespace RT64 {
+@@ -570,6 +586,14 @@ namespace RT64 {
                      worker->commandList->setPipeline(triangles.pipeline);
                      previousPipeline = triangles.pipeline;
                  }
@@ -216,7 +216,7 @@ index 2d55587..66d62dc 100644
                  
                  rasterParams.renderIndex = i;
                  rasterParams.screenScale = triangles.screenScale;
-@@ -1788,7 +1812,173 @@ namespace RT64 {
+@@ -1760,7 +1784,173 @@ namespace RT64 {
          checkRasterScene(rasterScene);
      }
  
@@ -391,7 +391,7 @@ index 2d55587..66d62dc 100644
          bool shaderViewRtEnabled = false;
          std::vector<BufferUploader::Upload> shaderUploads = {
              { renderIndicesVector.data(), { 0, renderIndicesVector.size() }, sizeof(interop::RenderIndices), RenderBufferFlag::STORAGE, { }, &renderIndicesBuffer},
-@@ -1844,8 +2034,16 @@ namespace RT64 {
+@@ -1816,8 +2006,16 @@ namespace RT64 {
          }
  #   endif
  
@@ -535,16 +535,16 @@ index bc250a2..8feda28 100644
  // Set 3 - Framebuffer.
  ConstantBuffer<FramebufferParams> FbParams : register(b0, space3);
 diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
-index cea0403..67a0243 100644
+index e7895c3..9ac43f3 100644
 --- a/src/shaders/RasterPS.hlsl
 +++ b/src/shaders/RasterPS.hlsl
-@@ -149,14 +149,15 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+@@ -141,14 +141,15 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
              rdpTile.nativeSampler = renderFlagNativeSampler0(rp.flags);
          }
          
 -        const GPUTile gpuTile = GPUTiles[globalTileIndex];
 +        const GPUTile gpuTile = drawGPUTile(instanceRenderIndices[gConstants.renderIndex].rdpTileIndex, tileIndex0);
-         const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? highResUV : lowResUV;
+         const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? vertexUV : lowResUV;
          texVal0 = sampleTexture(otherMode, rp.flags, textureUV, ddxVertexUV, ddyVertexUV, rdpTile, gpuTile, false);
      }
      
@@ -556,13 +556,13 @@ index cea0403..67a0243 100644
          RDPTile rdpTile = RDPTiles[globalTileIndex];
          if (!renderFlagDynamicTiles(rp.flags)) {
              rdpTile.cms = oneCycleHardwareBug ? renderCMS0(rp.flags) : renderCMS1(rp.flags);
-@@ -164,7 +165,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+@@ -156,7 +157,7 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
              rdpTile.nativeSampler = oneCycleHardwareBug ? renderFlagNativeSampler0(rp.flags) : renderFlagNativeSampler1(rp.flags);
          }
          
 -        const GPUTile gpuTile = GPUTiles[globalTileIndex];
 +        const GPUTile gpuTile = drawGPUTile(instanceRenderIndices[gConstants.renderIndex].rdpTileIndex, tileIndex);
-         const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? highResUV : lowResUV;
+         const float2 textureUV = gpuTileFlagHighRes(gpuTile.flags) ? vertexUV : lowResUV;
          const uint nativeSampler = renderFlagNativeSampler1(rp.flags);
          texVal1 = sampleTexture(otherMode, rp.flags, textureUV, ddxVertexUV, ddyVertexUV, rdpTile, gpuTile, oneCycleHardwareBug);
 diff --git a/src/shaders/TextureDecoder.hlsli b/src/shaders/TextureDecoder.hlsli
