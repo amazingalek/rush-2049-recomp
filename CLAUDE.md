@@ -129,8 +129,11 @@ source tools/env.sh && cmake -S rush2049 -B rush2049/build ...   # the README's 
 bash tools/rush2049/iterate.sh 30
 ```
 
-Copying `rush2049/lib/` from another worktree on the same submodule commits is faster than cloning; run the
-submodule update after it anyway. Without `portable.txt` the game reads and writes the user's own settings in
+Copying the submodules from another worktree is faster than cloning them (about 3 minutes): in place of the
+submodule update, `bash tools/copy_submodules.sh <that worktree>`, then the patch script. Never copy `rush2049/lib/`
+by hand: its `.git` files point into the other worktree's git dir, so the two share one, and git in either acts on
+the other's files. If `git -C rush2049/lib/rt64 rev-parse --show-toplevel` names another worktree, the same script
+with no argument gives this one its own (the header says how). Without `portable.txt` the game reads and writes the user's own settings in
 `%LOCALAPPDATA%\Rush2049Recompiled\`. If `git status` then fails with `bad object HEAD` in a nested submodule, a
 fetch hit the path limit; repair it with
 `git -c core.longpaths=true submodule foreach --recursive 'git config core.longpaths true; git cat-file -e $sha1 || git fetch origin $sha1'`.
