@@ -13,10 +13,11 @@ six race tracks race to the results screen, two- and four-player split screen re
 survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
 one pad.
 
-**Plan: the browser.** The long-term goal is to play it in a web browser, with your ROM picked from disk and kept
-in the browser, never uploaded, and to make that web support work for every N64 recomp, not just this one. So far
-the game draws in a browser on a developer test page, with no menus, sound or controls yet, at about 50-60 frames
-a second where the desktop build keeps 60; those, and a page for players, are the work still to do.
+**In a browser: it runs, not yet published.** The same game builds as a web page (see **In a browser** below), with
+the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
+uploaded. It plays the title screen, the menus and races in Chrome, at about 50-60 frames a second where the
+desktop build keeps 60. It isn't hosted anywhere yet, so for now you build it and serve it yourself. The web support
+is written to work for every N64 recomp, not just this one.
 
 ## Modern enhancements
 
@@ -103,6 +104,36 @@ After that, `ninja -C rush2049/build Rush2049Recompiled` rebuilds.
 **Run** `rush2049/build/Rush2049Recompiled.exe` from `rush2049/`. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
 otherwise pick it with Load ROM.
+
+## In a browser
+
+The page needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS (Firefox and Safari
+haven't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
+does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
+asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Controller Pak saves are kept in the
+same storage, written back every couple of seconds and when you leave the page. Clearing the site's data in the
+browser removes all of it.
+
+What differs from the desktop build: no mods and no replacement music (the page has no folder to put them in), no
+MSAA and no HDR output. The keyboard works as below; gamepads go through the browser's gamepad support but haven't
+been tried yet.
+
+**Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
+recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and naga
+(`cargo install naga-cli`). From the repo root:
+
+```sh
+source <emsdk>/emsdk_env.sh
+embuilder build sdl2-mt freetype-legacysjlj      # once
+emcmake cmake -S rush2049 -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
+ninja -C <build dir> Rush2049Recompiled
+```
+
+That writes `Rush2049Recompiled.html` with its `.js`, `.wasm` and `.data` and `coi_serviceworker.js` into the build
+dir; none of them holds the ROM. Serve that folder over https, or http on localhost, and open the `.html`. The page
+uses threads, so it must be served with the headers `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`; on a host that can't set headers, like GitHub Pages,
+`coi_serviceworker.js` adds them and the page reloads itself once on the first visit.
 
 ## Controls
 
@@ -233,8 +264,8 @@ cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes bui
   `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
   build without the frontend (`headless/`): the browser test page, or with no graphics at all.
 - `web/`: the browser support, written for every N64 recomp and not just this one, to move into a project of its own
-  once it works: its changes to the runtime submodules (`runtime-patches/`) and their tests, and the renderer that
-  draws on the page (`renderer/`).
+  once it works: its changes to the runtime submodules (`runtime-patches/`) and their tests, the renderer the test
+  page draws through (`renderer/`), and what turns a recomp built on RecompFrontend into a page (`frontend/`).
 - `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
