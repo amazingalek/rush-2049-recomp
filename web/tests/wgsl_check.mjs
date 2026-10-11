@@ -5,6 +5,9 @@
 // module is checked. Prints PASS or FAIL per shader and exits 1 on any FAIL.
 //
 //   node web/tests/wgsl_check.mjs <dir with .wgsl files>      (CHROME=<chrome.exe> if it isn't where Windows puts it)
+//
+// CHROME_FLAGS adds Chrome arguments, split on spaces. CI has no GPU and uses SwiftShader, Chrome's CPU Vulkan:
+// "--enable-unsafe-swiftshader --use-webgpu-adapter=swiftshader --enable-features=Vulkan --no-sandbox".
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -18,6 +21,10 @@ if (!dir) {
 }
 
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.wgsl')).sort();
+if (!files.length) {
+    console.error(`FAIL no .wgsl files in ${dir}`);
+    process.exit(1);
+}
 const page = `<!doctype html><script>
 window.result = null;
 (async () => {
@@ -78,7 +85,8 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'wgsl-check-'));
 const chromePath = process.env.CHROME || 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(chromePath, ['--headless=new', '--enable-unsafe-webgpu', '--remote-debugging-port=0',
-    `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
+    `--user-data-dir=${profile}`, ...(process.env.CHROME_FLAGS || '').split(' ').filter(Boolean), 'about:blank'],
+    { stdio: 'ignore' });
 
 // Chrome writes the port it picked into the profile, and the page's DevTools socket is listed there.
 let socketUrl;
