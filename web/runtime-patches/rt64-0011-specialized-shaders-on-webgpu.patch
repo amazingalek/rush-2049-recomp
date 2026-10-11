@@ -194,3 +194,21 @@ diff --git a/src/render/rt64_raster_shader_cache.h b/src/render/rt64_raster_shad
 -};
 \ No newline at end of file
 +};
+diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
+--- a/src/hle/rt64_application.cpp
++++ b/src/hle/rt64_application.cpp
+@@ -370,7 +370,14 @@
+         // Create the shader caches.
+         // Estimate the amount of shader compiler threads by trying to use about half of the system's available threads.
+         // We need the ubershader pipelines done as soon as possible, so we use a different thread count that demands more of the system.
++#   if defined(RT64_WGSL)
++        // On WebGPU the thread only waits while the browser builds the pipeline on threads of its own, as many at once as
++        // are asked for, and those compete with the page's. Six at once took about 9 cores and halved the frame rate;
++        // one at a time kept 50-60 frames a second (Chrome, 12 threads).
++        const uint32_t rasterShaderThreads = 1;
++#   else
+         const uint32_t rasterShaderThreads = std::max(threadsAvailable / 2U, 1U);
++#   endif
+         const uint32_t ubershaderThreads = uint32_t(std::max(int(threadsAvailable) - 2, 1));
+         rasterShaderCache = std::make_unique<RasterShaderCache>(rasterShaderThreads, ubershaderThreads);
+         rasterShaderCache->setup(device.get(), renderInterface->getCapabilities().shaderFormat, shaderLibrary.get(), multisampling);
