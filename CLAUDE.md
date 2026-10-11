@@ -76,6 +76,8 @@ N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without 
 N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
 plume-0001             WebGPU backend (plume_webgpu.*, in rt64/src/contrib/plume); WGSL from HLSL with dxc and naga;
                        the triangle and cube examples build for the browser
+plume-0002             plume_device_thread: any backend run on one thread for every caller (WebGPU's device is one
+                       thread's); built with -pthread, the examples draw from a thread of their own
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -83,6 +85,7 @@ rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
+rt64-0006              no Idle thread on Emscripten
 ```
 
 ## This machine
@@ -245,10 +248,12 @@ emcmake cmake -S rush2049/lib/rt64/src/contrib/plume -B <dir> -G Ninja -DCMAKE_B
 cmake --build <dir>             # <dir>/bin/plume_triangle.html, plume_cube.html
 ```
 
-Serve `<dir>/bin` over http on localhost and open it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`;
-headless works with `--headless=new --enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that
-page, never a screen copy. Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) →
-WGSL (naga `--keep-coordinate-space`), and push constants become a uniform buffer at `@group(3) @binding(0)`.
+With `-DCMAKE_CXX_FLAGS=-pthread -DCMAKE_C_FLAGS=-pthread` the examples draw from a thread of their own through
+plume-0002, and the page needs the two cross-origin headers above. Serve `<dir>/bin` over http on localhost and open
+it in Chrome (`C:\Program Files (x86)\Google\Chrome\Application\`; headless works with `--headless=new
+--enable-unsafe-webgpu`). Look at it with CDP `Page.captureScreenshot` of that page, never a screen copy. Shaders go
+HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga `--keep-coordinate-space`),
+and push constants become a uniform buffer at `@group(3) @binding(0)`.
 
 **Still to do, each its own card,** for RT64 (found by compiling all 56 of its shaders with naga and by reading
 every plume call it makes):
@@ -262,11 +267,15 @@ every plume call it makes):
   WebGPU's default per-stage limits.
 - plume gaps RT64 hits: blocking READBACK maps (the framebuffer change count, and `renderToRAM`, on by default),
   texel buffers (formatted views), FillRect's one-rect clears, MSAA sample locations.
-- Threads: about a dozen RT64 threads call plume (workload, idle, present, texture upload, streaming, shader
-  compile, 11 buffer uploaders); every WebGPU call has to come from the thread that owns the device.
-- Then RT64 in the headless build, the title screen on a canvas; then the frontend: recompui (RmlUi on plume), SDL2
-  audio and input (Emscripten has both), the ROM from a file picker kept in IndexedDB, never hosted. `_WIN32`
-  branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp` and `crash_handler.cpp`.
+- Then RT64 in the headless build, the title screen on a canvas. Its threads stay as they are: it creates its
+  interface with `CreateDeviceThreadInterface(CreateEmscriptenDeviceThread(emscripten_main_runtime_thread_id()), ...)`
+  (plume-0002, whose header says what runs where) and the program runs in pthreads (`-sPROXY_TO_PTHREAD`), so the
+  page's main thread owns the device and the canvas and does nothing but run their work and present. A call that
+  waits for the main thread costs ~7 µs from a pthread in headless Chrome 154 and a queued one ~0.4 µs (2026-10-11,
+  host 32% busy), so what to watch is how many objects RT64 creates and buffers it maps each frame.
+- Then the frontend: recompui (RmlUi on plume), SDL2 audio and input (Emscripten has both), the ROM from a file
+  picker kept in IndexedDB, never hosted. `_WIN32` branches are only in `main.cpp`, `music.cpp`, `rom_finder.cpp`
+  and `crash_handler.cpp`.
 
 Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
 and load wasm modules instead. No other N64 recomp running in a browser was found to learn from.
