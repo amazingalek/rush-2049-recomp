@@ -80,12 +80,17 @@ plume-0002             plume_device_thread: any backend run on one thread for ev
 plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the device thread polls), texel buffers,
                        clears of rectangles, presents paced to the display, push constants sharing group 3 with a
                        4th set, write-only storage textures but r32, the adapter's limits; webgpu_checks
+plume-0004             WebGPU for RT64: only the overrides a shader declares, bindings visible to the stages that
+                       read them, depth read as unfilterable-float, copies in whole words, uniforms in 16-byte rows,
+                       dual-source blending as a capability
 rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
                        buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
 rt64-0009              the RSP compute shaders read their inputs from one buffer, copied in before the dispatch
                        (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
+rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page's canvas from the WGSL blobs,
+                       ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -230,13 +235,14 @@ between the two clean, and the move is cutting `web/` out:
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
 prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
+emsdk is installed in `%LOCALAPPDATA%\Programs\n64-toolchain\emsdk`; on a machine without it:
 
 ```sh
 git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
 EMSDK_PYTHON=<python 3> <python 3> emsdk.py install latest && <python 3> emsdk.py activate latest
 source emsdk_env.sh                # then, with RecompiledFuncs/ and rsp/musyx.cpp generated:
 emcmake cmake -S rush2049/headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_EXE_LINKER_FLAGS="--preload-file <rom.z64>@/rom.z64"
+    -DHEADLESS_ROM=<rom.z64> -DHEADLESS_RT64=OFF     # without RT64, for node
 cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120
 ```
 
