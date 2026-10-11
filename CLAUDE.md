@@ -218,9 +218,20 @@ measured.
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
 for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
 
-**It moves out.** Once it works, the web support leaves this repo, is released on its own, and this repo uses it
-like any other dependency. It is built here until then because the game is how it is tested, so keep the line
-between the two clean, and the move is cutting `web/` out:
+**It moves out.** Once the game draws in a browser (or another recomp wants it), the web support leaves this repo
+as Alek chose on 2026-10-11:
+
+- A fork of each upstream it patches (rt64, plume, N64ModernRuntime, N64Recomp; RecompFrontend once it does), each
+  with a `web` branch: the web patches as commits on the pinned upstream commit. The rt64 fork's `src/contrib/plume`
+  and the N64ModernRuntime fork's `N64Recomp` point at the sibling forks. These branches are what upstream PRs are
+  opened from, and a fork goes away once upstream takes its branch.
+- One small repo for what isn't a patch: the Emscripten build options, the page and its loader, `web/tests/`, and CI
+  building the forks with emsdk. Its tags are the releases and pin fork commits that work together. Source at a
+  tag, not a package (NuGet or a prebuilt library): the game's own patches go on top of the source, and everything
+  links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
+- This repo then points its submodules at the forks, drops `web/`, and keeps `rush2049/runtime-patches/` on top.
+
+It is built here until then because the game is how it is tested, so keep the line between the two clean:
 
 - `web/` is what moves: the web runtime patches, their tests, and from now on any build glue or code that another
   recomp would need as is. Nothing in it names this game, includes from `rush2049/` or needs its ROM; `rush2049/`
