@@ -6,12 +6,26 @@ diff --git a/plume_render_interface.h b/plume_render_interface.h
          virtual void setName(const std::string &name) = 0;
          virtual RenderPipelineProgram getProgram(const std::string &name) const = 0;
 +
-+        // False while the backend is still building the pipeline in the background (WebGPU's
++        // False until the backend has built a pipeline created with buildInBackground (WebGPU's
 +        // createRenderPipelineAsync). A thread other than the device's can wait for it to turn true.
 +        virtual bool isReady() { return true; }
      };
  
      struct RenderPipelineLayout {
+diff --git a/plume_render_interface_types.h b/plume_render_interface_types.h
+--- a/plume_render_interface_types.h
++++ b/plume_render_interface_types.h
+@@ -1309,6 +1309,10 @@
+         uint32_t inputElementsCount = 0;
+         const RenderSpecConstant *specConstants = nullptr;
+         uint32_t specConstantsCount = 0;
++
++        // The caller draws with something else until the pipeline's isReady(), so a backend that can build it in the
++        // background (WebGPU) does, rather than when it's first drawn with.
++        bool buildInBackground = false;
+     };
+ 
+     struct RenderRaytracingPipelineLibrarySymbol {
 diff --git a/plume_device_thread.h b/plume_device_thread.h
 --- a/plume_device_thread.h
 +++ b/plume_device_thread.h
@@ -66,19 +80,20 @@ diff --git a/plume_device_thread.cpp b/plume_device_thread.cpp
 diff --git a/plume_webgpu.h b/plume_webgpu.h
 --- a/plume_webgpu.h
 +++ b/plume_webgpu.h
-@@ -17,6 +17,11 @@
+@@ -17,6 +17,12 @@
  // - Bind group layouts need each texture's sample type and each sampler's filtering, which plume's descriptor
  //   ranges don't carry. So a descriptor set derives its layout from what is bound in it, and a pipeline is created
  //   at draw time for the layouts of the sets bound then, and cached per pipeline layout.
 +// - Building a pipeline holds up the browser's GPU process (a large WGSL shader can take seconds), so a graphics
-+//   pipeline whose plume layout draws have already resolved to WebGPU layouts starts building for those with
-+//   createRenderPipelineAsync when it is created, and isReady() is false until every build has called back. Behind
-+//   plume_device_thread.h, createGraphicsPipeline() waits for that on the calling thread, which can draw with another
-+//   pipeline meanwhile. A draw that comes first, or with a layout nobody resolved to before, builds it in place.
++//   pipeline created with buildInBackground is built with createRenderPipelineAsync for the WebGPU layouts draws
++//   with its plume layout have resolved to, and isReady() is false until every build has called back. Created before
++//   any draw resolved that layout, it waits for the first one to. Behind plume_device_thread.h, createGraphicsPipeline()
++//   waits for isReady() on the calling thread, which draws with another pipeline meanwhile. A draw with a layout the
++//   pipeline wasn't built for (a new binding stage changes them all) builds it in place, as any other pipeline is.
  // - Buffer mapping is asynchronous. An UPLOAD buffer keeps a CPU copy: map() returns it and unmap() writes it to the
  //   GPU, and a buffer left mapped is written in full on every executeCommandLists(), since a persistently mapped
  //   D3D12-style upload buffer never says what changed. A READBACK buffer that a submitted command list copied into
-@@ -89,6 +94,7 @@
+@@ -89,6 +95,7 @@
      struct WebGPUDevice;
      struct WebGPUGraphicsPipeline;
      struct WebGPUInterface;
@@ -86,7 +101,7 @@ diff --git a/plume_webgpu.h b/plume_webgpu.h
      struct WebGPUPipelineLayout;
      struct WebGPUPool;
      struct WebGPUTexture;
-@@ -251,6 +257,12 @@
+@@ -251,6 +258,13 @@
          WGPUComputePipeline get(WGPUPipelineLayout layout);
      };
  
@@ -94,12 +109,13 @@ diff --git a/plume_webgpu.h b/plume_webgpu.h
 +    struct WebGPURenderPipelineBuilds {
 +        WebGPUGraphicsPipeline *pipeline = nullptr;
 +        std::set<WGPUPipelineLayout> pending;
++        bool waitingForLayout = false;
 +    };
 +
      struct WebGPUGraphicsPipeline : WebGPUPipeline {
          RenderGraphicsPipelineDesc desc;
          WebGPUShaderStage vertexStage;
-@@ -259,10 +271,13 @@
+@@ -259,10 +273,13 @@
          std::vector<RenderInputElement> inputElements;
          std::vector<RenderSpecConstant> specConstants;
          std::map<WGPUPipelineLayout, WGPURenderPipeline> pipelines;
@@ -113,7 +129,7 @@ diff --git a/plume_webgpu.h b/plume_webgpu.h
      };
  
      struct WebGPUPipelineLayout : RenderPipelineLayout {
-@@ -271,6 +286,10 @@
+@@ -271,6 +288,13 @@
          std::vector<RenderPushConstantRange> pushConstantRanges;
          uint32_t pushConstantsSize = 0;
  
@@ -121,22 +137,32 @@ diff --git a/plume_webgpu.h b/plume_webgpu.h
 +        mutable std::vector<WGPUPipelineLayout> resolvedLayouts;
 +        mutable uint64_t resolvedRevision = 0;
 +
++        // Pipelines to build in the background that were created before any draw resolved it.
++        mutable std::vector<std::weak_ptr<WebGPURenderPipelineBuilds>> waitingBuilds;
++
          WebGPUPipelineLayout(WebGPUDevice *device, const RenderPipelineLayoutDesc &desc);
          ~WebGPUPipelineLayout() override;
      };
 diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
 --- a/plume_webgpu.cpp
 +++ b/plume_webgpu.cpp
-@@ -1111,20 +1111,63 @@
+@@ -1111,20 +1111,70 @@
          this->desc.vertexShader = nullptr;
          this->desc.geometryShader = nullptr;
          this->desc.pixelShader = nullptr;
 +
-+        // Start building it in the background for the layouts draws with its pipeline layout have resolved to.
++        // Start building it in the background for the layouts draws with its pipeline layout have resolved to, or
++        // once the first one has.
 +        builds = std::make_shared<WebGPURenderPipelineBuilds>();
 +        builds->pipeline = this;
-+        if (desc.pipelineLayout != nullptr) {
-+            for (WGPUPipelineLayout layout : static_cast<const WebGPUPipelineLayout *>(desc.pipelineLayout)->resolvedLayouts) {
++        if (desc.buildInBackground && (desc.pipelineLayout != nullptr)) {
++            const WebGPUPipelineLayout *pipelineLayout = static_cast<const WebGPUPipelineLayout *>(desc.pipelineLayout);
++            if (pipelineLayout->resolvedLayouts.empty()) {
++                builds->waitingForLayout = true;
++                pipelineLayout->waitingBuilds.emplace_back(builds);
++            }
++
++            for (WGPUPipelineLayout layout : pipelineLayout->resolvedLayouts) {
 +                build(layout, true);
 +            }
 +        }
@@ -175,7 +201,7 @@ diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
 +    }
 +
 +    bool WebGPUGraphicsPipeline::isReady() {
-+        return builds->pending.empty();
++        return !builds->waitingForLayout && builds->pending.empty();
 +    }
 +
      WGPURenderPipeline WebGPUGraphicsPipeline::get(WGPUPipelineLayout layout) {
@@ -191,7 +217,7 @@ diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
          std::vector<std::string> keys;
          std::vector<WGPUConstantEntry> constants = toConstantEntries(specConstants, vertexStage, keys);
          std::vector<std::string> pixelKeys;
-@@ -1229,6 +1272,17 @@
+@@ -1229,6 +1279,17 @@
              pipelineDesc.fragment = &fragment;
          }
  
@@ -209,13 +235,14 @@ diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
          WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device->device, &pipelineDesc);
          pipelines[layout] = pipeline;
          return pipeline;
-@@ -1596,7 +1650,20 @@
+@@ -1596,7 +1657,30 @@
              layouts.emplace_back(device->pushConstantsLayout);
          }
  
 -        return device->getPipelineLayout(layouts);
-+        // Remember what the layout resolved to, for the pipelines created with it later (WebGPUGraphicsPipeline). A new
-+        // binding stage rebuilds every set's layout, so what it resolved to before is no longer drawn with.
++        // Remember what the layout resolved to, for the pipelines created with it later (WebGPUGraphicsPipeline), and start
++        // the ones waiting for it. A new binding stage rebuilds every set's layout, so what it resolved to before is no
++        // longer drawn with.
 +        WGPUPipelineLayout pipelineLayout = device->getPipelineLayout(layouts);
 +        std::vector<WGPUPipelineLayout> &resolvedLayouts = state.layout->resolvedLayouts;
 +        if (state.layout->resolvedRevision != device->bindingStagesRevision) {
@@ -225,6 +252,15 @@ diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
 +
 +        if (std::find(resolvedLayouts.begin(), resolvedLayouts.end(), pipelineLayout) == resolvedLayouts.end()) {
 +            resolvedLayouts.emplace_back(pipelineLayout);
++            for (const std::weak_ptr<WebGPURenderPipelineBuilds> &waiting : state.layout->waitingBuilds) {
++                std::shared_ptr<WebGPURenderPipelineBuilds> builds = waiting.lock();
++                if ((builds != nullptr) && (builds->pipeline != nullptr)) {
++                    builds->waitingForLayout = false;
++                    builds->pipeline->build(pipelineLayout, true);
++                }
++            }
++
++            state.layout->waitingBuilds.clear();
 +        }
 +
 +        return pipelineLayout;

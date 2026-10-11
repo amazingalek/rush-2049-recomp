@@ -26,7 +26,21 @@ diff --git a/src/render/rt64_raster_shader_cache.cpp b/src/render/rt64_raster_sh
  
                  {
                      const std::unique_lock<std::mutex> lock(shaderCache->GPUShadersMutex);
-@@ -117,7 +115,6 @@
+@@ -114,10 +112,20 @@
+         if (shaderFormat == RenderShaderFormat::SPIRV) {
+             optimizerCacheSPIRV.initialize();
+         }
++
++        // Create the spec constant shaders before anything draws. plume's WebGPU backend learns from each new shader which
++        // stages read which bindings, and when that changes every pipeline gets a new layout: the specialized ones that
++        // were drawn with would then be built again in place, holding up the browser's GPU process for seconds.
++        if (shaderFormat == RenderShaderFormat::WGSL) {
++            const RenderShader *vertexShader = nullptr;
++            const RenderShader *pixelShader = nullptr;
++            for (bool smoothShade : { false, true }) {
++                shaderCacheWGSL.get(device, smoothShade, multisampling.sampleCount > 1, vertexShader, pixelShader);
++            }
++        }
      }
  
      void RasterShaderCache::submit(const ShaderDescription &desc) {
@@ -34,7 +48,7 @@ diff --git a/src/render/rt64_raster_shader_cache.cpp b/src/render/rt64_raster_sh
          {
              std::unique_lock<std::mutex> queueLock(submissionMutex);
  
-@@ -138,7 +135,6 @@
+@@ -138,7 +146,6 @@
          }
  
          descQueueChanged.notify_all();
@@ -45,7 +59,7 @@ diff --git a/src/render/rt64_raster_shader_cache.cpp b/src/render/rt64_raster_sh
 diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.cpp
 --- a/src/render/rt64_raster_shader.cpp
 +++ b/src/render/rt64_raster_shader.cpp
-@@ -107,10 +107,22 @@
+@@ -107,10 +107,58 @@
  #   endif
      }
  
@@ -61,6 +75,42 @@ diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.c
 +        return shader.get();
 +    }
 +
++    void ShaderCacheWGSL::get(RenderDevice *device, bool smoothShade, bool useMSAA, const RenderShader *&vertexShader, const RenderShader *&pixelShader) {
++#   if defined(RT64_WGSL)
++        // RasterPS writes the blend factor to a second output only where the device has dual-source blending
++        // (RasterShader::createPipeline).
++        const bool dualSource = device->getCapabilities().dualSourceBlending;
++        if (smoothShade) {
++            vertexShader = get(device, RasterVSSpecConstantBlobWGSL, sizeof(RasterVSSpecConstantBlobWGSL), "VSMain");
++            if (useMSAA) {
++                pixelShader = dualSource ?
++                    get(device, RasterPSSpecConstantMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantMSDualSourceBlobWGSL), "PSMain") :
++                    get(device, RasterPSSpecConstantMSBlobWGSL, sizeof(RasterPSSpecConstantMSBlobWGSL), "PSMain");
++            }
++            else {
++                pixelShader = dualSource ?
++                    get(device, RasterPSSpecConstantDualSourceBlobWGSL, sizeof(RasterPSSpecConstantDualSourceBlobWGSL), "PSMain") :
++                    get(device, RasterPSSpecConstantBlobWGSL, sizeof(RasterPSSpecConstantBlobWGSL), "PSMain");
++            }
++        }
++        else {
++            vertexShader = get(device, RasterVSSpecConstantFlatBlobWGSL, sizeof(RasterVSSpecConstantFlatBlobWGSL), "VSMain");
++            if (useMSAA) {
++                pixelShader = dualSource ?
++                    get(device, RasterPSSpecConstantFlatMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatMSDualSourceBlobWGSL), "PSMain") :
++                    get(device, RasterPSSpecConstantFlatMSBlobWGSL, sizeof(RasterPSSpecConstantFlatMSBlobWGSL), "PSMain");
++            }
++            else {
++                pixelShader = dualSource ?
++                    get(device, RasterPSSpecConstantFlatDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatDualSourceBlobWGSL), "PSMain") :
++                    get(device, RasterPSSpecConstantFlatBlobWGSL, sizeof(RasterPSSpecConstantFlatBlobWGSL), "PSMain");
++            }
++        }
++#   else
++        assert(false && "This build has no WGSL shaders.");
++#   endif
++    }
++
      // RasterShader
  
      RasterShader::RasterShader(RenderDevice *device, const ShaderDescription &desc, const RenderPipelineLayout *pipelineLayout, RenderShaderFormat shaderFormat, const RenderMultisampling &multisampling, 
@@ -69,7 +119,7 @@ diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.c
      {
          assert(device != nullptr);
  
-@@ -120,6 +132,8 @@
+@@ -120,41 +168,15 @@
          const bool useMSAA = (multisampling.sampleCount > 1);
          std::unique_ptr<RenderShader> vertexShader;
          std::unique_ptr<RenderShader> pixelShader;
@@ -78,51 +128,44 @@ diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.c
  #if defined(__APPLE__) || defined(RT64_WGSL)
          std::vector<RenderSpecConstant> specConstants;
  #endif
-@@ -129,29 +143,29 @@
-             // writes the blend factor to a second output only where the device has dual-source blending (createPipeline).
-             const bool dualSource = device->getCapabilities().dualSourceBlending;
-             if (desc.flags.smoothShade) {
+         if (shaderFormat == RenderShaderFormat::WGSL) {
+ #       if defined(RT64_WGSL)
+-            // As Metal: the pre-compiled permutation, with the spec constants as the pipeline's override constants. RasterPS
+-            // writes the blend factor to a second output only where the device has dual-source blending (createPipeline).
+-            const bool dualSource = device->getCapabilities().dualSourceBlending;
+-            if (desc.flags.smoothShade) {
 -                vertexShader = device->createShader(RasterVSSpecConstantBlobWGSL, sizeof(RasterVSSpecConstantBlobWGSL), "VSMain", shaderFormat);
-+                sharedVertexShader = shaderCacheWGSL->get(device, RasterVSSpecConstantBlobWGSL, sizeof(RasterVSSpecConstantBlobWGSL), "VSMain");
-                 if (useMSAA) {
+-                if (useMSAA) {
 -                    pixelShader = dualSource ?
 -                        device->createShader(RasterPSSpecConstantMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantMSDualSourceBlobWGSL), "PSMain", shaderFormat) :
 -                        device->createShader(RasterPSSpecConstantMSBlobWGSL, sizeof(RasterPSSpecConstantMSBlobWGSL), "PSMain", shaderFormat);
-+                    sharedPixelShader = dualSource ?
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantMSDualSourceBlobWGSL), "PSMain") :
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantMSBlobWGSL, sizeof(RasterPSSpecConstantMSBlobWGSL), "PSMain");
-                 }
-                 else {
+-                }
+-                else {
 -                    pixelShader = dualSource ?
 -                        device->createShader(RasterPSSpecConstantDualSourceBlobWGSL, sizeof(RasterPSSpecConstantDualSourceBlobWGSL), "PSMain", shaderFormat) :
 -                        device->createShader(RasterPSSpecConstantBlobWGSL, sizeof(RasterPSSpecConstantBlobWGSL), "PSMain", shaderFormat);
-+                    sharedPixelShader = dualSource ?
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantDualSourceBlobWGSL, sizeof(RasterPSSpecConstantDualSourceBlobWGSL), "PSMain") :
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantBlobWGSL, sizeof(RasterPSSpecConstantBlobWGSL), "PSMain");
-                 }
-             }
-             else {
+-                }
+-            }
+-            else {
 -                vertexShader = device->createShader(RasterVSSpecConstantFlatBlobWGSL, sizeof(RasterVSSpecConstantFlatBlobWGSL), "VSMain", shaderFormat);
-+                sharedVertexShader = shaderCacheWGSL->get(device, RasterVSSpecConstantFlatBlobWGSL, sizeof(RasterVSSpecConstantFlatBlobWGSL), "VSMain");
-                 if (useMSAA) {
+-                if (useMSAA) {
 -                    pixelShader = dualSource ?
 -                        device->createShader(RasterPSSpecConstantFlatMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatMSDualSourceBlobWGSL), "PSMain", shaderFormat) :
 -                        device->createShader(RasterPSSpecConstantFlatMSBlobWGSL, sizeof(RasterPSSpecConstantFlatMSBlobWGSL), "PSMain", shaderFormat);
-+                    sharedPixelShader = dualSource ?
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantFlatMSDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatMSDualSourceBlobWGSL), "PSMain") :
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantFlatMSBlobWGSL, sizeof(RasterPSSpecConstantFlatMSBlobWGSL), "PSMain");
-                 }
-                 else {
+-                }
+-                else {
 -                    pixelShader = dualSource ?
 -                        device->createShader(RasterPSSpecConstantFlatDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatDualSourceBlobWGSL), "PSMain", shaderFormat) :
 -                        device->createShader(RasterPSSpecConstantFlatBlobWGSL, sizeof(RasterPSSpecConstantFlatBlobWGSL), "PSMain", shaderFormat);
-+                    sharedPixelShader = dualSource ?
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantFlatDualSourceBlobWGSL, sizeof(RasterPSSpecConstantFlatDualSourceBlobWGSL), "PSMain") :
-+                        shaderCacheWGSL->get(device, RasterPSSpecConstantFlatBlobWGSL, sizeof(RasterPSSpecConstantFlatBlobWGSL), "PSMain");
-                 }
-             }
- 
-@@ -289,8 +303,8 @@
+-                }
+-            }
+-
++            // As Metal: the pre-compiled permutation, with the spec constants as the pipeline's override constants.
++            shaderCacheWGSL->get(device, desc.flags.smoothShade, useMSAA, sharedVertexShader, sharedPixelShader);
+             specConstants.emplace_back(0, desc.otherMode.L);
+             specConstants.emplace_back(1, desc.otherMode.H);
+             specConstants.emplace_back(2, desc.colorCombiner.L);
+@@ -289,8 +311,9 @@
          PipelineCreation creation;
          creation.device = device;
          creation.pipelineLayout = pipelineLayout;
@@ -130,9 +173,18 @@ diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.c
 -        creation.pixelShader = pixelShader.get();
 +        creation.vertexShader = (vertexShader != nullptr) ? vertexShader.get() : sharedVertexShader;
 +        creation.pixelShader = (pixelShader != nullptr) ? pixelShader.get() : sharedPixelShader;
++        creation.buildInBackground = true;
          creation.alphaBlend = !copyMode && interop::Blender::usesAlphaBlend(desc.otherMode);
          creation.culling = !copyMode && desc.flags.culling;
          creation.zCmp = !copyMode && desc.otherMode.zCmp() && (desc.otherMode.zMode() != ZMODE_DEC);
+@@ -394,6 +417,7 @@
+         pipelineDesc.pixelShader = c.pixelShader;
+         pipelineDesc.specConstants = c.specConstants.data();
+         pipelineDesc.specConstantsCount = uint32_t(c.specConstants.size());
++        pipelineDesc.buildInBackground = c.buildInBackground;
+ 
+         // Alpha blending is performed by using dual source blending. The blending factor will be in the secondary output.
+         RenderBlendDesc &targetBlend = pipelineDesc.renderTargetBlend[0];
 diff --git a/src/render/rt64_raster_shader.h b/src/render/rt64_raster_shader.h
 --- a/src/render/rt64_raster_shader.h
 +++ b/src/render/rt64_raster_shader.h
@@ -144,7 +196,7 @@ diff --git a/src/render/rt64_raster_shader.h b/src/render/rt64_raster_shader.h
  
  #include "re-spirv/re-spirv.h"
  
-@@ -39,6 +40,15 @@
+@@ -39,6 +40,17 @@
          void initialize();
      };
  
@@ -154,13 +206,23 @@ diff --git a/src/render/rt64_raster_shader.h b/src/render/rt64_raster_shader.h
 +        std::mutex mutex;
 +        std::unordered_map<const void *, std::unique_ptr<RenderShader>> shaders;
 +
++        // The vertex and pixel shader for a shading mode, created on first use.
++        void get(RenderDevice *device, bool smoothShade, bool useMSAA, const RenderShader *&vertexShader, const RenderShader *&pixelShader);
 +        const RenderShader *get(RenderDevice *device, const void *blob, uint64_t size, const char *entryPointName);
 +    };
 +
      struct PipelineCreation {
          RenderDevice *device;
          const RenderPipelineLayout *pipelineLayout;
-@@ -66,7 +76,7 @@
+@@ -53,6 +65,7 @@
+         bool usesHDR;
+         std::vector<RenderSpecConstant> specConstants;
+         RenderMultisampling multisampling;
++        bool buildInBackground = false;
+     };
+ 
+     struct RasterShaderText {
+@@ -66,7 +79,7 @@
          std::unique_ptr<RenderPipeline> pipeline;
  
          RasterShader(RenderDevice *device, const ShaderDescription &desc, const RenderPipelineLayout *pipelineLayout, RenderShaderFormat shaderFormat, const RenderMultisampling &multisampling, 
