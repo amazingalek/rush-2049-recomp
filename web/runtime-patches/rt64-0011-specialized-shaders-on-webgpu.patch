@@ -42,13 +42,6 @@ diff --git a/src/render/rt64_raster_shader_cache.cpp b/src/render/rt64_raster_sh
      }
      
      void RasterShaderCache::waitForAll() {
-@@ -186,4 +182,4 @@
-         std::unique_lock<std::mutex> lock(GPUShadersMutex);
-         return GPUShaders.size();
-     }
--};
-\ No newline at end of file
-+};
 diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.cpp
 --- a/src/render/rt64_raster_shader.cpp
 +++ b/src/render/rt64_raster_shader.cpp
@@ -187,13 +180,6 @@ diff --git a/src/render/rt64_raster_shader_cache.h b/src/render/rt64_raster_shad
          std::mutex submissionMutex;
          std::queue<ShaderDescription> descQueue;
          std::mutex descQueueMutex;
-@@ -56,4 +57,4 @@
-         RasterShaderUber *getGPUShaderUber() const;
-         uint32_t shaderCount();
-     };
--};
-\ No newline at end of file
-+};
 diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
 --- a/src/hle/rt64_application.cpp
 +++ b/src/hle/rt64_application.cpp
