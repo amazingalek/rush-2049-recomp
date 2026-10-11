@@ -38,11 +38,12 @@ endif()
 
 if (EMSCRIPTEN)
     # Threads are pthreads (SharedArrayBuffer), and the runtime ends a game thread by throwing. -msimd128 is the web's
-    # -march=nehalem: wasm SIMD, which every browser with WebGPU has, for xxHash, hlslpp and the auto-vectorizer.
+    # -march=nehalem: wasm SIMD, which every browser with WebGPU has, for hlslpp (its wasm backend) and the
+    # auto-vectorizer; a race display list took ~5% less time with it (CLAUDE.md).
     add_compile_options(-pthread -fwasm-exceptions -msimd128)
-    # With it xxHash takes its NEON path through Emscripten's arm_neon.h (SIMDe), which it includes inside its
+    # With it xxHash would take its NEON path through Emscripten's arm_neon.h (SIMDe), which it includes inside its
     # extern "C", where the C++ headers that reaches don't compile. XXH_HAS_INCLUDE is used for nothing else, so XXH3
-    # stays scalar there, as it was before -msimd128.
+    # stays scalar, as it was before -msimd128.
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).

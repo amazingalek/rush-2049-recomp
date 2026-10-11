@@ -383,6 +383,11 @@ without the two headers through `coi_serviceworker.js`. What to know:
 - RmlUi's FreeType must be the `freetype-legacysjlj` build (setjmp with wasm exceptions); the plain one leaves
   `emscripten_longjmp` undefined. Emscripten's `bits/limits.h` defines `PAGESIZE`, which breaks `slot_map.h`.
 - The `--pre-js` files and the shell are read at link time, so the page lists them in `LINK_DEPENDS`.
+- Both web builds compile with `-msimd128` (hlslpp's wasm backend, the auto-vectorizer) and `-DXXH_HAS_INCLUDE(x)=0`
+  (xxHash's NEON path through Emscripten's `arm_neon.h` doesn't compile in C++, so XXH3 stays scalar). Measured
+  2026-10-11 on the headless page at 960x720, 8 runs of each interleaved, host 14-85% and GPU 8-98% busy with other
+  sessions: a race list 5.83 → 5.55 ms median of runs (Mann-Whitney p ≈ 0.04), the browser's CPU 95 s per 90 s
+  either way. Small, but free: every browser with WebGPU has wasm SIMD.
 - Emscripten's SDL2 is built without haptics, and `SDL_Init` with `SDL_INIT_HAPTIC` fails as a whole there, gamepads
   with it: `main.cpp` leaves it out on Emscripten. Gamepads were checked with a stand-in `navigator.getGamepads()`
   (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
