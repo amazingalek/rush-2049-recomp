@@ -37,9 +37,10 @@ here, and a finding that explains code goes beside that code.
 - Every enhancement is an option with an Original value that runs the game as it shipped, on the stock tab for its
   topic (General, Graphics, Sound, Controls), with a line in the README's list and a row in its settings table.
 - Function and variable names in `syms/rush2049/` are the mod API: add names, never rename or remove one.
-- Changes to the submodules go in `rush2049/runtime-patches/` and are applied by
-  `tools/rush2049/apply_runtime_patches.sh`; never commit inside `rush2049/lib/`. A new change is a new numbered
-  patch file per submodule; check that the set still applies to a clean checkout of the submodule.
+- Changes to the submodules go in `rush2049/runtime-patches/`, or `web/runtime-patches/` for the web target (see
+  The web target), and are applied by `tools/rush2049/apply_runtime_patches.sh`; never commit inside
+  `rush2049/lib/`. A new change is a new patch file per submodule, numbered after the highest of that submodule in
+  either folder; check that the set still applies to a clean checkout of the submodule.
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
@@ -66,11 +67,9 @@ here, and a finding that explains code goes beside that code.
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
-The runtime patches, one line each (the why is in the code they touch):
+The runtime patches, one line each (the why is in the code they touch). `web/runtime-patches/`, applied first:
 
 ```
-N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
-N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
                        thread names
 N64Recomp-0001         wasm: the FPU rounding mode kept per thread and applied by cvt.w/cvt.l (fesetround is a no-op)
@@ -81,6 +80,17 @@ plume-0002             plume_device_thread: any backend run on one thread for ev
 plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the device thread polls), texel buffers,
                        clears of rectangles, presents paced to the display, push constants sharing group 3 with a
                        4th set, write-only storage textures but r32, the adapter's limits; webgpu_checks
+rt64-0006              no Idle thread on Emscripten
+rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
+rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
+                       buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
+```
+
+`rush2049/runtime-patches/`, this game's, on top:
+
+```
+N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
+N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
@@ -88,10 +98,6 @@ rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
-rt64-0006              no Idle thread on Emscripten
-rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
-rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
-                       buffers, storage formats, 16 samplers, optional dual-source blending; WebGPU.hlsli says how
 ```
 
 ## This machine
@@ -201,6 +207,23 @@ measured.
 
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
 for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
+
+**It moves out.** Once it works, the web support leaves this repo, is released on its own, and this repo uses it
+like any other dependency. It is built here until then because the game is how it is tested, so keep the line
+between the two clean, and the move is cutting `web/` out:
+
+- `web/` is what moves: the web runtime patches, their tests, and from now on any build glue or code that another
+  recomp would need as is. Nothing in it names this game, includes from `rush2049/` or needs its ROM; `rush2049/`
+  uses `web/`, never the other way.
+- Each web patch applies to the clean upstream submodule with no Rush patch under it. That is the order the patch
+  script and CI apply them in, so a web patch that leans on a Rush one fails CI. A change made in a fully patched
+  checkout, on lines a Rush patch also touches, needs rebasing: commit each patch in turn on the pinned commit,
+  cherry-pick the web ones first and the Rush ones after, check the last tree is the same, and `git diff` each
+  commit back out.
+- What is this game's stays in `rush2049/`: `headless/` (the game's CPU side without a renderer) and, when it comes,
+  the game's page. The Emscripten options in `headless/CMakeLists.txt` are the one generic part there: they move
+  into `web/` when the browser build needs them too. What the web side needs from a game it gets through the runtime's own interfaces, as every recomp
+  does.
 
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and

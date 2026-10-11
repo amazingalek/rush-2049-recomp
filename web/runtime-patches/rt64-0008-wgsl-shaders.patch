@@ -735,7 +735,7 @@ index 205dc4c..962ace6 100644
      const float4 worldNorm = all(norm == 0.0f) ? float4(0.0f, 0.0f, 0.0f, 1.0f) : float4(normalize(mul(invTWorldMats[transformIndex], float4(norm, 0.0f)).xyz), 1.0f);
      const float4 prevWorldPos = mul(prevWorldMats[transformIndex], float4(pos - vel * (1.0f - gConstants.prevFrameWeight), 1.0f));
 diff --git a/src/shaders/RasterPS.hlsl b/src/shaders/RasterPS.hlsl
-index 67a0243..de62956 100644
+index 9ac43f3..200f8d7 100644
 --- a/src/shaders/RasterPS.hlsl
 +++ b/src/shaders/RasterPS.hlsl
 @@ -48,6 +48,13 @@ float sampleBackgroundDepth(int2 pixelPos, uint sampleCount) {
@@ -770,7 +770,7 @@ index 67a0243..de62956 100644
      float2 lowResUV = vertexUV;
      if (!renderFlagUpscale2D(rp.flags)) {
          float2 screenPos = floor(vertexPosition.xy);
-@@ -263,6 +268,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
+@@ -255,6 +260,14 @@ LIBRARY_EXPORT bool RasterPS(const RenderParams rp, float4 vertexPosition, float
          resultColor.a = resultCvg;
      }
      
@@ -785,7 +785,7 @@ index 67a0243..de62956 100644
      // Add highlight color to the last step.
      uint highlightColorUint = instanceRenderIndices[gConstants.renderIndex].highlightColor;
      if (highlightColorUint > 0) {
-@@ -299,8 +312,12 @@ void PSMain(
+@@ -291,8 +304,12 @@ void PSMain(
  #if defined(DYNAMIC_RENDER_PARAMS)
      , bool isFrontFace : SV_IsFrontFace
  #endif
@@ -798,7 +798,7 @@ index 67a0243..de62956 100644
  )
  {
  #if !defined(DYNAMIC_RENDER_PARAMS)
-@@ -317,6 +334,8 @@ void PSMain(
+@@ -309,6 +326,8 @@ void PSMain(
      }
  
      pixelColor = resultColor;
@@ -1077,7 +1077,7 @@ index 1b3fbaf..545ce3b 100644
  #endif
 \ No newline at end of file
 diff --git a/src/shared/rt64_rsp_viewport.h b/src/shared/rt64_rsp_viewport.h
-index 94135a7..94a743f 100644
+index 36fe3b8..3b0621b 100644
 --- a/src/shared/rt64_rsp_viewport.h
 +++ b/src/shared/rt64_rsp_viewport.h
 @@ -12,8 +12,12 @@
@@ -1093,7 +1093,7 @@ index 94135a7..94a743f 100644
  
          static RSPViewport identity() {
              RSPViewport viewport;
-@@ -63,6 +67,9 @@ namespace interop {
+@@ -40,6 +44,9 @@ namespace interop {
          }
  #endif
      };

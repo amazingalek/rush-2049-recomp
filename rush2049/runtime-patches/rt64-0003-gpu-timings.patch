@@ -217,7 +217,7 @@ index e08b02c..5edfe0e 100644
          ProfilingTimer presentProfiler = ProfilingTimer(120);
          Timestamp presentTimestamp;
 diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
-index 846c96d..8bd45ef 100644
+index fbf469b..5deb645 100644
 --- a/src/hle/rt64_workload_queue.cpp
 +++ b/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,7 @@
@@ -237,7 +237,7 @@ index 846c96d..8bd45ef 100644
  
          projectionProcessor.setup(ext.workloadGraphicsWorker);
          transformProcessor.setup(ext.workloadGraphicsWorker);
-@@ -700,10 +701,13 @@ namespace RT64 {
+@@ -704,10 +705,13 @@ namespace RT64 {
  
              workerMutex.lock();
              ext.workloadGraphicsWorker->commandList->begin();
@@ -246,14 +246,14 @@ index 846c96d..8bd45ef 100644
 +            RenderCommandList *timedCommandList = ext.workloadGraphicsWorker->commandList.get();
 +            timedCommandList->resetQueryPool(queryPool.get(), 0, queryPool->getCount());
 +            partTimer.begin(timedCommandList, queryPool.get());
-             framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workloadConfig.raytracingEnabled);
+             framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workload.drawData.gpuTiles, workloadConfig.raytracingEnabled);
              framebufferRenderer->recordSetup(ext.workloadGraphicsWorker, bufferUploaders, processRSP ? rspProcessor.get() : nullptr, processWorldVertices ? vertexProcessor.get() : nullptr, &workload.outputBuffers, workloadConfig.raytracingEnabled);
 +            partTimer.mark(GPUTimings::RenderSetup);
 +            uint64_t drawCallsRecorded = 0;
              
              // Record all framebuffer pairs.
              uint32_t framebufferIndex = 0;
-@@ -790,7 +794,13 @@ namespace RT64 {
+@@ -794,7 +798,13 @@ namespace RT64 {
                          }
                      }
                      
@@ -267,7 +267,7 @@ index 846c96d..8bd45ef 100644
  
                      // Transition the render targets in case the present queue will show them so it doesn't have to perform transitions.
                      if (colorTarget != nullptr && depthTarget != nullptr) {
-@@ -812,6 +822,8 @@ namespace RT64 {
+@@ -816,6 +826,8 @@ namespace RT64 {
                          overrideTarget->resolveFromTarget(ext.workloadGraphicsWorker, colorTarget, ext.shaderLibrary);
                      }
  
@@ -276,7 +276,7 @@ index 846c96d..8bd45ef 100644
                      const uint64_t writeTimestamp = fbManager.nextWriteTimestamp();
                      FixedRect depthFbRect;
                      if (colorFb != nullptr) {
-@@ -838,7 +850,7 @@ namespace RT64 {
+@@ -842,7 +854,7 @@ namespace RT64 {
                      fbPair.endFbOperations, targetManager, fixedResScale, f, workload.submissionFrame);
              }
  
@@ -285,7 +285,7 @@ index 846c96d..8bd45ef 100644
              ext.workloadGraphicsWorker->commandList->end();
              framebufferRenderer->waitForUploaders();
              ext.workloadGraphicsWorker->execute();
-@@ -846,9 +858,16 @@ namespace RT64 {
+@@ -850,9 +862,16 @@ namespace RT64 {
              workerMutex.unlock();
  
              // Update the GPU profiler with the results from the timestamps of the frame.
@@ -326,7 +326,7 @@ index bde2f03..8d28cc5 100644
          ProfilingTimer rendererCPUProfiler = ProfilingTimer(120);
          ProfilingTimer rendererGPUProfiler = ProfilingTimer(120);
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 497150f..f7ec00b 100644
+index a3d1c10..2471584 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
 @@ -7,6 +7,7 @@
@@ -337,7 +337,7 @@ index 497150f..f7ec00b 100644
  #include "common/rt64_math.h"
  #include "hle/rt64_color_converter.h"
  #include "gbi/rt64_f3d.h"
-@@ -1198,6 +1199,8 @@ namespace RT64 {
+@@ -1222,6 +1223,8 @@ namespace RT64 {
              uploader->commandListAfterBarriers(worker);
          }
  
@@ -346,7 +346,7 @@ index 497150f..f7ec00b 100644
          if (rspProcessor != nullptr) {
              rspProcessor->recordCommandList(worker, shaderLibrary, outputBuffers);
          }
-@@ -1206,6 +1209,8 @@ namespace RT64 {
+@@ -1230,6 +1233,8 @@ namespace RT64 {
              vertexProcessor->recordCommandList(worker, shaderLibrary, outputBuffers);
          }
  

@@ -71,10 +71,10 @@ index 08d9d2f..02d34ae 100644
          void commandListCopyResources(RenderWorker *worker);
          void commandListAfterBarriers(RenderWorker *worker);
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index f7ec00b..2d55587 100644
+index 2471584..66d62dc 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
-@@ -1183,11 +1183,17 @@ namespace RT64 {
+@@ -1207,11 +1207,17 @@ namespace RT64 {
              dummyDepthTargetTransitioned = true;
          }
  
@@ -94,7 +94,7 @@ index f7ec00b..2d55587 100644
  
          for (BufferUploader *uploader : bufferUploaders) {
              uploader->commandListCopyResources(worker);
-@@ -1195,8 +1201,13 @@ namespace RT64 {
+@@ -1219,8 +1225,13 @@ namespace RT64 {
  
          shaderUploader->commandListCopyResources(worker);
  

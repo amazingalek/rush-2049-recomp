@@ -1,8 +1,8 @@
 diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
-index 8bd45ef..9fc4b2f 100644
+index 5a331aa..0ed097e 100644
 --- a/src/hle/rt64_workload_queue.cpp
 +++ b/src/hle/rt64_workload_queue.cpp
-@@ -112,7 +112,11 @@ namespace RT64 {
+@@ -111,7 +111,11 @@ namespace RT64 {
  
          threadsRunning = true;
          renderThread = new std::thread(&WorkloadQueue::renderThreadLoop, this);

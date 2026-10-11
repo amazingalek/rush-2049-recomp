@@ -195,10 +195,10 @@ index 8ea27d5..44a461c 100644
          std::vector<interop::RSPLight> rspLights;
          std::vector<interop::RSPLookAt> rspLookAt;
 diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
-index 5a331aa..846c96d 100644
+index abed465..fbf469b 100644
 --- a/src/hle/rt64_workload_queue.cpp
 +++ b/src/hle/rt64_workload_queue.cpp
-@@ -314,6 +314,7 @@ namespace RT64 {
+@@ -318,6 +318,7 @@ namespace RT64 {
              projParams.curFrameWeight = curFrameWeight;
              projParams.prevFrameWeight = prevFrameWeight;
              projParams.aspectRatioScale = workloadConfig.aspectRatioScale;
@@ -207,10 +207,10 @@ index 5a331aa..846c96d 100644
              projectionProcessor.upload(projParams);
              uploadProjections = true;
 diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
-index 9fae0d4..497150f 100644
+index f257ecb..a3d1c10 100644
 --- a/src/render/rt64_framebuffer_renderer.cpp
 +++ b/src/render/rt64_framebuffer_renderer.cpp
-@@ -1484,6 +1484,8 @@ namespace RT64 {
+@@ -1508,6 +1508,8 @@ namespace RT64 {
              float projInvRatioScale = 1.0f / aspectRatioScale;
              const int16_t *viewportClipRatios = &drawData.viewportClipRatios[proj.transformsIndex * 4];
              const uint16_t viewportOrigin = drawData.viewportOrigins[proj.transformsIndex];
@@ -219,7 +219,7 @@ index 9fae0d4..497150f 100644
              if (proj.usesViewport()) {
                  // The call's scissor spans the whole width of the framebuffer pair scissor. Custom origin must not be in use to be able to use the stretched viewport.
                  const auto &viewport = drawData.rspViewports[proj.transformsIndex];
-@@ -1494,6 +1496,16 @@ namespace RT64 {
+@@ -1518,6 +1520,16 @@ namespace RT64 {
                  if (useWideViewport) {
                      projInvRatioScale = 1.0f;
                  }
@@ -236,7 +236,7 @@ index 9fae0d4..497150f 100644
                  else {
                      triangles.screenScale.x = originalWidth / wideWidth;
  
-@@ -1503,7 +1515,7 @@ namespace RT64 {
+@@ -1527,7 +1539,7 @@ namespace RT64 {
                      }
                  }
  
