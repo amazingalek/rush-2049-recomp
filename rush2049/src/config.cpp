@@ -291,7 +291,7 @@ void rush2049::init_config() {
         input_lag_option,
         "Input Lag",
         "<b>Reduced:</b> each frame is drawn as soon as the game has worked it out, so what you press shows on screen "
-        "one screen refresh sooner (17 ms at 60 fps)."
+        "one frame sooner (17 ms at 60 fps). At 30 FPS (Original) Game Frame Rate it changes nothing."
         "<br/>"
         "<b>Original:</b> each frame waits for the next refresh before it is drawn, as on the console.",
         input_lag_options,

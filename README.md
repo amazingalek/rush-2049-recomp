@@ -30,6 +30,8 @@ option has an Original value that runs the game as it shipped.
   repo ships only a patch, which the game applies to its own picture.
 - **60 fps and unlocked frame rates**: the game logic runs at 60 instead of 30, and on a high-refresh monitor
   RT64 interpolates between frames up to the display's refresh rate.
+- **Lower input lag**: each frame is drawn as soon as the game has worked it out instead of at the next screen
+  refresh, so what you press shows on screen one frame (17 ms) sooner at 60 fps.
 - **Widescreen**: 3D widens to the window's aspect ratio, the race HUD moves out to the edges, two- and
   four-player split screen fills the window, and the menu background is carried out into the side bars.
 - **Enhanced audio**: MusyX music and sound effects are mixed at 44.1 kHz with a better interpolator instead of the
@@ -53,6 +55,7 @@ closed. For the game exactly as it shipped, set every Original value:
 |---|---|---|---|---|
 | 60 fps | Game Frame Rate | `graphics.json` `game_frame_rate` | `"60"` (`"MatchFramerate"` draws above 60, at the rate Framerate presents) | `"Original"` (30 fps) |
 | Smooth motion on high-refresh displays | Framerate | `graphics.json` `rr_option` | `"Display"` (the monitor's refresh rate, interpolating between the game's frames) | `"Original"` |
+| Lower input lag | Input Lag | `graphics.json` `input_lag` | `"Reduced"` (60 fps and above) | `"Original"` |
 | Widescreen 3D | Aspect Ratio | `graphics.json` `ar_option` | `"Expand"` | `"Original"` (4:3) |
 | Widescreen race HUD | HUD Placement | `graphics.json` `hr_option` | `"Clamp16x9"` | `"Original"` |
 | Widescreen split screen | Split-Screen Aspect Ratio | `graphics.json` `split_screen_ratio` | `"Expand"` (needs Aspect Ratio at Expand and HUD Placement other than Original) | `"Original"` (4:3, pillarboxed) |

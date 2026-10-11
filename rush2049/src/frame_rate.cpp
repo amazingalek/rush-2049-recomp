@@ -12,7 +12,8 @@
 // skipped, and the task starts at once. Measured in the attract race at 60 fps, from the controller read to the frame
 // handed to the compositor: 26 ms median before, 11 ms after, frames still 16.7 ms apart. The display lists, with
 // every sub-list, vertex and matrix they reach, read the same on the next retrace as when the task started, so the
-// main thread is done with a frame when it queues it.
+// main thread is done with a frame when it queues it. At 30 fps nothing changes: the scheduler also holds a task while
+// the last frame's swap waits out its second retrace, and that swap is part of how the game counts its frames.
 
 #include <algorithm>
 #include <atomic>
