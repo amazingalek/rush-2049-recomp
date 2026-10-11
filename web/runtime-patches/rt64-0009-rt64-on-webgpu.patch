@@ -240,10 +240,10 @@ index 08f83e5..f1dfa46 100755
      }
  
 diff --git a/src/hle/rt64_framebuffer_changes.cpp b/src/hle/rt64_framebuffer_changes.cpp
-index 1c847ed..683f887 100644
+index 1c847ed..47b8e01 100644
 --- a/src/hle/rt64_framebuffer_changes.cpp
 +++ b/src/hle/rt64_framebuffer_changes.cpp
-@@ -76,7 +76,13 @@ namespace RT64 {
+@@ -76,14 +76,31 @@ namespace RT64 {
          }
  
          changes.pixelTexture = renderWorker->device->createTexture(RenderTextureDesc::Texture2D(alignedWidth, alignedHeight, 1, pixelFormat, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
@@ -258,6 +258,38 @@ index 1c847ed..683f887 100644
          changes.drawDescSet = std::make_unique<FramebufferDrawChangesDescriptorSet>(renderWorker->device);
          changes.drawDescSet->setTexture(changes.drawDescSet->gColor, changes.pixelTexture.get(), RenderTextureLayout::SHADER_READ);
          changes.drawDescSet->setTexture(changes.drawDescSet->gDepth, changes.pixelTexture.get(), RenderTextureLayout::SHADER_READ);
+         changes.drawDescSet->setTexture(changes.drawDescSet->gBoolean, changes.booleanTexture.get(), RenderTextureLayout::SHADER_READ);
+         changes.readChangesSet = std::make_unique<FramebufferReadChangesDescriptorChangesSet>(renderWorker->device);
+-        changes.readChangesSet->setTexture(changes.readChangesSet->gOutputChangeColor, changes.pixelTexture.get(), RenderTextureLayout::GENERAL);
+-        changes.readChangesSet->setTexture(changes.readChangesSet->gOutputChangeDepth, changes.pixelTexture.get(), RenderTextureLayout::GENERAL);
++#   if RT64_WGSL
++        // WebGPU checks a storage texture's format against the shader's for every binding a shader can reach, so the
++        // output of the type this change isn't gets a texture of its own format, which the shader never writes.
++        const RenderFormat otherTypeFormat = (type == FramebufferChange::Type::Color) ? RenderFormat::R32_FLOAT : RenderTarget::colorBufferFormat(usesHDR);
++        changes.otherTypeTexture = renderWorker->device->createTexture(RenderTextureDesc::Texture2D(1, 1, 1, otherTypeFormat, RenderTextureFlag::STORAGE | RenderTextureFlag::UNORDERED_ACCESS));
++        RenderTexture *colorOutput = (type == FramebufferChange::Type::Color) ? changes.pixelTexture.get() : changes.otherTypeTexture.get();
++        RenderTexture *depthOutput = (type == FramebufferChange::Type::Depth) ? changes.pixelTexture.get() : changes.otherTypeTexture.get();
++#   else
++        RenderTexture *colorOutput = changes.pixelTexture.get();
++        RenderTexture *depthOutput = changes.pixelTexture.get();
++#   endif
++        changes.readChangesSet->setTexture(changes.readChangesSet->gOutputChangeColor, colorOutput, RenderTextureLayout::GENERAL);
++        changes.readChangesSet->setTexture(changes.readChangesSet->gOutputChangeDepth, depthOutput, RenderTextureLayout::GENERAL);
+         changes.readChangesSet->setTexture(changes.readChangesSet->gOutputChangeBoolean, changes.booleanTexture.get(), RenderTextureLayout::GENERAL);
+ 
+         return changes;
+diff --git a/src/hle/rt64_framebuffer_changes.h b/src/hle/rt64_framebuffer_changes.h
+index 7b38b8e..2a5c6c0 100644
+--- a/src/hle/rt64_framebuffer_changes.h
++++ b/src/hle/rt64_framebuffer_changes.h
+@@ -30,6 +30,7 @@ namespace RT64 {
+         uint32_t height;
+         std::unique_ptr<RenderTexture> pixelTexture;
+         std::unique_ptr<RenderTexture> booleanTexture;
++        std::unique_ptr<RenderTexture> otherTypeTexture;
+         std::unique_ptr<FramebufferDrawChangesDescriptorSet> drawDescSet;
+         std::unique_ptr<FramebufferReadChangesDescriptorChangesSet> readChangesSet;
+         bool used;
 diff --git a/src/hle/rt64_state.cpp b/src/hle/rt64_state.cpp
 index 6a8ce36..b8ce36a 100644
 --- a/src/hle/rt64_state.cpp
@@ -314,6 +346,26 @@ index 94f5cd0..abdfb00 100644
              RtParams = builder.addConstantBuffer(25);
              SceneBVH = raytracing ? builder.addAccelerationStructure(26) : 0;
              posBuffer = builder.addByteAddressBuffer(27);
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+index f257ecb..7df4d94 100644
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1363,8 +1363,15 @@ namespace RT64 {
+         memcpy(paramBufferBytes, &fbParams, sizeof(interop::FramebufferParams));
+         framebuffer.paramsBuffer->unmap();
+ 
++#   if RT64_WGSL
++        // Only the raytracing shaders read the background color, and WebGPU refuses a pass that draws into a texture
++        // a bound set samples, which without MSAA the resolved texture is.
++        RenderTexture *backgroundColorTexture = dummyColorTarget.get();
++        RenderTextureView *backgroundColorTextureView = dummyColorTargetView.get();
++#   else
+         RenderTexture *backgroundColorTexture = (p.fbStorage->colorTarget != nullptr) ? p.fbStorage->colorTarget->getResolvedTexture() : dummyColorTarget.get();
+         RenderTextureView *backgroundColorTextureView = (p.fbStorage->colorTarget != nullptr) ? p.fbStorage->colorTarget->getResolvedTextureView() : dummyColorTargetView.get();
++#   endif
+         framebuffer.descRealFbSet->setBuffer(framebuffer.descRealFbSet->FbParams, framebuffer.paramsBuffer.get(), sizeof(interop::FramebufferParams));
+         framebuffer.descRealFbSet->setTexture(framebuffer.descRealFbSet->gBackgroundColor, backgroundColorTexture, RenderTextureLayout::SHADER_READ, backgroundColorTextureView);
+         framebuffer.descRealFbSet->setTexture(framebuffer.descRealFbSet->gBackgroundDepth, p.fbStorage->depthTarget->texture.get(), RenderTextureLayout::DEPTH_READ, p.fbStorage->depthTarget->textureView.get());
 diff --git a/src/render/rt64_raster_shader.cpp b/src/render/rt64_raster_shader.cpp
 index bea788b..ba045c7 100644
 --- a/src/render/rt64_raster_shader.cpp

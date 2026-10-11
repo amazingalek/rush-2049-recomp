@@ -13,10 +13,23 @@ index db1c810..a47d1d5 100644
          bool presentWait = false;
          bool displayTiming = false;
 diff --git a/plume_webgpu.cpp b/plume_webgpu.cpp
-index ea06bd4..a3dcbf2 100644
+index ea06bd4..36445b2 100644
 --- a/plume_webgpu.cpp
 +++ b/plume_webgpu.cpp
-@@ -681,6 +681,39 @@ namespace plume {
+@@ -338,7 +338,11 @@ namespace plume {
+         this->desc = desc;
+ 
+         WGPUBufferDescriptor bufferDesc = WGPU_BUFFER_DESCRIPTOR_INIT;
+-        bufferDesc.size = alignUp(std::max<uint64_t>(desc.size, 4), 4);
++
++        // A uniform binding covers its struct rounded up to 16 bytes, which can be more than the C++ struct the
++        // buffer is made for, so a constant buffer is made in whole 16-byte rows and bound that way.
++        const uint64_t sizeAlignment = (desc.flags & RenderBufferFlag::CONSTANT) ? 16 : 4;
++        bufferDesc.size = alignUp(std::max<uint64_t>(desc.size, 4), sizeAlignment);
+         if (desc.heapType == RenderHeapType::READBACK) {
+             bufferDesc.usage = WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
+         }
+@@ -681,6 +685,39 @@ namespace plume {
          WGPUShaderModuleDescriptor moduleDesc = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
          moduleDesc.nextInChain = &wgslSource.chain;
          module = wgpuDeviceCreateShaderModule(device->device, &moduleDesc);
@@ -56,7 +69,7 @@ index ea06bd4..a3dcbf2 100644
      }
  
      WebGPUShader::~WebGPUShader() {
-@@ -701,6 +734,7 @@ namespace plume {
+@@ -701,6 +738,7 @@ namespace plume {
              module = webgpuShader->module;
              wgpuShaderModuleAddRef(module);
              entryPointName = webgpuShader->entryPointName;
@@ -64,7 +77,7 @@ index ea06bd4..a3dcbf2 100644
          }
      }
  
-@@ -784,10 +818,12 @@ namespace plume {
+@@ -784,10 +822,12 @@ namespace plume {
      // Builds the bind group layout from what is bound, and the bind group for it. Unset descriptors are left out of
      // both, so a shader that reads one fails pipeline validation instead of reading garbage.
      void WebGPUDescriptorSet::update() {
@@ -78,7 +91,7 @@ index ea06bd4..a3dcbf2 100644
          layoutEntries.clear();
          groupEntries.clear();
          std::string key;
-@@ -795,7 +831,8 @@ namespace plume {
+@@ -795,7 +835,8 @@ namespace plume {
              WGPUBindGroupLayoutEntry layoutEntry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
              WGPUBindGroupEntry groupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
              layoutEntry.binding = binding.binding;
@@ -88,7 +101,7 @@ index ea06bd4..a3dcbf2 100644
              groupEntry.binding = binding.binding;
  
              char entryKey[64];
-@@ -820,7 +857,7 @@ namespace plume {
+@@ -820,15 +861,17 @@ namespace plume {
                  else {
                      // Writable storage isn't allowed in vertex shaders.
                      layoutEntry.buffer.type = WGPUBufferBindingType_Storage;
@@ -97,7 +110,20 @@ index ea06bd4..a3dcbf2 100644
                  }
  
                  groupEntry.buffer = binding.buffer->buffer;
-@@ -851,14 +888,14 @@ namespace plume {
+                 groupEntry.offset = binding.bufferOffset;
+                 groupEntry.size = binding.bufferSize;
+-                if ((layoutEntry.buffer.type != WGPUBufferBindingType_Uniform) && (groupEntry.size != WGPU_WHOLE_SIZE)) {
+-                    // A storage binding is a multiple of 4 bytes long. Buffers are made that way, so the padding is there.
+-                    groupEntry.size = std::min<uint64_t>(alignUp(groupEntry.size, 4), wgpuBufferGetSize(groupEntry.buffer) - groupEntry.offset);
++                if (groupEntry.size != WGPU_WHOLE_SIZE) {
++                    // A storage binding is a multiple of 4 bytes long, and a uniform one of 16. Buffers are made that
++                    // way, so the padding is there.
++                    const uint64_t sizeAlignment = (layoutEntry.buffer.type == WGPUBufferBindingType_Uniform) ? 16 : 4;
++                    groupEntry.size = std::min<uint64_t>(alignUp(groupEntry.size, sizeAlignment), wgpuBufferGetSize(groupEntry.buffer) - groupEntry.offset);
+                 }
+ 
+                 snprintf(entryKey, sizeof(entryKey), "b%u:%d;", binding.binding, int(layoutEntry.buffer.type));
+@@ -851,14 +894,14 @@ namespace plume {
                      layoutEntry.storageTexture.access = readWrite ? WGPUStorageTextureAccess_ReadWrite : WGPUStorageTextureAccess_WriteOnly;
                      layoutEntry.storageTexture.format = toWGPU(format);
                      layoutEntry.storageTexture.viewDimension = dimension;
@@ -114,7 +140,7 @@ index ea06bd4..a3dcbf2 100644
                      }
                      else if (isIntegerFormat(format, isSigned)) {
                          layoutEntry.texture.sampleType = isSigned ? WGPUTextureSampleType_Sint : WGPUTextureSampleType_Uint;
-@@ -904,6 +941,7 @@ namespace plume {
+@@ -904,6 +947,7 @@ namespace plume {
              }
  
              key += entryKey;
@@ -122,7 +148,7 @@ index ea06bd4..a3dcbf2 100644
              layoutEntries.emplace_back(layoutEntry);
              groupEntries.emplace_back(groupEntry);
          }
-@@ -985,19 +1023,27 @@ namespace plume {
+@@ -985,19 +1029,27 @@ namespace plume {
          return RenderPipelineProgram();
      }
  
@@ -157,7 +183,7 @@ index ea06bd4..a3dcbf2 100644
              entries.emplace_back(entry);
          }
  
-@@ -1026,7 +1072,7 @@ namespace plume {
+@@ -1026,7 +1078,7 @@ namespace plume {
          }
  
          std::vector<std::string> keys;
@@ -166,7 +192,7 @@ index ea06bd4..a3dcbf2 100644
          WGPUComputePipelineDescriptor pipelineDesc = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
          pipelineDesc.layout = layout;
          pipelineDesc.compute.module = computeStage.module;
-@@ -1074,7 +1120,9 @@ namespace plume {
+@@ -1074,7 +1126,9 @@ namespace plume {
          }
  
          std::vector<std::string> keys;
@@ -177,7 +203,7 @@ index ea06bd4..a3dcbf2 100644
  
          // Vertex input.
          std::vector<std::vector<WGPUVertexAttribute>> attributes(inputSlots.size());
-@@ -1168,8 +1216,8 @@ namespace plume {
+@@ -1168,8 +1222,8 @@ namespace plume {
          if (pixelStage.module != nullptr) {
              fragment.module = pixelStage.module;
              fragment.entryPoint = toStringView(pixelStage.entryPointName);
@@ -188,7 +214,7 @@ index ea06bd4..a3dcbf2 100644
              fragment.targetCount = desc.renderTargetCount;
              fragment.targets = targets;
              pipelineDesc.fragment = &fragment;
-@@ -1667,6 +1715,9 @@ namespace plume {
+@@ -1667,6 +1721,9 @@ namespace plume {
          if (framebuffer->depthTexture != nullptr) {
              const RenderFormat depthFormat = framebuffer->depthTexture->desc.format;
              depthAttachment.view = (framebuffer->depthView != nullptr) ? framebuffer->depthView->view : const_cast<WebGPUTexture *>(framebuffer->depthTexture)->getDefaultView();
@@ -198,7 +224,7 @@ index ea06bd4..a3dcbf2 100644
              if (framebuffer->depthReadOnly) {
                  depthAttachment.depthReadOnly = true;
              }
-@@ -1964,7 +2015,15 @@ namespace plume {
+@@ -1964,7 +2021,15 @@ namespace plume {
          endRenderPass();
          const WebGPUBuffer *dst = static_cast<const WebGPUBuffer *>(dstBuffer.ref);
          const WebGPUBuffer *src = static_cast<const WebGPUBuffer *>(srcBuffer.ref);
@@ -215,7 +241,7 @@ index ea06bd4..a3dcbf2 100644
          copiedInto(dst);
      }
  
-@@ -2221,6 +2280,7 @@ namespace plume {
+@@ -2221,6 +2286,7 @@ namespace plume {
          float32Filterable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Filterable);
          float32Blendable = wgpuDeviceHasFeature(device, WGPUFeatureName_Float32Blendable);
          depthClipControl = wgpuDeviceHasFeature(device, WGPUFeatureName_DepthClipControl);
