@@ -1,5 +1,7 @@
 # San Francisco Rush 2049: Recompiled.
 # Based on BanjoRecomp's CMakeLists.txt (GPL-3.0). Builds on Windows (clang-cl) and Linux (clang); only Windows has been run.
+# With Emscripten (emcmake cmake), it builds the page for a browser, Rush2049Recompiled.html (README, "In a browser"),
+# through web/frontend: RT64 and the menus on WebGPU, mods off.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -34,6 +36,14 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
 endif()
 
+if (EMSCRIPTEN)
+    # Threads are pthreads (SharedArrayBuffer), and the runtime ends a game thread by throwing.
+    add_compile_options(-pthread -fwasm-exceptions)
+    add_link_options(-pthread -fwasm-exceptions)
+    # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
+    set(RUSH2049_PATCHES OFF)
+endif()
+
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
@@ -50,6 +60,12 @@ set(BUILD_SHARED_LIBS OFF)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
 
+if (EMSCRIPTEN)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/../web/frontend ${CMAKE_BINARY_DIR}/web_frontend)
+    # fmt 11.1 (N64Recomp's) leans on <cstdlib> arriving through other headers, which Emscripten's libc++ doesn't do.
+    target_compile_options(fmt PRIVATE -include cstdlib)
+endif()
+
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 
 # RecompiledFuncs: N64Recomp's output (run it on us.toml first).
@@ -61,6 +77,11 @@ target_compile_options(RecompiledFuncs PRIVATE
     -Wno-implicit-function-declaration
     -falign-functions=16
 )
+# A call to an undeclared function links to a trap in WebAssembly (headless/recompiled_externs.h), so it is an error there.
+if (EMSCRIPTEN)
+    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration
+        -include ${CMAKE_SOURCE_DIR}/headless/recompiled_externs.h)
+endif()
 
 target_include_directories(RecompiledFuncs PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -229,8 +250,10 @@ set(DXC_GS_OPTS "${DXC_COMMON_OPTS}" "-E" "GSMain" "-T gs_6_0")
 set(DXC_RT_OPTS "${DXC_COMMON_OPTS}" "-D" "RT_SHADER" "-T" "lib_6_3" "-fspv-target-env=vulkan1.1spirv1.4" "-fspv-extension=SPV_KHR_ray_tracing" "-fspv-extension=SPV_EXT_descriptor_indexing")
 
 if (WIN32)
-    set(DXC "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc.exe")
     add_compile_definitions(NOMINMAX)
+endif()
+if (CMAKE_HOST_WIN32)
+    set(DXC "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc.exe")
 else()
     set(DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
 endif()
@@ -248,12 +271,23 @@ target_link_libraries(Rush2049Recompiled PRIVATE
     ultramodern
     rt64
     libzstd_static
-    nfd
 )
 
 if (RUSH2049_PATCHES)
     target_sources(Rush2049Recompiled PRIVATE ${CMAKE_SOURCE_DIR}/src/register_patches.cpp)
     target_link_libraries(Rush2049Recompiled PRIVATE PatchesLib)
+    target_compile_definitions(Rush2049Recompiled PRIVATE RUSH2049_PATCHES)
+endif()
+
+if (EMSCRIPTEN)
+    # The page (web/frontend), with the menus' assets and the controller mappings in its .data file. No ROM: the player
+    # picks theirs in the launcher, and it stays in the browser.
+    recomp_web_frontend_page(Rush2049Recompiled)
+    target_link_options(Rush2049Recompiled PRIVATE
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets@/assets"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/recompcontrollerdb.txt@/recompcontrollerdb.txt")
+else()
+    target_link_libraries(Rush2049Recompiled PRIVATE nfd)
 endif()
 
 set_property(TARGET Rush2049Recompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
