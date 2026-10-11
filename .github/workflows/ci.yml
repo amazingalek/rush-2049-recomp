@@ -35,11 +35,18 @@ jobs:
           python-version: "3.11"
       - name: No ROM data tracked, TOML parses, Python compiles
         run: python -I tools/ci/check_repo.py
-      - name: Runtime patches apply to the pinned N64ModernRuntime
+      - name: Runtime patches apply to the pinned N64ModernRuntime and RecompFrontend
         run: |
-          git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime
+          git submodule update --init --depth 1 rush2049/lib/N64ModernRuntime rush2049/lib/RecompFrontend
           bash tools/rush2049/apply_runtime_patches.sh
-          bash tools/rush2049/apply_runtime_patches.sh | grep -q "already applied"
+          bash tools/rush2049/apply_runtime_patches.sh | grep "already applied"
+          rf=rush2049/lib/RecompFrontend
+          git -C $rf add -A && fresh="$(git -C $rf write-tree)"
+          # a checkout patched before its web patch landed: the game's patches come off and go back on after it
+          git -C $rf reset -q --hard && git -C $rf clean -fdq
+          git -C $rf apply "$PWD"/rush2049/runtime-patches/RecompFrontend-*.patch
+          bash tools/rush2049/apply_runtime_patches.sh | grep "^applied: RecompFrontend-0003"
+          git -C $rf add -A && test "$(git -C $rf write-tree)" = "$fresh"
       - name: Audio resampler tests
         run: |
           g++ -std=c++20 -O2 -Wall -Irush2049/include rush2049/tests/audio_resampler_test.cpp \
