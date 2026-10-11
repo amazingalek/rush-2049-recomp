@@ -93,6 +93,8 @@ rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
 RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
                        (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
+RecompFrontend-0004    Emscripten: no Mods or Exit in the launcher, no Quit icon or Mods tab in Settings, dropped files
+                       aren't mods, rumble through the Gamepad API (SDL2's port has none)
 ```
 
 `rush2049/runtime-patches/`, this game's, on top:
@@ -252,7 +254,9 @@ It is built here until then because the game is how it is tested, so keep the li
 **Step 1, done: the CPU side.** `rush2049/headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
 prints retraces, display lists and CPU time a second. Build it outside the repo: the `.data` file holds the ROM.
-emsdk is installed in `%LOCALAPPDATA%\Programs\n64-toolchain\emsdk`; on a machine without it:
+emsdk is installed in `%LOCALAPPDATA%\Programs\n64-toolchain\emsdk`. Its `emsdk_env.sh` finds Python 2.7 from Git Bash
+and sets nothing, so export `EMSDK_PYTHON=<emsdk>/python/3.13.3_64bit/python.exe` and put `<emsdk>/upstream/emscripten`
+and `<emsdk>/node/24.19.0_64bit/bin` on `PATH` instead. On a machine without it:
 
 ```sh
 git clone https://github.com/emscripten-core/emsdk && cd emsdk   # emsdk.bat finds Python 2.7, so:
@@ -362,12 +366,17 @@ without the two headers through `coi_serviceworker.js`. What to know:
 - RmlUi's FreeType must be the `freetype-legacysjlj` build (setjmp with wasm exceptions); the plain one leaves
   `emscripten_longjmp` undefined. Emscripten's `bits/limits.h` defines `PAGESIZE`, which breaks `slot_map.h`.
 - The `--pre-js` files and the shell are read at link time, so the page lists them in `LINK_DEPENDS`.
+- Emscripten's SDL2 is built without haptics, and `SDL_Init` with `SDL_INIT_HAPTIC` fails as a whole there, gamepads
+  with it: `main.cpp` leaves it out on Emscripten. Gamepads were checked with a stand-in `navigator.getGamepads()`
+  (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
+  real pad has been tried on the page. Exit, before it was hidden, left a black canvas, and the next input aborted
+  the program (`emscripten_proxy_async failed`).
 - CI builds no Emscripten target, so the page, recompui's `Interface*.wgsl` and `file.cpp`'s picker are checked only
   by a build and a run here.
 
 **Still to do, each its own card:**
 
-- Publishing the page (GitHub Pages), gamepads on the page, and hiding the launcher's Mods and Exit buttons there.
+- Publishing the page (GitHub Pages).
 - The frame time above: where a list's 11-15 ms go (readback round trips, calls that wait for the main thread).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
