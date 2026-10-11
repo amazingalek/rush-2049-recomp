@@ -91,18 +91,18 @@ it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ni
 
 ```sh
 git submodule update --init --recursive
-bash tools/rush2049/apply_runtime_patches.sh            # our fixes to the submodules
+bash tools/apply_runtime_patches.sh            # our fixes to the submodules
 git clone https://github.com/shygoo/n64sym ref/n64sym    # libultra signatures for the symbol generator (MIT)
-.venv/Scripts/python -I tools/rush2049/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
-cmake -S rush2049 -B rush2049/build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+.venv/Scripts/python -I tools/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
       -DPATCHES_C_COMPILER=<MIPS clang> -DPATCHES_LD=<ld.lld>
-bash tools/rush2049/iterate.sh 30                        # symbols, recompile, build, and a 30 s test boot
+bash tools/iterate.sh 30                        # symbols, recompile, build, and a 30 s test boot
 ```
 
-After that, `ninja -C rush2049/build Rush2049Recompiled` rebuilds.
+After that, `ninja -C build Rush2049Recompiled` rebuilds.
 
-**Run** `rush2049/build/Rush2049Recompiled.exe` from `rush2049/`. The launcher finds the ROM by itself if it sits
+**Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
 otherwise pick it with Load ROM.
 
@@ -128,7 +128,7 @@ recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downl
 ```sh
 source <emsdk>/emsdk_env.sh
 embuilder build sdl2-mt freetype-legacysjlj      # once
-emcmake cmake -S rush2049 -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
+emcmake cmake -S . -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
 ninja -C <build dir> Rush2049Recompiled
 ```
 
@@ -190,46 +190,47 @@ window, which costs more the bigger the window is. So on a weak GPU a smaller wi
 N64Recomp mods (`.nrm`) are **supported but untested**: an example mod builds in CI on every change, but no real
 mod has been played with yet, so expect rough edges.
 
-The game loads mods from the `mods` folder in its settings folder (`rush2049/mods/` when run from `rush2049/` with
-a `portable.txt`), enables them when found, and the launcher's mod menu turns them on and off. The mod game id is
+The game loads mods from the `mods` folder in its settings folder (`mods/` when run from the repo's
+root with a `portable.txt`), enables them when found, and the launcher's mod menu turns them on and off. The mod game id is
 `rush2049`. A mod can:
 
 - **hook any game function** with `RECOMP_HOOK("name")` (on entry, with the same arguments) or
   `RECOMP_HOOK_RETURN("name")` (just before it returns), in the boot code, the main code and both overlays. Names
-  come from `syms/rush2049/rush2049.us.syms.toml`;
+  come from `syms/rush2049.us.syms.toml`;
 - **call game functions and read or write game variables** by name, variables from
-  `syms/rush2049/rush2049.us.datasyms.toml` (`extern s32 current_song;`), or anything by its address;
-- **use what the game exports** (import from `"*"`, declared in `rush2049/mod_template/include/rush2049_api.h`):
+  `syms/rush2049.us.datasyms.toml` (`extern s32 current_song;`), or anything by its address;
+- **use what the game exports** (import from `"*"`, declared in `mod_template/include/rush2049_api.h`):
   `recomp_printf`, the window resolution and aspect ratio, the game frame rate, `recomp_alloc`/`recomp_free`, mod
   options and the runtime's config, hook and UI APIs.
 
 `RECOMP_PATCH` replaces a function outright, but with no decompilation of this game that means writing the whole
 function in C, so hooks are the practical tool. Names are the API: functions we have worked out
-(`syms/rush2049/names.toml`) keep their names for good, and everything else is `func_<address>`
+(`syms/names.toml`) keep their names for good, and everything else is `func_<address>`
 (`ovl1_func_`/`ovl2_func_` in the overlays).
 
-**Writing one:** copy `rush2049/mod_template/`, a working mod that hooks `boot_main` and `hud_draw_race_timer` and
+**Writing one:** copy `mod_template/`, a working mod that hooks `boot_main` and `hud_draw_race_timer` and
 prints to the console. With a MIPS clang (see the toolchain above):
 
 ```sh
-ninja -C rush2049/build RecompModTool             # the runtime's pinned N64Recomp, so the mod format matches
-make -C rush2049/mod_template CC=<MIPS clang> LD=<ld.lld>
-cd rush2049/mod_template && ../build/RecompModTool mod.toml build   # writes build/rush2049_hello_mod.nrm
+ninja -C build RecompModTool             # the runtime's pinned N64Recomp, so the mod format matches
+make -C mod_template CC=<MIPS clang> LD=<ld.lld>
+cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush2049_hello_mod.nrm
 ```
 
 `mod.toml`'s `minimum_recomp_version` is checked against the app version (`version_string` in
-`rush2049/src/main.cpp`).
+`src/main.cpp`).
 
 ## Repo layout
 
-- `rush2049/`: the recomp itself: runtime glue and enhancements (`src/`), the patches library mods build against
-  (`patches/`), the example mod (`mod_template/`), the N64Recomp configs (`us.toml`, `patches.toml`,
-  `musyx.toml`), fixes to the runtime submodules (`runtime-patches/`), the submodules themselves (`lib/`), and a
-  build without the frontend (`headless/`): the browser test page, or with no graphics at all.
-- `rush2049/lib/`: RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a `web`
-  branch, and `recomp-web` is what turns a recomp into a page; see
-  [recomp-web](https://github.com/amazingalek/recomp-web).
-- `syms/rush2049/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
+- `src/`, `include/`: runtime glue and enhancements. `tests/`: tests of the pure code, which CI runs.
+- `us.toml`, `patches.toml`, `musyx.toml`: the N64Recomp and RSPRecomp configs, with every hook into the game.
+- `patches/`: the patches library mods build against; `mod_template/`: the example mod.
+- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a
+  `web` branch, and `recomp-web` is what turns a recomp into a page; see
+  [recomp-web](https://github.com/amazingalek/recomp-web). `runtime-patches/`: this game's fixes on top of them.
+- `headless/`: a build without the frontend: the browser test page, or with no graphics at all.
+- `assets/`: the menus' fonts, icons and stylesheet, and the hi-res title's patch, shipped beside the executable.
+- `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
 
@@ -246,4 +247,4 @@ Built on [N64Recomp](https://github.com/N64Recomp/N64Recomp), [N64ModernRuntime]
 Dario and the N64Recomp contributors; function signatures from [n64sym](https://github.com/shygoo/n64sym); MusyX
 audio through mupen64plus-rsp-hle's HLE (GPL-2.0-or-later); the title screen upscaled with
 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN). *San Francisco Rush 2049* belongs to its rights holders; this
-project ships none of it. The recomp in `rush2049/` is GPLv3, see [rush2049/COPYING](rush2049/COPYING).
+project ships none of it. This project is GPLv3, see [COPYING](COPYING).
