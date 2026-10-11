@@ -83,6 +83,8 @@ plume-0003             WebGPU: READBACK maps that wait (isMapReady(), which the 
 plume-0004             WebGPU for RT64: only the overrides a shader declares, bindings visible to the stages that
                        read them, depth read as unfilterable-float, copies in whole words, uniforms in 16-byte rows,
                        dual-source blending as a capability
+plume-0006             WebGPU: a pipeline created with buildInBackground is built with createRenderPipelineAsync once
+                       a draw has used its layout; the device thread's createGraphicsPipeline waits for isReady()
 rt64-0006              no Idle thread on Emscripten
 rt64-0007              without descriptor indexing (WebGPU), a texture set per draw and TMEM in one buffer
 rt64-0008              the shaders compile to WGSL (RT64_WGSL, on with Emscripten): float3 padding, byte-address
@@ -91,6 +93,8 @@ rt64-0009              the RSP compute shaders read their inputs from one buffer
                        (RT64_PACKED_RSP_INPUTS, on with Emscripten): core WebGPU has 8 storage buffers a stage
 rt64-0010              RT64 on WebGPU: builds with Emscripten, draws on the page's canvas from the WGSL blobs,
                        ubershaders only, a pass's attachments the same size, no 8-bit storage or nearest samplers
+rt64-0011              specialized shaders on WebGPU, built in the background while the ubershader draws: the spec
+                       constant WGSL shaders created once, at setup; one compilation thread
 RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT64's window, a file picker on the page
                        (file.cpp), the app folder under HOME, Emscripten's SDL2 and FreeType ports, no mod libraries
 RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
@@ -296,8 +300,8 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 
 **Step 2, done: the game on a canvas.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui
 draw through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks), `plume-0002` runs it on the
-page's main thread for every caller, `plume-0003` and `plume-0004` add what RT64 needs, and rt64-0006 to rt64-0010
-make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
+page's main thread for every caller, `plume-0003`, `plume-0004` and `plume-0006` add what RT64 needs, and rt64-0006
+to rt64-0011 make RT64 build for it and fit it. `web/renderer/` is the RecompFrontend RT64 context without recompui, and the
 headless build draws through it by default (`HEADLESS_RT64`), as a page, `Rush2049Headless.html`: the title screen,
 the Midway screen and the attract races draw as they do natively, with no WebGPU errors. To build and run it:
 
@@ -323,10 +327,17 @@ CI's `wgsl` job builds and checks them on every PR, on SwiftShader (Chrome's CPU
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
 
-- Chrome builds every pipeline in its GPU process, which does nothing else meanwhile: no frame, no readback, no
-  screenshot. A specialized RasterPS (1.15 MB of WGSL) took 1.4-2.1 s per pipeline there, so a WGSL build draws with
-  the ubershader only (`rt64_raster_shader_cache.cpp`): 2.3 s for the first pipeline, ~6 ms for each further render
-  state. Async pipeline creation (`createRenderPipelineAsync`) would let specialized ones build behind it.
+- Chrome builds a pipeline made with `createRenderPipeline` on its GPU process's main thread, which does nothing
+  else meanwhile: no frame, no readback, no screenshot, and the page's main thread blocks once its queue to the GPU
+  process fills. A specialized RasterPS (1.15 MB of WGSL) takes 1.4-2.1 s there, 6-11 s cold beside another build,
+  10-80 ms from Chrome's disk cache (per profile, `--user-data-dir`). `createRenderPipelineAsync` builds on threads
+  of its own, so RT64 builds specialized pipelines with it and draws with the ubershader until they're ready
+  (plume-0006, rt64-0011). None of them may be built the other way: before a draw has used a pipeline's layout
+  there is no WebGPU layout to build it for, so it waits for one, and the spec constant shaders are created at
+  setup, because a shader reading a binding from a new stage gives every pipeline a new layout. Without those two,
+  boot ran at 17-20 display lists a second for ~10 s and about one run in fifteen froze for good. One compilation
+  thread: six at once took ~9 cores and halved the frame rate. The wasm grows from 7.3 to 16.6 MB (the spec
+  constant shaders).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
