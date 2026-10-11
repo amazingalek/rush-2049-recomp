@@ -37,8 +37,9 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 
 if (EMSCRIPTEN)
-    # Threads are pthreads (SharedArrayBuffer), and the runtime ends a game thread by throwing.
-    add_compile_options(-pthread -fwasm-exceptions)
+    # Threads are pthreads (SharedArrayBuffer), and the runtime ends a game thread by throwing. -msimd128 is the web's
+    # -march=nehalem: wasm SIMD, which every browser with WebGPU has, for xxHash, hlslpp and the auto-vectorizer.
+    add_compile_options(-pthread -fwasm-exceptions -msimd128)
     add_link_options(-pthread -fwasm-exceptions)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
