@@ -41,6 +41,9 @@ here, and a finding that explains code goes beside that code.
   `tools/apply_runtime_patches.sh`; never commit them inside `lib/`. A new change is a new patch
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
   of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
+- Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend or
+  BanjoRecomp: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI talking to its
+  maintainers). The web forks stay forks.
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
@@ -105,6 +108,8 @@ RecompFrontend-0005    Emscripten: no Mods or Exit in the launcher, no Quit icon
                        aren't mods, rumble through the Gamepad API (SDL2's port has none)
 rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::SwapChainFormat), not bgra8unorm
 RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
+rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
+                       int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 ```
 
 `runtime-patches/`, this game's, on top of the forks:
@@ -240,25 +245,30 @@ measured.
 ## The web target
 
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
-for it are game-agnostic, behind `__EMSCRIPTEN__`/`__wasm__`, and shaped to go upstream.
+for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
-**It has moved out** (2026-10-11, as Alek chose). Six repos under amazingalek, all public:
+**It has moved out** (2026-10-11, as Alek chose). Seven repos under amazingalek, all public:
 
 - The forks, each with a `web` branch: the commit upstream pins, plus the web support one commit per change (table
-  in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web`), `N64ModernRuntime-web` (its
-  `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. Upstream PRs are opened from these branches, and a fork
-  goes away once upstream takes its branch.
+  in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web` and its `src/contrib/hlslpp`
+  `hlslpp-web`), `N64ModernRuntime-web` (its `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. They stay
+  forks: upstream takes no LLM-written code (Rules).
 - `recomp-web`, the submodule `lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
   a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
-  page), `tests/` (the plume device thread test, `wgsl_check.mjs`, and `build/`, every library of a page built with
-  Emscripten from the forks), and the CI that runs those three. Its README is the guide for another recomp. Source at a
-  tag, not a package: the game's own patches go on top of the source, and everything links into one wasm with the
-  game's recompiled code, built by the game's emsdk with its flags.
+  page), `tests/` (the plume device thread test, `hlslpp_wasm_test.cpp`, `wgsl_check.mjs`, and `build/`, every
+  library of a page built with Emscripten from the forks), and the CI that runs those four. Its README is the guide
+  for another recomp. Source at a tag, not a package: the game's own patches go on top of the source, and everything
+  links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
   (CI's checks job compares them), with `runtime-patches/` on top.
 
-None of the six has a board: their work is done from cards on this board, and this repo's PR is where it is reviewed
-and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
+`amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
+second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Its README
+says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
+it found is in recomp-web's README.
+
+None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
+reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
 stays here: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
 branches of `CMakeLists.txt` that make the game a page with `recomp-web/frontend/`. The link options in
 `headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
@@ -271,8 +281,8 @@ of its own in your scratch directory:
    an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
    game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
-   change to plume-web or N64Recomp-web also moves the submodule pointer in rt64-web or N64ModernRuntime-web: commit
-   and push that too.
+   change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
+   N64ModernRuntime-web: commit and push that too.
 3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
    for its CI: `gh run list -R amazingalek/recomp-web`.
 4. Here, move the submodules and `lib/recomp-web` to those commits, rerun the patch script (rebase a game
@@ -470,6 +480,11 @@ without the two headers through `coi_serviceworker.js`. What to know:
   2026-10-11 on the headless page at 960x720, 8 runs of each interleaved, host 14-85% and GPU 8-98% busy with other
   sessions: a race list 5.83 → 5.55 ms median of runs (Mann-Whitney p ≈ 0.04), the browser's CPU 95 s per 90 s
   either way. Small, but free: every browser with WebGPU has wasm SIMD.
+- hlslpp's wasm SIMD backend, which `-msimd128` picks, had movehl, dot4, load3 of int3 and shifts by a count per
+  lane wrong, so transpose, inverse and some mul shapes too. RT64 builds its view and projection matrices with them
+  on the CPU: this game didn't show it, Banjo drew a polygon over the whole screen. hlslpp-web fixes them and
+  recomp-web's CI checks the backend against plain C++. `HLSLPP_SCALAR` is no way out: the scalar backend's `frac`
+  is wrong for negative numbers.
 - Emscripten's SDL2 is built without haptics, and `SDL_Init` with `SDL_INIT_HAPTIC` fails as a whole there, gamepads
   with it: `main.cpp` leaves it out on Emscripten. Gamepads were checked with a stand-in `navigator.getGamepads()`
   (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
