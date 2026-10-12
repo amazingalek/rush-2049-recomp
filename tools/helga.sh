@@ -123,8 +123,11 @@ build | web)
     [[ "$cmd" == web ]] && sync
     in_image "set -e
         bash tools/recompile.sh -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-        [ -f build-web/build.ninja ] || emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release > build-web.log 2>&1 ||
-            { tail -20 build-web.log; rm -f build-web/build.ninja; exit 1; }
+        if [ ! -f build-web/build.ninja ]; then  # the ports CMake looks for, into the shared cache (once)
+            embuilder build sdl2-mt freetype-legacysjlj > /dev/null
+            emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release > build-web.log 2>&1 ||
+                { tail -20 build-web.log; rm -f build-web/build.ninja; exit 1; }
+        fi
         ninja -C build-web -j $cpus ${1:-Rush2049Recompiled} > build-web/build.log 2>&1 ||
             { grep -E ' error|FAILED|undefined' build-web/build.log | head -20; exit 1; }
         tail -1 build-web/build.log"
