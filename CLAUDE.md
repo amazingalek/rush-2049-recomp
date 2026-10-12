@@ -275,7 +275,9 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
   (CI's checks job compares them), with `runtime-patches/` on top.
 
 `amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
-second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Its README
+second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
+it is on recomp-web main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
+`recomp::Configuration` (`requeue_pi` kept on, as the runtime did before). Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
