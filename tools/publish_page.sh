@@ -45,6 +45,7 @@ if $dry_run; then
 fi
 
 git -C "$stage" init -q -b gh-pages
+git -C "$stage" config core.autocrlf false  # the files exactly as built
 git -C "$stage" add -A
 git -C "$stage" commit -q -m "The web page, built from $(git rev-parse --short HEAD)"
 git -C "$stage" push -q -f "$(git remote get-url origin)" gh-pages
