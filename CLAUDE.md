@@ -350,11 +350,14 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
-Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser da0b835 and its forks (v0.8.0's: not yet a5904a9's rt64 and plume, which build no
-specialized pipelines on an Intel adapter), and include its `frontend/build_speed.cmake`: their BUILDING.md says to
-keep `build-web` inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h`
-on Emscripten, as this game's does (2026-10-12, headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's
-attract demo play, nothing short after the first second).
+Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser v0.11.0 (f44f945) and its forks, and include its
+`frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web` inside the checkout and put ccache on `PATH`.
+Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as this game's does (2026-10-12, headless Chrome:
+the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after the first second). Each has a
+prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what not): Banjo 186 shaders, 12.7 s
+cold; Majora's Mask 722, 52 s; Donkey Kong 64 311, 41 s (2026-10-12, Chrome 154 headless, RTX 2070, host 100% busy with
+other sessions), then each draws with no WebGPU errors. Their CMakeLists.txt pick rt64's dxc by the host's processor,
+not the target's (wasm32 chose the arm64 `dxc-linux` on a Linux host).
 
 `amazingalek/BanjoRecomp-web` (branch `main`) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
