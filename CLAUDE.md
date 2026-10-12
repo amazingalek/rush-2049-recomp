@@ -145,9 +145,9 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
 - RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
-- The desktop is 3840x2160 at **30 Hz**: the monitor is a 60 Hz one, but Windows drives it at 29 Hz (`EnumDisplaySettings`,
-  2026-10-11). So Framerate Display presents 30 frames a second while the game renders 60, and interpolation can't be
-  seen or measured here.
+- The desktop is 3840x2160 at 59 Hz (`Win32_VideoController.CurrentRefreshRate`) since 2026-10-12. Until then Windows
+  drove the monitor (a Philips BDM4065 on DisplayPort) at 29 Hz, so measurements from before that date that mention
+  the display's rate, presented frames or interpolation were taken at 30 frames a second.
 - Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
   (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
@@ -281,8 +281,8 @@ says up front that it is AI-written and not the Banjo team's, its BUILDING.md ho
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
 RecompFrontend), on recomp-web v0.4.0's forks, the ones pinned here. In headless Chrome: launcher, Load ROM, the attract demo, title, file
-select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
-headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
+select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here
+then: headless Chrome's animation frames follow the desktop's rate, so a page here presented no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live
 recompiler), and building it needs the decompressed ROM its BUILDING.md names (the page takes the plain one).
 
