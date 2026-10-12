@@ -143,8 +143,9 @@ N64Recomp ec0748e      a function the config renames is renamed in a patch's cal
                        its strtol, which clashes with the C library's and must become strtol_recomp)
 rt64 bfe07cb           the prebuilt shaders built in every browser (Firefox too) and on every adapter: each one's
                        pixel shader packed without dual-source blending too, for a device that lacks it
-rt64 e839610           a "background" line in a prebuilt list: the game waits only for the shaders above it, and one
-                       thread builds the rest behind it (this game's list has none, so it waits for all)
+rt64 e839610           the game waits only for the prebuilt shaders above the list's "background" line, and one
+                       thread builds the rest behind it, any a draw asks for first (Firefox waits for them all);
+                       ?record-shaders prebuilds none, so it prints every shader in the order the game asks
 rt64 de43acc           the prebuilt shaders the game waits for built largest first, as many at once as the host has
                        cores, the progress by WGSL size with those in flight counted half done
 ```
@@ -163,8 +164,8 @@ N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_cal
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
 which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
-step of a port in its README; e82d7df moves it to e839610. 4913560 moves rt64 to de43acc and makes the shell's bar a
-one-time setup panel with the time left.
+step of a port in its README, and e82d7df moves rt64 to e839610. 4913560 moves rt64 to de43acc and makes the shell's
+bar a one-time setup panel with the time left.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -553,17 +554,23 @@ What to know before changing it:
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
   recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
   time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until they are built, in every browser and on every adapter (rt64 bfe07cb; until then Firefox and a
-  device without dual-source blending skipped them and drew everything with the ubershader). Alek's call: without
-  them the page is unplayable, so **every web port records a list and builds it**, not as an afterthought
-  (N64Recomp-browser's README, what a recomp does itself). Recording again: the page prints an
-  `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
-  `Module.arguments` for split screen); add the new ones to the list. Chrome's GPU process compiles them on the CPU,
-  so rt64 de43acc builds the largest first (WGSL size goes with build time) and as many at once as the host has cores
-  (2-16). 105 shaders cold in the game's page, Chrome 154 headless, interleaved (2026-10-12, RTX 2070, host 100% busy
-  with other sessions): 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order), 10.2-11.0 s largest first
-  at 6, 6.3-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
-  Chrome keeps them for the next visit, if they fit: measured 2026-10-12 (headless Chrome 154, host 100% busy
+  graphics" bar until those above its `background` line are built, in every browser and on every adapter (rt64
+  bfe07cb; until then Firefox and a device without dual-source blending skipped them and drew everything with the
+  ubershader). Alek's call: without them the page is unplayable, so **every web port records a list and builds it**,
+  not as an afterthought (N64Recomp-browser's README, what a recomp does itself). Above the line are the 45 the title
+  and the first attract race draw (rt64 e839610); then the game starts, and one thread builds the other 60 behind it
+  in the list's order, any the game asks for first. Firefox waits for all of them. Recording again: the page prints an
+  `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
+  over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
+  list, below `background` unless the first screens draw them. Chrome's GPU process compiles them on the CPU, so rt64
+  de43acc builds the ones the game waits for largest first (WGSL size goes with build time), as many at once as the
+  host has cores (2-16). Cold in the game's page, Chrome 154 headless, RTX 2070, host 97-100% busy with other
+  sessions (2026-10-12): all 105 took 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order),
+  10.2-11.0 s largest first at 6, 6.3-7.2 s at 12, this host's cores; the 45 took 6.5-7 s with e839610 (6 at a time,
+  in list order) and W45C s with de43acc, and the other 60 were built 16-19 s after the game started. GoldenEye's page
+  waits 10 s for 34 of its 340 against 84-87 s for all of them (both before de43acc). Before rt64 25a65b7 halved
+  them: 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s. Chrome keeps them for the next visit, if they fit: measured
+  2026-10-12 (headless Chrome 154, host 100% busy
   with other sessions), Rush 2049's 105 took 16.5 s on the first visit and 0.6-0.7 s on each later one, GoldenEye's 340
   83, 70 and 69 s. The cache (`DawnWebGPUCache` in the profile) is one per profile for every site, 6 MB
   (`GetDefaultGpuDiskCacheSize`), and the GPU process reads it into a memory cache of 6 MB when it starts, so only
