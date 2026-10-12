@@ -121,6 +121,12 @@ rt64 551f33e           the RSP's vertex Z test picked its multisampled shader fo
                        dropped every command buffer that tested a flare
 ```
 
+Not pinned here yet, recomp-web 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
+on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would only gain the line) and OfflineModRecomp
+`--static` writes a mod as C to link in; N64ModernRuntime 7bb2ee1 runs a built-in mod from that code
+(`register_precompiled_mod`) and its replacements and hooks as those redirects; recomp-web's `worker_alert.js` turns an
+`alert` on a thread (a mod that fails to load) into a console error instead of an exception that stops the page.
+
 `runtime-patches/`, this game's, on top of the forks:
 
 ```
@@ -282,11 +288,12 @@ it is on recomp-web main's forks (19ef581), with no externs header, and `recomp:
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web v0.4.0's forks, the ones pinned here. In headless Chrome: launcher, Load ROM, the attract demo, title, file
+RecompFrontend), on recomp-web 6b67064's forks (v0.4.0's, pinned here, plus the built-in mods). In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
 headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
-stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live
-recompiler), and building it needs the decompressed ROM its BUILDING.md names (the page takes the plain one).
+stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
+time and linked in (its icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md
+names (the page takes the plain one).
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
@@ -521,8 +528,13 @@ without the two headers through `coi_serviceworker.js`. What to know:
 - Publishing the page (GitHub Pages).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
-Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
-and load wasm modules instead. No other N64 recomp running in a browser was found to learn from.
+Mods a player adds stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
+have to emit and load wasm modules instead. A recomp's built-in mods work (2026-10-12, recomp-web's README says how):
+recompiled to C at build time, and what a mod replaces or hooks redirected at each function's entry, since wasm code
+can't be rewritten. Clang folds a function's address used as an array index into the load's offset, and the linker
+fills in the function's index in the module there, not its table index, which hung the page at boot until
+`recomp.h` hid the address behind an empty `asm`. A function pointer is safe in wasm as a value, not as arithmetic.
+No other N64 recomp running in a browser was found to learn from.
 
 ## Ruled out, so don't retry
 
