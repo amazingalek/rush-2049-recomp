@@ -132,12 +132,13 @@ bindings, with rumble where the browser supports it (Chrome and Edge). Press a b
 browser only shows a page its gamepads after that.
 
 The game stops on its first frame for a moment while a bar at the bottom says **Preparing
-graphics**: the browser is building the shaders the game draws with, a fast one for each effect, so that no menu or
-race waits for one later. In Chrome and Edge it takes 15-20 seconds the first time on a desktop with a graphics card,
-and longer on a laptop's integrated graphics; the browser keeps what it built, so on later visits the bar is gone in
-about a second. An update of the browser or of the graphics driver can make every visit slow again: the browser keeps
-only a few megabytes of these for all sites together, and the old ones can take that room. Firefox shows the same
-bar, and takes about 30 seconds there.
+graphics**: the browser is building the shaders the title screen and the first attract race draw with, a fast one for
+each effect, and it builds the rest while the game runs, before a menu or race needs them. In Chrome and Edge the wait
+takes about 7 seconds the first time on a desktop with a graphics card, and longer on a laptop's integrated graphics;
+the browser keeps what it built, so on later visits the bar is gone in about a second. An update of the browser or of
+the graphics driver can make every visit slow again: the browser keeps only a few megabytes of these for all sites
+together, and the old ones can take that room. Firefox builds them all behind the bar, which takes about 30 seconds
+there.
 
 On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
 one the browser itself uses, usually the integrated one, whatever the page asks for. The game runs better on the

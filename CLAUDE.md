@@ -143,6 +143,9 @@ N64Recomp ec0748e      a function the config renames is renamed in a patch's cal
                        its strtol, which clashes with the C library's and must become strtol_recomp)
 rt64 bfe07cb           the prebuilt shaders built in every browser (Firefox too) and on every adapter: each one's
                        pixel shader packed without dual-source blending too, for a device that lacks it
+rt64 e839610           the game waits only for the prebuilt shaders above the list's "background" line, and one
+                       thread builds the rest behind it, any a draw asks for first (Firefox waits for them all);
+                       ?record-shaders prebuilds none, so it prints every shader in the order the game asks
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -159,7 +162,7 @@ N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_cal
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
 which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
-step of a port in its README.
+step of a port in its README, and e82d7df moves rt64 to e839610.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -548,12 +551,18 @@ What to know before changing it:
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
   recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
   time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until they are built, in every browser and on every adapter (rt64 bfe07cb; until then Firefox and a
-  device without dual-source blending skipped them and drew everything with the ubershader). Alek's call: without
-  them the page is unplayable, so **every web port records a list and builds it**, not as an afterthought
-  (N64Recomp-browser's README, what a recomp does itself). Recording again: the page prints an
-  `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
-  `Module.arguments` for split screen); add the new ones to the list. 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
+  graphics" bar until those above its `background` line are built, in every browser and on every adapter (rt64
+  bfe07cb; until then Firefox and a device without dual-source blending skipped them and drew everything with the
+  ubershader). Alek's call: without them the page is unplayable, so **every web port records a list and builds it**,
+  not as an afterthought (N64Recomp-browser's README, what a recomp does itself). Above the line are the 45 the title
+  and the first attract race draw (rt64 e839610); then the game starts, and one thread builds the other 60 behind it
+  in the list's order, any the game asks for first. Firefox waits for all of them. Recording again: the page prints an
+  `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
+  over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
+  list, below `background` unless the first screens draw them. Waiting for the 45 took 6.5-7 s against 12.3-16.9 s
+  for all 105 in the same runs, and the other 60 were built 16-19 s after the game started (2026-10-12, Chrome 154
+  headless, RTX 2070, host 97-100% busy with other sessions); GoldenEye's page waits 10 s for 34 of its 340 against
+  84-87 s for all of them. Before the split, 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
   13-18 s on the bare test page (2026-10-12, RTX 2070, 6 at a time, host 94-100% busy with other sessions); Chrome's
   GPU process compiles them on the CPU, 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s (before rt64 25a65b7 halved
   them). Chrome keeps them for the next visit, if they fit: measured 2026-10-12 (headless Chrome 154, host 100% busy
