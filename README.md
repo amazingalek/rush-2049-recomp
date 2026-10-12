@@ -20,7 +20,9 @@ build does, and the title and demo races in Firefox. It isn't hosted anywhere ye
 serve it yourself. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
 [recomp-web](https://github.com/amazingalek/recomp-web). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
-of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team).
+of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
+Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com/amazingalek/Zelda64Recomp-web) (not
+made by the Zelda 64: Recompiled team).
 
 ## Modern enhancements
 
