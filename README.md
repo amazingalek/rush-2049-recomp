@@ -129,6 +129,11 @@ gamepads the browser knows the layout of (it calls them standard, as it does Xbo
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
 
+On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
+one the browser itself uses, usually the integrated one, whatever the page asks for, and there the game crawls for its
+first minutes and runs slowly after. The page says so when it finds integrated Intel graphics: open
+`chrome://flags/#force-high-performance-gpu` (`edge://` in Edge), set it to Enabled and relaunch the browser.
+
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
 recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and naga
 (`cargo install naga-cli`). From the repo root:
