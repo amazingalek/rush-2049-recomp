@@ -391,6 +391,11 @@ found: its own strtol, strncmp, acos and others clash with funcs.h's C library d
 both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another section
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
+Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), ~85 s
+under "Preparing graphics" on every visit in Chrome, warm or cold. Unlike Rush 2049 every level adds dozens (26
+combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
+level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
+10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
 
 `amazingalek/CBFD-Recompiled-web` (branch `main`) is the sixth (2026-10-12): sciaschi's Conker's Bad Fur Day:
 Recompiled (MIT; its CONTRIBUTING.md welcomes AI-assisted work, but nothing has been offered to it). It keeps its
