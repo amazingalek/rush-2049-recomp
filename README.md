@@ -135,9 +135,9 @@ The game's first start is a one-time setup: it holds its first frame under **Pre
 while the browser builds the shaders the game draws with, a fast one for each effect, so that no menu or race waits
 for one later. In Chrome and Edge it takes about 10 seconds on a desktop with a graphics card and longer on a laptop's
 integrated graphics, and the browser keeps them, so after that the game starts straight away. The setup comes back
-after an update to the browser or the graphics driver, if the browser's cache is cleared, and after an update that
-changes the game's shaders, for a few visits until the browser has let go of the old ones. Firefox shows the same
-setup, and takes about 30 seconds there.
+after an update to the game, the browser or the graphics driver, or if the browser's cache is cleared, and for a while
+after one it can come back on every visit: the browser keeps only a few megabytes of these for all sites together,
+and the old ones can take that room. Firefox shows the same setup, and takes about 30 seconds there.
 
 On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
 one the browser itself uses, usually the integrated one, whatever the page asks for. The game runs better on the

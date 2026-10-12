@@ -145,7 +145,7 @@ rt64 bfe07cb           the prebuilt shaders built in every browser (Firefox too)
                        pixel shader packed without dual-source blending too, for a device that lacks it
 rt64 e839610           a "background" line in a prebuilt list: the game waits only for the shaders above it, and one
                        thread builds the rest behind it (this game's list has none, so it waits for all)
-rt64 RT64SHA           the prebuilt shaders the game waits for built largest first, as many at once as the host has
+rt64 de43acc           the prebuilt shaders the game waits for built largest first, as many at once as the host has
                        cores, the progress by WGSL size with those in flight counted half done
 ```
 
@@ -163,7 +163,7 @@ N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_cal
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
 which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
-step of a port in its README; e82d7df moves it to e839610. NRBSHA moves rt64 to RT64SHA and makes the shell's bar a
+step of a port in its README; e82d7df moves it to e839610. 4913560 moves rt64 to de43acc and makes the shell's bar a
 one-time setup panel with the time left.
 
 `runtime-patches/`, this game's, on top of the forks:
@@ -269,9 +269,10 @@ force-pushes the page from here as the only commit on the orphan branch `gh-page
 2026-10-12 it built here, in a worktree beside the main checkout, `n64-recomp-publish`, which nothing uses now.
 
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
-each one's README: GoldenEye64Recomp-web and CBFD-Recompiled-web since 2026-10-12, built from main then. They are
-built on helga, in Docker (it has no compiler and no sudo), each fork's BUILDING.md steps with the ROM copied there,
-then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
+each one's README, all five since 2026-10-12, built from main then (Banjo's, Majora's Mask's and DK64's with their
+prebuilt shader lists, checked from Pages in headless Chrome to the game drawing). They are built on helga, in Docker
+(the `tools/helga/Dockerfile` image, with `EM_CACHE` set to a mounted folder in the build script, since emsdk's
+environment resets it), each fork's BUILDING.md steps with the ROM copied there, then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
 <name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
 `gh` is another account. A page published before a fork's change has merged doesn't have it; republish after.
 The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
@@ -403,7 +404,7 @@ both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump t
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
 Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), ~85 s
-under "Preparing graphics" on every visit in Chrome, warm or cold. Unlike Rush 2049 every level adds dozens (26
+under "Preparing graphics" on every visit in Chrome, warm or cold: they don't fit its cache (Step 2). Unlike Rush 2049 every level adds dozens (26
 combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
 level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
 10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
@@ -558,11 +559,22 @@ What to know before changing it:
   (N64Recomp-browser's README, what a recomp does itself). Recording again: the page prints an
   `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
   `Module.arguments` for split screen); add the new ones to the list. Chrome's GPU process compiles them on the CPU,
-  so rt64 RT64SHA builds the largest first (WGSL size goes with build time) and as many at once as the host has cores
+  so rt64 de43acc builds the largest first (WGSL size goes with build time) and as many at once as the host has cores
   (2-16). 105 shaders cold in the game's page, Chrome 154 headless, interleaved (2026-10-12, RTX 2070, host 100% busy
   with other sessions): 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order), 10.2-11.0 s largest first
-  at 6, 6.6-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
-  Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
+  at 6, 6.3-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
+  Chrome keeps them for the next visit, if they fit: measured 2026-10-12 (headless Chrome 154, host 100% busy
+  with other sessions), Rush 2049's 105 took 16.5 s on the first visit and 0.6-0.7 s on each later one, GoldenEye's 340
+  83, 70 and 69 s. The cache (`DawnWebGPUCache` in the profile) is one per profile for every site, 6 MB
+  (`GetDefaultGpuDiskCacheSize`), and the GPU process reads it into a memory cache of 6 MB when it starts, so only
+  that much can hit. Dawn keeps the parse, each stage's DXIL and the D3D12 pipeline (PSO) of each: about 4 MB for
+  Rush 2049's (its big entries 27 KB a pipeline), 16 MB for GoldenEye's (41 KB). A second set of keys, which a Chrome
+  or driver update makes (tried with `--enable-dawn-features=disable_symbol_renaming`), missed twice in a row while the
+  old set still hit: after an update the wait can come on every visit again. A page can't change any of it: WebGPU
+  gives it no pipeline binaries to keep in IndexedDB, and `--gpu-disk-cache-size-kb` only grows the disk side. To
+  measure it, start a new `--user-data-dir` once on the launcher before the cold visit: a profile's first run stores
+  nothing that hits later, and one whose first run built the shaders never hit at all (why this said, until then,
+  that the wait came on every visit). Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
   bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
   page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
   yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
@@ -574,19 +586,14 @@ What to know before changing it:
   reach nothing: dispatch `KeyboardEvent`s on `window` from `script.evaluate` instead. Its file dialog event gave an
   element that `input.setFiles` filled with no `change`: a preload script replacing a file input's `click()` with a
   fetch of the ROM from the local server loads it.
-- Chrome keeps them, so the wait is one-time: in a profile Chrome had been launched in before, the visit after the
-  cold one built all 105 in 0.4 s, and so did every one after. Its cache is per site, 6 MB of memory in the GPU
-  process (`kDefaultMaxProgramCacheMemoryBytes`), loaded from the profile's `DawnWebGPUCache`, which is capped at the
-  same 6 MB (the bytes it holds are the int64 at offset 48 of its `index`, the entries the int32 at 8). This game's
-  105 and the launcher's pipelines took 5.6-5.8 MB of it: a list past 6 MB would lose its least recently used and
-  build again on every visit, so check the figure when the list grows. A build whose shaders' WGSL is the same keeps
-  the keys, but new shaders leave the old ones on disk beside them (10.7 MB), and visits stay cold until Chrome trims
-  it: 2026-10-12, cold on the three visits after, the third open for 5 minutes, in which it trimmed to 5.3 MB, then
-  0.7 and 0.4 s. Two things read as a miss that isn't one: the first launch of a fresh `--user-data-dir` caches under
-  keys later launches don't look for, and Chrome killed before it has closed loses what it wrote (close it with
-  `Browser.close` and wait for the process to end). So: launch the profile once with nothing, then the cold visit,
-  then the warm ones. The page shows its panel ("one-time setup", the bar, the time left by WGSL size) only after a
-  second, so a warm visit shows nothing.
+- How full that cache is: the `index` in `DawnWebGPUCache` holds its bytes as the int64 at offset 48 and its entries
+  as the int32 at 8. This game's 105 and the launcher's pipelines came to 5.6-6.0 MB of it, so check the figure when
+  the list grows. A page whose shaders changed (2026-10-12, a build with new ones over a warm profile) left the old
+  entries beside the new, 10.7 MB on disk, and its visits stayed cold until Chrome trimmed it: cold on the three
+  visits after, the third open for 5 minutes, in which it fell to 5.3 MB, then 0.7 and 0.4 s. A rebuild with the same
+  WGSL still added 59 entries and took 2.0 s once. Chrome killed before it has closed loses what it wrote: close it
+  with `Browser.close` and wait for the process to end. The page shows its panel ("one-time setup", the bar, the
+  time left by WGSL size) only after a second, so a warm visit shows nothing.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
