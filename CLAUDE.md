@@ -291,12 +291,15 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
   (CI's checks job compares them), with `runtime-patches/` on top.
 
-`amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
+The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
+BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
+
+`amazingalek/BanjoRecomp-web` (branch `main`) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
 it is on N64Recomp-browser main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
 `recomp::Configuration` (`requeue_pi` kept on, as the runtime did before). Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
-it found is in N64Recomp-browser's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
+it found is in N64Recomp-browser's README. `amazingalek/Zelda64Recomp-web` (branch `main`) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
 RecompFrontend), on N64Recomp-browser 6b67064's forks (v0.4.0's plus the built-in mods; this repo pins 804cfc2, those and the Firefox pipeline change). In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here
@@ -305,7 +308,7 @@ stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-p
 time and linked in (its icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md
 names (the page takes the plain one).
 
-`amazingalek/Donkey-Kong-64-Recompiled-web` (branch `web`, its default) is the fourth (2026-10-12): Rainchus's Donkey
+`amazingalek/Donkey-Kong-64-Recompiled-web` (branch `main`) is the fourth (2026-10-12): Rainchus's Donkey
 Kong 64: Recompiled, on N64Recomp-browser 035f224's forks, the ones pinned here. In headless Chrome: launcher, Load
 ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his house, the pause menu, sound. Its
 upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
