@@ -528,8 +528,9 @@ What to know before changing it:
   yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
   27.9-30.2 s, since its GPU process builds them one at a time and presents nothing meanwhile; then the attract races
   and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap 89 ms. On the 2070
-  the ubershader page measured the same within the host's noise, at 1280x876 and at 2386x1309: what the list buys is
-  on weaker GPUs. Firefox under WebDriver BiDi in a window moved off the desktop never has focus, so its key actions
+  the ubershader page's attract races measured the same within the host's noise, at 1280x876 and at 2386x1309, but in
+  the same race it fell to 13-29 frames a second with stalls up to 3.7 s and its sound ~25 times as short, and in a
+  second run it froze for good leaving the title for the menus. Firefox under WebDriver BiDi in a window moved off the desktop never has focus, so its key actions
   reach nothing: dispatch `KeyboardEvent`s on `window` from `script.evaluate` instead. Its file dialog event gave an
   element that `input.setFiles` filled with no `change`: a preload script replacing a file input's `click()` with a
   fetch of the ROM from the local server loads it.
