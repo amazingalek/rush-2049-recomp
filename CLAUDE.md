@@ -137,12 +137,16 @@ rt64 0034023           prebuilt shaders: a game's RT64_PREBUILT_SHADER_LIST spec
                        to the page (Module.rt64ShaderProgress); ?record-shaders prints what the game asks for
 plume 90bb27d          background pipeline builds on an Intel adapter again (f6d48d3 undone: it was the ubershader
 rt64 ada5231           that crawled there, not the builds)
-rt64 RT64SHA           prebuilt shaders largest first, as many at once as the host has cores, the progress by WGSL
-                       size with those in flight counted half done
 N64Recomp 9aabea3      a jump table outside its function's section read from the section that holds it, not at the
                        function's ROM offset (GoldenEye keeps them all in a .rodata of their own)
 N64Recomp ec0748e      a function the config renames is renamed in a patch's calls to it too (GoldenEye's patches call
                        its strtol, which clashes with the C library's and must become strtol_recomp)
+rt64 bfe07cb           the prebuilt shaders built in every browser (Firefox too) and on every adapter: each one's
+                       pixel shader packed without dual-source blending too, for a device that lacks it
+rt64 e839610           a "background" line in a prebuilt list: the game waits only for the shaders above it, and one
+                       thread builds the rest behind it (this game's list has none, so it waits for all)
+rt64 RT64SHA           the prebuilt shaders the game waits for built largest first, as many at once as the host has
+                       cores, the progress by WGSL size with those in flight counted half done
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -158,8 +162,9 @@ SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 name
 N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which both web
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
-which leaves this game's generated code as it was. NRBSHA moves rt64 to RT64SHA and makes the shell's bar a one-time
-setup panel with the time left.
+which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
+step of a port in its README; e82d7df moves it to e839610. NRBSHA moves rt64 to RT64SHA and makes the shell's bar a
+one-time setup panel with the time left.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -192,6 +197,18 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
   `~/.claude/CLAUDE.md`, and never in this repo. Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
+
+**Build on helga**, the Linux build server (`ssh helga`, 32 cores; the host entry is in `~/.ssh/config` here), not on
+this PC, whose CPU the other sessions keep busy: every web build (the game's page, the headless page, a game fork's
+page) and anything else that builds on Linux. `tools/helga.sh` (its header says how) sends a checkout's HEAD and its
+uncommitted changes to a copy of its own there, `~/rush2049/<worktree folder>/repo`, and builds in a Docker image of
+the tools, `tools/helga/Dockerfile`, which it builds on helga when it is missing. So a tool a build lacks goes into
+the Dockerfile, never onto helga by hand (no sudo there, and other teams' services and CI runners share it).
+`bash tools/helga.sh web` builds the game's page in that copy's `build-web/`; `get build-web <dir>` brings it here to
+serve and test; `-C <checkout>` does `sync`, `run` and `get` for another repo, a game fork. What stays here is what
+only builds or runs on Windows: the desktop exe (`iterate.sh`, `release.sh`), and running and measuring anything.
+`helga.sh clean` deletes the copy when the card is done. A container there is stopped by its name
+(`docker stop rush2049-<worktree folder>`), never anything by pattern.
 
 **A fresh worktree** has none of the generated files. From its root, in Git Bash:
 
@@ -245,11 +262,19 @@ and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes 
 no ROM.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/, the repo is public) is published the same way, after
-a change to the game or the web side has merged: `bash tools/publish_page.sh` from any set-up checkout (emsdk on `PATH`
-as in The web target; `--dry-run` builds and stages it only, to serve and try first). It builds origin/main in a
-worktree of its own kept beside the main checkout, `n64-recomp-publish` (made the first time, with its `build-web/`),
-so a republish rebuilds only what changed, and force-pushes the page as the only commit on the orphan branch
-`gh-pages`, which Pages serves. Don't build or edit in that worktree either.
+a change to the game or the web side has merged: `bash tools/publish_page.sh` from any checkout with `roms/`
+(`--dry-run` builds and stages it in `out/page` only, to serve and try first). It builds origin/main on helga, in the
+copy `helga.sh` names `publish` (kept with its `build-web/`, so a republish rebuilds only what changed), and
+force-pushes the page from here as the only commit on the orphan branch `gh-pages`, which Pages serves. Until
+2026-10-12 it built here, in a worktree beside the main checkout, `n64-recomp-publish`, which nothing uses now.
+
+The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
+each one's README: GoldenEye64Recomp-web and CBFD-Recompiled-web since 2026-10-12, built from main then. They are
+built on helga, in Docker (it has no compiler and no sudo), each fork's BUILDING.md steps with the ROM copied there,
+then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
+<name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
+`gh` is another account. A page published before a fork's change has merged doesn't have it; republish after.
+The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
 
 ## Developer flags
 
@@ -333,11 +358,14 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
-Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser da0b835 and its forks (v0.8.0's: not yet a5904a9's rt64 and plume, which build no
-specialized pipelines on an Intel adapter), and include its `frontend/build_speed.cmake`: their BUILDING.md says to
-keep `build-web` inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h`
-on Emscripten, as this game's does (2026-10-12, headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's
-attract demo play, nothing short after the first second).
+Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser v0.11.0 (f44f945) and its forks, and include its
+`frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web` inside the checkout and put ccache on `PATH`.
+Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as this game's does (2026-10-12, headless Chrome:
+the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after the first second). Each has a
+prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what not): Banjo 186 shaders, 12.7 s
+cold; Majora's Mask 722, 52 s; Donkey Kong 64 311, 41 s (2026-10-12, Chrome 154 headless, RTX 2070, host 100% busy with
+other sessions), then each draws with no WebGPU errors. Their CMakeLists.txt pick rt64's dxc by the host's processor,
+not the target's (wasm32 chose the arm64 `dxc-linux` on a Linux host).
 
 `amazingalek/BanjoRecomp-web` (branch `main`) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
@@ -374,6 +402,11 @@ found: its own strtol, strncmp, acos and others clash with funcs.h's C library d
 both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another section
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
+Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), ~85 s
+under "Preparing graphics" on every visit in Chrome, warm or cold. Unlike Rush 2049 every level adds dozens (26
+combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
+level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
+10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
 
 `amazingalek/CBFD-Recompiled-web` (branch `main`) is the sixth (2026-10-12): sciaschi's Conker's Bad Fur Day:
 Recompiled (MIT; its CONTRIBUTING.md welcomes AI-assisted work, but nothing has been offered to it). It keeps its
@@ -384,7 +417,13 @@ pages to `rdram + vram + 0x80000000`, ~2.4 GB past RDRAM, inside the desktop's 4
 an allocation in the wasm heap, so `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with
 `-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar,
 which is what N64Recomp 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream
-resampling the game's rate to the page's. Render to RAM stays on (not tried off). The ROM is the US one.
+resampling the game's rate to the page's. The ROM is the US one. Render to RAM stays on: the camera reads a row of
+the depth buffer to step aside from walls and the lens flares read it to hide behind them (without it, only the game's
+far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README has the table, 2026-10-12).
+A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first compute pass:
+emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
+`-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
+`target_link_libraries(<target> PRIVATE -sINITIAL_MEMORY=...)` comes last.
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
@@ -504,37 +543,50 @@ What to know before changing it:
 - Firefox (157, Windows) builds a `createRenderPipelineAsync` pipeline on its GPU process in line with the device's
   other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
   Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
-  shader they use had been built. So in Firefox RT64 builds none and draws everything with the ubershader (plume
-  9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
-  2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
-  ubershader's (above).
+  shader they use had been built. So in Firefox RT64 builds none during play, and what isn't prebuilt (below) draws
+  with the ubershader (plume 9c69058, rt64 fcc6fe4, a user agent check).
 - On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3, since undone) it still crawled, and at Resolution Original it ran well. The canvas
   is CSS-sized, not device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
-  recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build time
-  (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until they are built. Not in Firefox, which builds none. Recording again: the page prints an
+  recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
+  time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
+  graphics" bar until they are built, in every browser and on every adapter (rt64 bfe07cb; until then Firefox and a
+  device without dual-source blending skipped them and drew everything with the ubershader). Alek's call: without
+  them the page is unplayable, so **every web port records a list and builds it**, not as an afterthought
+  (N64Recomp-browser's README, what a recomp does itself). Recording again: the page prints an
   `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
   `Module.arguments` for split screen); add the new ones to the list. Chrome's GPU process compiles them on the CPU,
   so rt64 RT64SHA builds the largest first (WGSL size goes with build time) and as many at once as the host has cores
   (2-16). 105 shaders cold in the game's page, Chrome 154 headless, interleaved (2026-10-12, RTX 2070, host 100% busy
   with other sessions): 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order), 10.2-11.0 s largest first
-  at 6, 6.9-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
-  Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB, bigger than the 291 KB ubershader:
-  specialized, the loops unroll). Checked with the adapter reported as Intel to the page (a CDP script overriding
-  `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not yet measured on the laptop.
+  at 6, 6.6-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
+  Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
+  bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
+  page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
+  yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
+  27.9-30.2 s, since its GPU process builds them one at a time and presents nothing meanwhile; then the attract races
+  and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap 89 ms. On the 2070
+  the ubershader page's attract races measured the same within the host's noise, at 1280x876 and at 2386x1309, but in
+  the same race it fell to 13-29 frames a second with stalls up to 3.7 s and its sound ~25 times as short, and in a
+  second run it froze for good leaving the title for the menus. Firefox under WebDriver BiDi in a window moved off the desktop never has focus, so its key actions
+  reach nothing: dispatch `KeyboardEvent`s on `window` from `script.evaluate` instead. Its file dialog event gave an
+  element that `input.setFiles` filled with no `change`: a preload script replacing a file input's `click()` with a
+  fetch of the ROM from the local server loads it.
 - Chrome keeps them, so the wait is one-time: in a profile Chrome had been launched in before, the visit after the
   cold one built all 105 in 0.4 s, and so did every one after. Its cache is per site, 6 MB of memory in the GPU
-  process (`kDefaultMaxProgramCacheMemoryBytes`), filled from the profile's `DawnWebGPUCache` (the bytes it holds are
-  the int64 at offset 48 of its `index`, the entries the int32 at 8). This game's 105 took 5.59 MB of it: a list past
-  6 MB would lose its least recently used and build again on every visit, so check the figure when the list grows. Two
-  things read as a miss that isn't one: the first launch of a fresh `--user-data-dir` caches under keys later launches
-  don't look for, and Chrome killed before it has closed loses what it wrote (close it with `Browser.close` and wait
-  for the process to end). So: launch the profile once with nothing, then the cold visit, then the warm ones. The page
-  shows its panel ("one-time setup", the bar, the time left by WGSL size) only after a second, so a warm visit shows
-  nothing.
+  process (`kDefaultMaxProgramCacheMemoryBytes`), loaded from the profile's `DawnWebGPUCache`, which is capped at the
+  same 6 MB (the bytes it holds are the int64 at offset 48 of its `index`, the entries the int32 at 8). This game's
+  105 and the launcher's pipelines took 5.6-5.8 MB of it: a list past 6 MB would lose its least recently used and
+  build again on every visit, so check the figure when the list grows. A build whose shaders' WGSL is the same keeps
+  the keys, but new shaders leave the old ones on disk beside them (10.7 MB), and visits stay cold until Chrome trims
+  it: 2026-10-12, cold on the three visits after, the third open for 5 minutes, in which it trimmed to 5.3 MB, then
+  0.7 and 0.4 s. Two things read as a miss that isn't one: the first launch of a fresh `--user-data-dir` caches under
+  keys later launches don't look for, and Chrome killed before it has closed loses what it wrote (close it with
+  `Browser.close` and wait for the process to end). So: launch the profile once with nothing, then the cold visit,
+  then the warm ones. The page shows its panel ("one-time setup", the bar, the time left by WGSL size) only after a
+  second, so a warm visit shows nothing.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
