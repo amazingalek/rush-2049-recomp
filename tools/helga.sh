@@ -16,9 +16,10 @@
 #                     roms/rush2049.us.recomp.z64 when it differs. A commit on origin is fetched there, not sent.
 #   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of helga's
 #                     home isn't mounted)
-#   web [<target>]    sync, regenerate the recompiled code (tools/recompile.sh), and build <target>
-#                     (Rush2049Recompiled, the game's page) in build-web, at -O3 unless the configure says otherwise:
+#   build [<target>]  regenerate the recompiled code (tools/recompile.sh) and build <target> (Rush2049Recompiled, the
+#                     game's page) in build-web, at -O3 unless the configure says otherwise:
 #                     tools/helga.sh run "cmake build-web -DN64RECOMP_BROWSER_FAST_LINK=ON" for a quick try
+#   web [<target>]    sync, then build
 #   get <dir> <local dir>   copy the files at the top of <dir> (relative to the copy) here, build files left out
 #   clean             delete the copy (ccache and the Emscripten cache stay)
 # -C works on another checkout, a game fork for one (only sync, run, get and clean mean anything there); -n names the
@@ -115,8 +116,8 @@ EOF
 case "$cmd" in
 sync) sync "$@" ;;
 run) in_image "$1" ;;
-web)
-    sync
+build | web)
+    [[ "$cmd" == web ]] && sync
     in_image "set -e
         bash tools/recompile.sh -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
         [ -f build-web/build.ninja ] || emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release > build-web.log 2>&1 ||
@@ -131,5 +132,5 @@ get)
         ! -name '*.cmake' ! -name '.*' | tar cf - -T -" | tar xf - -C "$2"
     ;;
 clean) remote "cd ~/$base && flock $name/.lock rm -rf $name" ;;
-*) sed -n 2,28p "$0"; exit 1 ;;
+*) sed -n 2,26p "$0"; exit 1 ;;
 esac
