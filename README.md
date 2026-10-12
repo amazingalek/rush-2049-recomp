@@ -146,8 +146,9 @@ graphics card, and the page says so when it finds integrated Intel graphics: ope
 `chrome://flags/#force-high-performance-gpu` (`edge://` in Edge), set it to Enabled and relaunch the browser.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
-recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html) and naga
-(`cargo install naga-cli`). From the repo root:
+recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html), naga
+(`cargo install naga-cli`) and `spirv-opt` on `PATH` (SPIRV-Tools, `apt install spirv-tools`; without it the shaders
+the page prepares come out about twice the size). From the repo root:
 
 ```sh
 source <emsdk>/emsdk_env.sh

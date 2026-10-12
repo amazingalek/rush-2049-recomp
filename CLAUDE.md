@@ -148,6 +148,8 @@ rt64 e839610           the game waits only for the prebuilt shaders above the li
                        ?record-shaders prebuilds none, so it prints every shader in the order the game asks
 rt64 de43acc           the prebuilt shaders the game waits for built largest first, as many at once as the host has
                        cores, the progress by WGSL size with those in flight counted half done
+rt64 a01b00f           the prebuilt shaders run through spirv-opt -O between re-spirv and naga: a RasterPS ~45%
+                       smaller, and descriptions that differ only in what the shaders ignore come out the same
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -165,7 +167,8 @@ builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CAL
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
 which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
 step of a port in its README, and e82d7df moves rt64 to e839610. 4913560 moves rt64 to de43acc and makes the shell's
-bar a one-time setup panel with the time left.
+bar a one-time setup panel with the time left. 2697fe4 moves rt64 to a01b00f and installs SPIRV-Tools in its CI
+(spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before).
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -583,7 +586,13 @@ What to know before changing it:
   measure it, start a new `--user-data-dir` once on the launcher before the cold visit: a profile's first run stores
   nothing that hits later, and one whose first run built the shaders never hit at all (why this said, until then,
   that the wait came on every visit). Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
-  bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
+  bigger than the 291 KB ubershader: specialized, the loops unroll). With rt64 a01b00f `spirv-opt -O` cleans up what
+  re-spirv leaves: Rush 2049's 105 are 144 different stages and 5.9 MB of WGSL instead of 210 and 17.5 MB (both pixel
+  shaders counted), GoldenEye's 340 210 and 16 MB instead of 624 and 103 MB, the largest RasterPS 224 KB. The whole
+  list took 10.0-10.8 s instead of 16.1-17.7 s for Rush 2049 and 35-38 s instead of 87-91 s for GoldenEye, and a
+  later visit to GoldenEye's 21-22 s instead of 55-64 s, still more than Chrome's cache holds (2026-10-12, Chrome 154
+  headless, RTX 2070, 6 at a time and all before the game, before and after interleaved, host 56-100% busy with other
+  sessions). Chrome's GPU process spent 47% less CPU on GoldenEye's. Stripping their indentation measured nothing. Checked with the adapter reported as Intel to the
   page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
   yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
   27.9-30.2 s, since its GPU process builds them one at a time and presents nothing meanwhile; then the attract races
