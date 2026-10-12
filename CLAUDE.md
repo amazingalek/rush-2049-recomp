@@ -310,8 +310,11 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
-All three are on N64Recomp-browser v0.8.0 (c8a2a10) and its forks, the ones pinned here, and include its
-`frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web` inside the checkout and put ccache on `PATH`.
+All three are on N64Recomp-browser da0b835 and its forks (v0.8.0's: not yet a5904a9's rt64 and plume, which build no
+specialized pipelines on an Intel adapter), and include its `frontend/build_speed.cmake`: their BUILDING.md says to
+keep `build-web` inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h`
+on Emscripten, as this game's does (2026-10-12, headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's
+attract demo play, nothing short after the first second).
 
 `amazingalek/BanjoRecomp-web` (branch `main`) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
