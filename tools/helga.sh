@@ -4,9 +4,9 @@
 # a run needs it, so a missing tool is fixed in the Dockerfile, never installed on helga by hand (no sudo there).
 #
 # Each checkout gets a copy of its own on helga, helga:~/rush2049/<name>/repo (name: the checkout's folder), made by
-# cloning origin and kept between runs with its build dirs, so a second build compiles only what changed. One ccache
-# and one Emscripten cache (ports such as SDL2 and FreeType) under ~/rush2049 serve every copy, and ccache hits across
-# them because paths in a checkout are relative to it (N64Recomp-browser's frontend/build_speed.cmake). A container is
+# cloning origin and kept between runs with its build dirs, so a second build compiles only what changed. One ccache,
+# ~/rush2049/ccache, serves every copy, and hits across them because paths in a checkout are relative to it
+# (N64Recomp-browser's frontend/build_speed.cmake): a fresh copy of the game's page builds in ~80 s. A container is
 # capped at $HELGA_CPUS cores (12) and 24 GB: helga also runs CI runners and other teams' services. Runs on one copy
 # wait for each other (flock), and its container is named rush2049-<name>, so `docker stop` names it.
 #
@@ -21,7 +21,7 @@
 #                     tools/helga.sh run "cmake build-web -DN64RECOMP_BROWSER_FAST_LINK=ON" for a quick try
 #   web [<target>]    sync, then build
 #   get <dir> <local dir>   copy the files at the top of <dir> (relative to the copy) here, build files left out
-#   clean             delete the copy (ccache and the Emscripten cache stay)
+#   clean             delete the copy (ccache stays)
 # -C works on another checkout, a game fork for one (only sync, run, get and clean mean anything there); -n names the
 # copy, for one shared by several runs, as tools/publish_page.sh does.
 set -euo pipefail
@@ -58,14 +58,14 @@ in_image() {
     ensure_image
     remote "set -e; cd ~/$dir; exec flock .lock docker run --rm --name $base-$name --cpus $cpus --memory 24g \
         -u \$(id -u):\$(id -g) -v \$HOME/$base:\$HOME/$base -w \$HOME/$dir/repo -e HOME=\$HOME/$dir/home \
-        -e CCACHE_DIR=\$HOME/$base/ccache -e EM_CACHE=\$HOME/$base/emcache $image bash -c $(printf %q "$1")"
+        -e CCACHE_DIR=\$HOME/$base/ccache $image bash -c $(printf %q "$1")"
 }
 
 sync() {
     local commit="${1:-HEAD}" sha url diff=""
     sha="$(git -C "$checkout" rev-parse "$commit^{commit}")"
     url="$(git -C "$checkout" remote get-url origin)"
-    remote "mkdir -p ~/$base/ccache ~/$base/emcache ~/$dir/home && chmod 700 ~/$base && cd ~/$dir && \
+    remote "mkdir -p ~/$base/ccache ~/$dir/home && chmod 700 ~/$base && cd ~/$dir && \
         { [ -d repo/.git ] || git clone -q $url repo; }"
     # The commit and what it stands on that origin's main hasn't, as a bundle (none if origin has it all).
     tmp="$(mktemp -d)"
@@ -123,8 +123,8 @@ build | web)
     [[ "$cmd" == web ]] && sync
     in_image "set -e
         bash tools/recompile.sh -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
-        if [ ! -f build-web/build.ninja ]; then  # the ports CMake looks for, into the shared cache (once)
-            embuilder build sdl2-mt freetype-legacysjlj > /dev/null
+        if [ ! -f build-web/build.ninja ]; then  # the ports CMake looks for first (seconds)
+            embuilder build sdl2-mt freetype-legacysjlj > /dev/null 2>&1
             emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release > build-web.log 2>&1 ||
                 { tail -20 build-web.log; rm -f build-web/build.ninja; exit 1; }
         fi
@@ -134,7 +134,7 @@ build | web)
     ;;
 get)
     mkdir -p "$2"
-    remote "cd ~/$dir/repo/$1 && find . -maxdepth 1 -type f ! -name '*.ninja*' ! -name '*.log' ! -name CMakeCache.txt \
+    remote "cd ~/$dir/repo/$1 && find . -maxdepth 1 -type f ! -name '*.ninja*' ! -name '*.log' ! -name '*.a' ! -name '*.json' ! -name CMakeCache.txt \
         ! -name '*.cmake' ! -name '.*' | tar cf - -T -" | tar xf - -C "$2"
     ;;
 clean) remote "cd ~/$base && flock $name/.lock rm -rf $name" ;;
