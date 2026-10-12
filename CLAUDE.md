@@ -135,9 +135,9 @@ on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would
 `alert` on a thread (a mod that fails to load) into a console error instead of an exception that stops the page.
 N64Recomp-browser 035f224 moves N64ModernRuntime to 456e025 for N64Recomp 9eb59c4, which leaves this game's generated
 code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/build_speed.cmake` (ccache) and
-`N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds `frontend/audio_output.h`
-(sound played on the browser's audio thread, for a game to opt into) and the shell's notice on Intel integrated
-graphics, and a5904a9 names rt64 524a570.
+`N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds
+`frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
+SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -267,7 +267,11 @@ present: VI pass               71      95   sized by the window: 37 in 1280x720
 
 So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: see Ruled out), the
 VI pass (it scales with the window instead) and about 50k of compute and uploads. No integrated GPU has been
-measured.
+measured here. On a laptop (2026-10-12: Intel UHD, Tiger Lake, beside an RTX A3000; 1920x1080 at 2x scale) Chrome 155
+gave the page the Intel chip, since Chrome on Windows ignores `powerPreference` (crbug.com/369219127): ~1 fps for
+minutes in menus and 20-30 fps in races until the specialized pipelines were built, then close to 60. With
+`chrome://flags/#force-high-performance-gpu` on the RTX it played well from the start. Since then no specialized
+pipelines are built on an Intel adapter (Step 2).
 
 ## Testing in the game
 
@@ -448,11 +452,9 @@ What to know before changing it:
   9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
   2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
   ubershader's (above).
-- Chrome on an Intel adapter stalls the same way: on a laptop's UHD Graphics (Tiger Lake, D3D12, Chrome 155, a
-  1920x1080 panel at scale 2, so a canvas of about 960x500 and Auto at 1x-2x) the page ran at about a frame a second
-  for minutes in menus and 20-30 in a race until the specialized pipelines were built, then close to 60; the same
-  laptop's RTX A3000 (`chrome://flags/#force-high-performance-gpu`; Chrome on Windows ignores `powerPreference`,
-  crbug.com/369219127), same CPU and an empty cache, played at once. So Intel's driver compiler is what stalls, and
+- Chrome on an Intel adapter stalls the same way: the laptop under Where a frame goes (UHD Graphics on D3D12, a canvas
+  of about 960x500, so Auto at 1x-2x and the drawing cheap) crawled until its specialized pipelines were built, and its
+  RTX A3000, same CPU and an empty cache, played at once. So Intel's driver compiler is what stalls, and
   RT64 builds none on any Intel adapter either (plume f6d48d3, rt64 524a570, `adapter.info.vendor`). Checked here
   only by reporting the adapter as Intel to the page (a CDP script overriding `GPUAdapter.prototype.info`): the
   console says so, and the title and attract races draw. Not yet measured on the laptop. The canvas is CSS-sized, not
@@ -550,7 +552,12 @@ without the two headers through `coi_serviceworker.js`. What to know:
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
   port: IndexedDB belongs to the origin, port included, so a random port starts every run empty.
 - Emscripten's SDL2 port opens audio on the page's thread except one line that reads the audio context's rate on the
-  calling thread, which fails from a pthread: `sdl_audio.js` works around it.
+  calling thread, which fails from a pthread: `sdl_audio.js` works around it. It also plays on the page's thread, a
+  ScriptProcessorNode taking 256 frames (5 ms) at a time, and the main thread is WebGPU's: in headless Chrome 368 of
+  7541 callbacks came more than two buffers late in 40 s of attract demo, and Alek heard the music as extremely
+  choppy on a laptop. So the page plays through `n64recomp_browser::audio` (N64Recomp-browser `frontend/audio_output.h`),
+  an AudioWorklet reading a ring in wasm memory on the audio thread: 0 frames short, even with the page's thread
+  blocked 150 ms of every 500. `Module.recompAudioStats()` in the console gives frames played and frames short.
 - RmlUi's FreeType must be the `freetype-legacysjlj` build (setjmp with wasm exceptions); the plain one leaves
   `emscripten_longjmp` undefined. Emscripten's `bits/limits.h` defines `PAGESIZE`, which breaks `slot_map.h`.
 - The `--pre-js` files and the shell are read at link time, so the page lists them in `LINK_DEPENDS`.
