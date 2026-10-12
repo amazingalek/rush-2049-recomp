@@ -83,10 +83,10 @@ target_compile_options(RecompiledFuncs PRIVATE
     -Wno-implicit-function-declaration
     -falign-functions=16
 )
-# A call to an undeclared function links to a trap in WebAssembly (headless/recompiled_externs.h), so it is an error there.
+# A call to an undeclared function links to a trap in WebAssembly, so it is an error there (N64Recomp's funcs.h declares
+# every function the recompiled code calls).
 if (EMSCRIPTEN)
-    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration
-        -include ${CMAKE_SOURCE_DIR}/headless/recompiled_externs.h)
+    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration)
 endif()
 
 target_include_directories(RecompiledFuncs PRIVATE

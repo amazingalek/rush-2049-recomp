@@ -110,6 +110,8 @@ rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::
 RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
 rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
                        int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
+N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
+                       ignored functions, reference symbols, recomp_trigger_event
 ```
 
 `runtime-patches/`, this game's, on top of the forks:
@@ -309,9 +311,9 @@ A browser needs the page served with `Cross-Origin-Opener-Policy: same-origin` a
 require-corp` (threads need SharedArrayBuffer; on GitHub Pages that takes coi-serviceworker). What it took, besides
 N64ModernRuntime-0003 and N64Recomp-0001:
 
-- wasm-ld turns a call whose signature doesn't match the callee into a trap. The recompiler's C calls a few
-  functions it never declares, so `headless/recompiled_externs.h` declares them and Emscripten builds make an
-  implicit declaration an error. A new one shows up as that error, or as `unreachable` at run time.
+- wasm-ld turns a call whose signature doesn't match the callee into a trap. Upstream N64Recomp's C calls a few
+  functions its `funcs.h` never declares (until N64Recomp 025cab9 a header here declared them), and Emscripten builds
+  make an implicit declaration an error. A new one shows up as that error, or as `unreachable` at run time.
 - WebAssembly only rounds to nearest and `fesetround` silently does nothing; without N64Recomp-0001 the game's
   truncating float-to-int conversions round instead, and the attract race walks off RDRAM after 40 seconds.
 - Float to int out of range saturates in wasm and gives 0x80000000 on x86. Nothing has hit it yet.
