@@ -111,7 +111,8 @@ RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chai
 rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
                        int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
-                       ignored functions, reference symbols, recomp_trigger_event
+                       ignored functions, reference symbols (8eb7338: recomp_trigger_event for a patches library's
+                       own events, not pinned here yet: no patches here trigger one)
 ```
 
 `runtime-patches/`, this game's, on top of the forks:
