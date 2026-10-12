@@ -278,7 +278,7 @@ second recomp the web support was tried on (2026-10-11): the page boots, draws a
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web main's forks. In headless Chrome: launcher, Load ROM, the attract demo, title, file
+RecompFrontend), on recomp-web v0.4.0's forks, the ones pinned here. In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
 headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live
