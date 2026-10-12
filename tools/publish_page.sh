@@ -8,9 +8,10 @@
 #
 # It always builds origin/main, in a worktree of its own beside the main checkout (<main checkout>-publish), kept
 # between runs with its build-web/: a fresh checkout has to build the page from nothing, ~16 minutes here, most of it
-# the shader chain (dxc and naga, which ccache can't cache), and a kept one rebuilds only what changed, so a
-# republish is mostly the link (~3 minutes at -O3). The first run makes that worktree, copying the submodules from the
-# checkout it is run from and its roms/. A run moves it to origin/main, resets the submodules only if their commits
+# the shader chain (dxc and naga, which ccache can't cache), and a kept one rebuilds only what changed: measured
+# 2026-10-12 on a busy host, 15 s with nothing changed, 2 minutes for a game source (mostly the link at -O3), 7 for an
+# rt64 bump. The first run makes that worktree, copying the submodules from the checkout it is run from (half an hour
+# here, once) and its roms/. A run moves it to origin/main, resets the submodules only if their commits
 # changed, and reapplies the runtime patches, so the files nothing changed keep their times.
 # Usage: tools/publish_page.sh [--dry-run]
 #   Run from any checkout of this repo with the setup from the README's build steps and CLAUDE.md (submodules, roms/),
@@ -30,8 +31,11 @@ mkdir "$pub.lock" 2> /dev/null ||
 trap 'rmdir "$pub.lock"' EXIT
 
 git fetch -q origin main
-reset_submodules() {  # patches off, then every submodule (nested ones once their parents have moved) on its commit
-    git submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
+reset_submodules() {  # patches off the named submodules, then every one (nested ones once their parents have moved) on its commit
+    for sub in "$@"; do
+        git -C "$sub" submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
+        git -C "$sub" reset -q --hard && git -C "$sub" clean -fdq
+    done
     for _ in 1 2; do
         git submodule sync -q --recursive
         git -c core.longpaths=true submodule update -q --init --recursive
@@ -42,14 +46,18 @@ if [ ! -e "$pub/.git" ]; then
     (cd "$pub" && bash tools/copy_submodules.sh "$root")
 else
     git -C "$pub" checkout -q --detach origin/main
-    # a + is a submodule off the commit its parent pins
-    if git -C "$pub" submodule status --recursive | grep -q '^[-+]'; then (cd "$pub" && reset_submodules); fi
+    # Only the submodules main moved (a + in the status) are reset: a reset rewrites the files the patches touched,
+    # and a submodule nested in one moves only with it.
+    moved=($(git -C "$pub" submodule status | sed -n 's/^[-+][0-9a-f]* \([^ ]*\).*/\1/p'))
+    if [ ${#moved[@]} -gt 0 ]; then (cd "$pub" && reset_submodules "${moved[@]}"); fi
 fi
 mkdir -p "$pub/roms"
 cp -u "$root"/roms/*.z64 "$pub/roms/"
 cd "$pub"
 # An applied patch that main has since edited makes the script stop before it touches anything: start them over.
-bash tools/apply_runtime_patches.sh > /dev/null || { reset_submodules && bash tools/apply_runtime_patches.sh > /dev/null; }
+bash tools/apply_runtime_patches.sh > /dev/null ||
+    { reset_submodules $(git config -f .gitmodules --get-regexp '\.path$' | cut -d' ' -f2) &&
+        bash tools/apply_runtime_patches.sh > /dev/null; }
 
 # The recompiled code is regenerated from the committed symbols, so it matches this commit and not a dev build's.
 # With clang-cl from env.sh, in a subshell: its INCLUDE and LIB are for the desktop build.
