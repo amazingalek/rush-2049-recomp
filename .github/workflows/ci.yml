@@ -35,16 +35,16 @@ jobs:
           python-version: "3.11"
       - name: No ROM data tracked, TOML parses, Python compiles
         run: python -I tools/ci/check_repo.py
-      # The forks and recomp-web, the web support (CLAUDE.md, "The web target"): its forks.txt names the fork commits
+      # The forks and N64Recomp-browser, the web support (CLAUDE.md, "The web target"): its forks.txt names the fork commits
       # that work together, and its CI built and checked them, so the submodules here pin those.
-      - name: Submodules pin the fork commits recomp-web names
+      - name: Submodules pin the fork commits N64Recomp-browser names
         run: |
-          git submodule update --init --depth 1 lib/recomp-web
-          grep -v '^#' lib/recomp-web/forks.txt | while read -r name url commit; do
+          git submodule update --init --depth 1 lib/N64Recomp-browser
+          grep -v '^#' lib/N64Recomp-browser/forks.txt | while read -r name url commit; do
             [ -n "$name" ] || continue
             pinned="$(git ls-tree HEAD "lib/$name" | awk '{print $3}')"
-            echo "$name: recomp-web $commit, here $pinned"
-            [ "$pinned" = "$commit" ] || { echo "lib/$name isn't at the commit recomp-web's forks.txt names" >&2; exit 1; }
+            echo "$name: N64Recomp-browser $commit, here $pinned"
+            [ "$pinned" = "$commit" ] || { echo "lib/$name isn't at the commit N64Recomp-browser's forks.txt names" >&2; exit 1; }
             [ "$(git config -f .gitmodules "submodule.lib/$name.url")" = "$url" ]
           done
       - name: Runtime patches apply to the pinned N64ModernRuntime and RecompFrontend

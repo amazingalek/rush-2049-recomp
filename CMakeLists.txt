@@ -1,7 +1,7 @@
 # San Francisco Rush 2049: Recompiled.
 # Based on BanjoRecomp's CMakeLists.txt (GPL-3.0). Builds on Windows (clang-cl) and Linux (clang); only Windows has been run.
 # With Emscripten (emcmake cmake), it builds the page for a browser, Rush2049Recompiled.html (README, "In a browser"),
-# through lib/recomp-web/frontend: RT64 and the menus on WebGPU, mods off.
+# through lib/N64Recomp-browser/frontend: RT64 and the menus on WebGPU, mods off.
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -67,7 +67,7 @@ set(BUILD_SHARED_LIBS OFF)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64ModernRuntime)
 
 if (EMSCRIPTEN)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/recomp-web/frontend ${CMAKE_BINARY_DIR}/web_frontend)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend ${CMAKE_BINARY_DIR}/web_frontend)
     # fmt 11.1 (N64Recomp's) leans on <cstdlib> arriving through other headers, which Emscripten's libc++ doesn't do.
     target_compile_options(fmt PRIVATE -include cstdlib)
 endif()
@@ -286,9 +286,9 @@ if (RUSH2049_PATCHES)
 endif()
 
 if (EMSCRIPTEN)
-    # The page (lib/recomp-web/frontend), with the menus' assets and the controller mappings in its .data file. No ROM:
+    # The page (lib/N64Recomp-browser/frontend), with the menus' assets and the controller mappings in its .data file. No ROM:
     # the player picks theirs in the launcher, and it stays in the browser.
-    recomp_web_frontend_page(Rush2049Recompiled)
+    n64recomp_browser_frontend_page(Rush2049Recompiled)
     target_link_options(Rush2049Recompiled PRIVATE
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets@/assets"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/recompcontrollerdb.txt@/recompcontrollerdb.txt")

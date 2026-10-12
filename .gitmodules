@@ -1,16 +1,16 @@
 [submodule "lib/N64ModernRuntime"]
 	path = lib/N64ModernRuntime
 	url = https://github.com/amazingalek/N64ModernRuntime-web
-	branch = web
+	branch = main
 [submodule "lib/rt64"]
 	path = lib/rt64
 	url = https://github.com/amazingalek/rt64-web
-	branch = web
+	branch = main
 [submodule "lib/RecompFrontend"]
 	path = lib/RecompFrontend
 	url = https://github.com/amazingalek/RecompFrontend-web
-	branch = web
-[submodule "lib/recomp-web"]
-	path = lib/recomp-web
-	url = https://github.com/amazingalek/recomp-web
+	branch = main
+[submodule "lib/N64Recomp-browser"]
+	path = lib/N64Recomp-browser
+	url = https://github.com/amazingalek/N64Recomp-browser
 	branch = main
