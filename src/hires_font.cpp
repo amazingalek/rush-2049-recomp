@@ -20,11 +20,16 @@
 // colour is the atlas's brightest value wherever alpha isn't 0, and alpha alone carries the edge. The letters'
 // insides are unchanged, and a texel that is fully transparent stays black.
 //
-// The smooth upscale also spreads a glyph's edge a little past its own texels: into an empty texel next to a full one
-// it puts a faint strip, about a tenth opaque and a quarter texel wide. Where that empty texel is the first or last
-// column of the neighbouring glyph's rectangle, the strip is drawn in that glyph's place, at full brightness, as a
-// thin line beside the letter. So a texel that is 0 in the atlas stays fully transparent in the pack: a vector glyph
-// covers none of it, and the letters lose nothing but that strip.
+// The atlases pack glyphs edge to edge, and the game draws each glyph with a rectangle of exactly its own texels. A
+// smooth upscale of the whole atlas reads across those edges: where one glyph's soft edge column meets the next
+// glyph's stem, the stem lands in the outer quarter of that column at full brightness, and the glyph's rectangle ends
+// there, so it shows as a thin line beside the letter (TRANSMISSION, AUTOMATIC, HANDLING in car select). So each glyph
+// is upscaled on its own, reading only its own texels, the edge ones repeated past it. Which texels are a glyph the
+// game says itself: the walk keeps every texel box a texture rectangle draws from an atlas, beside its texture in the
+// pack (<hash>.glyphs), and makes the texture again when a glyph turns up that it hasn't drawn before. A texel no
+// rectangle has drawn yet is upscaled with the whole atlas around it. The upscale also puts a faint strip into an
+// empty texel next to a full one, so a texel that is 0 in the atlas stays fully transparent in the pack: a vector
+// glyph covers none of it.
 //
 // Hi-res title screen. The title screen's 320x220 picture is 35 copy-mode strips of an 8-bit colour-indexed texture.
 // An upscaled picture of it (4x, by Real-ESRGAN) is cut into those strips the same way: each strip the walk finds is
@@ -47,6 +52,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -70,7 +76,7 @@
 namespace {
 
 // Bump when the upscale changes, so textures made by an older version are thrown away.
-const char* const pack_version = "v3";
+const char* const pack_version = "v4";
 constexpr int scale = 4;
 constexpr float contrast = 2.5f;
 
@@ -85,6 +91,17 @@ std::filesystem::path pack_dir;
 // Every hash already handled: in the pack, or drawn but not wanted (empty).
 std::unordered_set<uint64_t> seen;
 std::vector<uint64_t> in_pack;
+// The texel boxes texture rectangles have drawn from each texture, [x0, x1) by [y0, y1): the glyphs of an atlas.
+struct Glyph {
+    uint16_t x0, y0, x1, y1;
+    bool operator==(const Glyph&) const = default;
+};
+std::unordered_map<uint64_t, std::vector<Glyph>> atlas_glyphs;
+
+// Where a texture rectangle lands, in pixels, and the texel at its upper left corner and texels a pixel.
+struct RectTexels {
+    float ulx, uly, lrx, lry, s, t, dsdx, dtdy;
+};
 
 // The upscaled title, scaled title_scale times from 320x220, and the pack cut from it.
 constexpr int title_width = 320, title_height = 220;
@@ -138,6 +155,12 @@ struct Rdp {
     // so they mark what they may have overwritten as unknown, and rectangles drawing from there are skipped.
     bool tmem_known[tmem_bytes]{};
     std::vector<uint64_t> found;
+    // Textures to make once the walk is done, new or with a glyph not drawn before, and their texels.
+    struct Pending {
+        uint32_t width, height;
+        std::vector<float> texels;
+    };
+    std::unordered_map<uint64_t, Pending> pending;
     // gEXSetRDRAMExtended: the widescreen HUD calls lists of its own above the game's 8 MB with this on.
     bool extended_rdram = false;
     // The high half of the other modes, for the TLUT type.
@@ -235,8 +258,8 @@ struct Rdp {
     }
 
     // RT64's sample size (State::updateDrawCall...) and hash for a rectangle drawn with tile `t`. `rect` is the
-    // G_TEXRECT's three commands, or null for one the widescreen HUD made.
-    void texture_rect(uint32_t t, const uint32_t* rect) {
+    // G_TEXRECT's three commands, or null for one the widescreen HUD made; `texels` is null for a flipped one.
+    void texture_rect(uint32_t t, const uint32_t* rect, const RectTexels* texels) {
         const RT64::LoadTile& tile = tiles[t];
         if (tile.fmt == fmt_ci && tile.siz == siz_8b && rect != nullptr && title_scale > 0 && title_enabled && tile.line != 0) {
             title_rect(tile, rect);
@@ -267,12 +290,58 @@ struct Rdp {
             }
         }
         uint64_t hash = RT64::TMEMHasher::hash(tmem, tile, width, height, 0, RT64::TMEMHasher::CurrentHashVersion);
-        if (seen.insert(hash).second) {
-            make_texture(hash, tile, width, height);
+        bool make = seen.insert(hash).second;
+        Glyph glyph;
+        if (texels != nullptr && glyph_box(tile, *texels, width, height, glyph)) {
+            std::vector<Glyph>& glyphs = atlas_glyphs[hash];
+            if (std::find(glyphs.begin(), glyphs.end(), glyph) == glyphs.end()) {
+                glyphs.push_back(glyph);
+                make = true;
+            }
+        }
+        if (make && !pending.contains(hash)) {
+            pending[hash] = { width, height, read_texels(tile, width, height) };
         }
     }
 
-    void make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width, uint32_t height);
+    // The texels a rectangle draws, point sampled, clipped to the texture.
+    bool glyph_box(const RT64::LoadTile& tile, RectTexels r, uint32_t width, uint32_t height, Glyph& glyph) const {
+        if (((othermode_h >> 20) & 3) == 2) {  // copy mode: the lower right edge is inclusive, and dsdx 4 a texel
+            r.lrx += 1.0f;
+            r.lry += 1.0f;
+            r.dsdx /= 4.0f;
+        }
+        float s0 = r.s - tile.uls / 4.0f, t0 = r.t - tile.ult / 4.0f;
+        float s1 = s0 + (r.lrx - r.ulx) * r.dsdx, t1 = t0 + (r.lry - r.uly) * r.dtdy;
+        int x0 = std::max((int)std::floor(std::min(s0, s1)), 0);
+        int x1 = std::min((int)std::ceil(std::max(s0, s1)), (int)width);
+        int y0 = std::max((int)std::floor(std::min(t0, t1)), 0);
+        int y1 = std::min((int)std::ceil(std::max(t0, t1)), (int)height);
+        if (x0 >= x1 || y0 >= y1) {
+            return false;
+        }
+        glyph = { (uint16_t)x0, (uint16_t)y0, (uint16_t)x1, (uint16_t)y1 };
+        return true;
+    }
+
+    // The texels, read back the way the RDP samples them: odd rows have their 32-bit halves swapped in TMEM.
+    std::vector<float> read_texels(const RT64::LoadTile& tile, uint32_t width, uint32_t height) const {
+        std::vector<float> src((size_t)width * height);
+        uint32_t row_bytes = tile.line << 3;
+        for (uint32_t y = 0; y < height; y++) {
+            for (uint32_t x = 0; x < width; x++) {
+                uint32_t a = (tile.tmem << 3) + y * row_bytes + (tile.siz == siz_4b ? x / 2 : x);
+                if (y & 1) {
+                    a ^= 4;
+                }
+                uint8_t b = tmem[a & (tmem_bytes - 1)];
+                src[y * width + x] = tile.siz == siz_4b ? ((x & 1) ? (b & 0xF) : (b >> 4)) / 15.0f : b / 255.0f;
+            }
+        }
+        return src;
+    }
+
+    void make_texture(uint64_t hash, uint32_t width, uint32_t height, const std::vector<float>& src);
     void title_rect(const RT64::LoadTile& tile, const uint32_t* rect);
 
     void walk(uint32_t addr, int depth) {
@@ -347,16 +416,25 @@ struct Rdp {
             case 0xE4:  // G_TEXRECT
             case 0xE5: {  // G_TEXRECTFLIP
                 uint32_t full[4] = { w0, w1, rd32(p + 12), rd32(p + 20) };
-                texture_rect((w1 >> 24) & 7, (w0 >> 24) == 0xE4 ? full : nullptr);
+                RectTexels texels = { ((w1 >> 12) & 0xFFF) / 4.0f, (w1 & 0xFFF) / 4.0f, ((w0 >> 12) & 0xFFF) / 4.0f,
+                                      (w0 & 0xFFF) / 4.0f, (int16_t)(full[2] >> 16) / 32.0f, (int16_t)full[2] / 32.0f,
+                                      (int16_t)(full[3] >> 16) / 1024.0f, (int16_t)full[3] / 1024.0f };
+                bool flip = (w0 >> 24) == 0xE5;
+                texture_rect((w1 >> 24) & 7, flip ? nullptr : full, flip ? nullptr : &texels);
                 p += 16;
                 break;
             }
             case RT64_EXTENDED_OPCODE:
                 switch (w0 & 0xFFFFFF) {
-                case G_EX_TEXRECT_V1:  // what the widescreen HUD turns race rectangles into
-                    texture_rect(w1 & 7, nullptr);
+                case G_EX_TEXRECT_V1: {  // what the widescreen HUD turns race rectangles into
+                    uint32_t xy0 = rd32(p + 8), xy1 = rd32(p + 12), st = rd32(p + 16), d = rd32(p + 20);
+                    RectTexels texels = { (int16_t)(xy0 >> 16) / 4.0f, (int16_t)xy0 / 4.0f, (int16_t)(xy1 >> 16) / 4.0f,
+                                          (int16_t)xy1 / 4.0f, (int16_t)(st >> 16) / 32.0f, (int16_t)st / 32.0f,
+                                          (int16_t)(d >> 16) / 1024.0f, (int16_t)d / 1024.0f };
+                    texture_rect(w1 & 7, nullptr, &texels);
                     p += 16;
                     break;
+                }
                 case G_EX_SETSCISSORALIGN_V1:
                     p += 16;
                     break;
@@ -417,7 +495,10 @@ bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uin
     header[25] = 0x00FF0000;
     header[26] = 0xFF000000;
     header[27] = 0x1000 | 0x400000 | 0x8;  // texture, mipmap, complex
-    FILE* f = fopen(path.string().c_str(), "wb");
+    // Written aside and moved into place: a texture made again replaces one RT64 may be reading.
+    std::filesystem::path tmp = path;
+    tmp += ".tmp";
+    FILE* f = fopen(tmp.string().c_str(), "wb");
     if (f == nullptr) {
         return false;
     }
@@ -448,7 +529,49 @@ bool write_dds(const std::filesystem::path& path, std::vector<uint8_t> rgba, uin
     }
     bool ok = ferror(f) == 0;
     fclose(f);
-    return ok;
+    std::error_code ec;
+    if (ok) {
+        std::filesystem::rename(tmp, path, ec);
+    }
+    if (!ok || ec) {
+        std::filesystem::remove(tmp, ec);
+        return false;
+    }
+    return true;
+}
+
+// An atlas's glyphs, beside its texture: a line of "x0 y0 x1 y1" each.
+std::filesystem::path glyphs_path(uint64_t hash) {
+    char name[32];
+    snprintf(name, sizeof(name), "%016" PRIx64 ".glyphs", hash);
+    return pack_dir / name;
+}
+
+void write_glyphs(uint64_t hash, const std::vector<Glyph>& glyphs) {
+    std::string text;
+    for (const Glyph& g : glyphs) {
+        text += std::to_string(g.x0) + " " + std::to_string(g.y0) + " " + std::to_string(g.x1) + " " +
+                std::to_string(g.y1) + "\n";
+    }
+    if (FILE* f = fopen(glyphs_path(hash).string().c_str(), "wb")) {
+        fwrite(text.data(), 1, text.size(), f);
+        fclose(f);
+    }
+}
+
+void read_glyphs(uint64_t hash) {
+    FILE* f = fopen(glyphs_path(hash).string().c_str(), "rb");
+    if (f == nullptr) {
+        return;
+    }
+    std::vector<Glyph>& glyphs = atlas_glyphs[hash];
+    unsigned x0, y0, x1, y1;
+    while (fscanf(f, "%u %u %u %u", &x0, &y0, &x1, &y1) == 4) {
+        if (x0 < x1 && y0 < y1 && x1 <= 1024 && y1 <= 1024) {
+            glyphs.push_back({ (uint16_t)x0, (uint16_t)y0, (uint16_t)x1, (uint16_t)y1 });
+        }
+    }
+    fclose(f);
 }
 
 void write_database(const std::filesystem::path& pack_dir, const std::vector<uint64_t>& in_pack) {
@@ -473,33 +596,26 @@ void write_database(const std::filesystem::path& pack_dir, const std::vector<uin
     std::filesystem::rename(tmp, pack_dir / "rt64.json", ec);
 }
 
-void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width, uint32_t height) {
-    // The texels, read back the way the RDP samples them: odd rows have their 32-bit halves swapped in TMEM.
-    std::vector<float> src((size_t)width * height);
-    float peak = 0.0f;
-    uint32_t row_bytes = tile.line << 3;
-    for (uint32_t y = 0; y < height; y++) {
-        for (uint32_t x = 0; x < width; x++) {
-            uint32_t a = (tile.tmem << 3) + y * row_bytes + (tile.siz == siz_4b ? x / 2 : x);
-            if (y & 1) {
-                a ^= 4;
-            }
-            uint8_t b = tmem[a & (tmem_bytes - 1)];
-            float v = tile.siz == siz_4b ? ((x & 1) ? (b & 0xF) : (b >> 4)) / 15.0f : b / 255.0f;
-            src[y * width + x] = v;
-            peak = std::max(peak, v);
-        }
-    }
+void Rdp::make_texture(uint64_t hash, uint32_t width, uint32_t height, const std::vector<float>& src) {
+    float peak = *std::max_element(src.begin(), src.end());
     if (peak == 0.0f) {
         return;
+    }
+    // The box each texel's upscale reads within: its glyph's (the first drawn, where two overlap), or the whole atlas.
+    const std::vector<Glyph>& glyphs = atlas_glyphs[hash];
+    std::vector<Glyph> box((size_t)width * height, Glyph{ 0, 0, (uint16_t)width, (uint16_t)height });
+    for (auto g = glyphs.rbegin(); g != glyphs.rend(); ++g) {
+        for (uint32_t y = g->y0; y < g->y1; y++) {
+            std::fill(&box[y * width + g->x0], &box[y * width + g->x1], *g);
+        }
     }
 
     uint32_t out_w = width * scale, out_h = height * scale;
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
     uint8_t colour = (uint8_t)std::lround(peak * 255.0f);
-    auto texel = [&](int x, int y) {
-        x = std::clamp(x, 0, (int)width - 1);
-        y = std::clamp(y, 0, (int)height - 1);
+    auto texel = [&](const Glyph& g, int x, int y) {
+        x = std::clamp(x, (int)g.x0, (int)g.x1 - 1);
+        y = std::clamp(y, (int)g.y0, (int)g.y1 - 1);
         return src[y * width + x];
     };
     for (uint32_t oy = 0; oy < out_h; oy++) {
@@ -508,11 +624,12 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
         for (uint32_t ox = 0; ox < out_w; ox++) {
             float sx = (ox + 0.5f) / scale - 0.5f;
             int x0 = (int)std::floor(sx);
+            const Glyph& g = box[(oy / scale) * width + ox / scale];
             float v = 0.0f;
             for (int dy = -1; dy <= 2; dy++) {
                 float wy = cubic(sy - (y0 + dy));
                 for (int dx = -1; dx <= 2; dx++) {
-                    v += wy * cubic(sx - (x0 + dx)) * texel(x0 + dx, y0 + dy);
+                    v += wy * cubic(sx - (x0 + dx)) * texel(g, x0 + dx, y0 + dy);
                 }
             }
             v = std::clamp((v / peak - 0.5f) * contrast + 0.5f, 0.0f, 1.0f) * peak;
@@ -532,8 +649,11 @@ void Rdp::make_texture(uint64_t hash, const RT64::LoadTile& tile, uint32_t width
         fprintf(stderr, "[hires font] can't write %s\n", (pack_dir / name).string().c_str());
         return;
     }
-    in_pack.push_back(hash);
+    if (std::find(in_pack.begin(), in_pack.end(), hash) == in_pack.end()) {
+        in_pack.push_back(hash);
+    }
     found.push_back(hash);
+    write_glyphs(hash, glyphs);
 }
 
 void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
@@ -862,6 +982,7 @@ void rush2049::init_hires_font() {
             uint64_t hash = std::strtoull(entry.path().stem().string().c_str(), nullptr, 16);
             seen.insert(hash);
             in_pack.push_back(hash);
+            read_glyphs(hash);
         }
     }
     write_database(pack_dir, in_pack);
@@ -890,11 +1011,15 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
     static Rdp rdp;
     rdp.rdram = rdram;
     rdp.found.clear();
+    rdp.pending.clear();
     rdp.extended_rdram = false;
     rdp.found_title = false;
     rdp.title_pending.clear();
     std::fill(std::begin(rdp.tmem_known), std::end(rdp.tmem_known), false);
     rdp.walk((uint32_t)MEM_W(0x30, task), 0);
+    for (const auto& [hash, atlas] : rdp.pending) {
+        rdp.make_texture(hash, atlas.width, atlas.height, atlas.texels);
+    }
     if (!rdp.title_pending.empty()) {
         rdp.found_title |= cut_pending_title(rdp.title_pending);
     }
@@ -909,6 +1034,6 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
     if (!rdp.found.empty()) {
         write_database(pack_dir, in_pack);
         register_pack();
-        fprintf(stderr, "[hires font] %zu new texture(s), %zu in the pack\n", rdp.found.size(), in_pack.size());
+        fprintf(stderr, "[hires font] %zu texture(s) made, %zu in the pack\n", rdp.found.size(), in_pack.size());
     }
 }
