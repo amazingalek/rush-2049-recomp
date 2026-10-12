@@ -7,7 +7,7 @@
 //
 // The renderer takes each display list and returns at once, as if the RDP were infinitely fast, and counts them and
 // the retraces. An Emscripten build hands them on to RT64 (HEADLESS_RT64, on unless configured off): it is a page,
-// Rush2049Headless.html, that draws the game on its canvas through WebGPU (lib/recomp-web/renderer) and doesn't run in
+// Rush2049Headless.html, that draws the game on its canvas through WebGPU (lib/N64Recomp-browser/renderer) and doesn't run in
 // node.
 // A page has no command line, so it takes the options from its query (page_arguments.js). The audio sink drains at
 // the rate the game set, the way a sound card would, so the audio thread is paced as it is in the game. Nobody presses anything, so the game runs its title screen and attract races, which
