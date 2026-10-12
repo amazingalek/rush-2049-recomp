@@ -54,6 +54,8 @@ if (EMSCRIPTEN)
         set(CMAKE_C_COMPILER_LAUNCHER
             ${CMAKE_COMMAND} -E env EM_COMPILER_WRAPPER=${CCACHE_PROGRAM} CCACHE_BASEDIR=${CMAKE_SOURCE_DIR})
         set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_C_COMPILER_LAUNCHER})
+        # RmlUi's precompiled header: ccache won't cache what includes one, and it holds absolute paths anyway.
+        set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
     endif()
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
