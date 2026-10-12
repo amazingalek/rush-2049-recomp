@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Builds on helga, the Linux build server (32 cores, `ssh helga`), instead of this PC. Everything runs in a Docker
+# image of the build tools, tools/helga/Dockerfile, tagged with a hash of that file and built on helga the first time
+# a run needs it, so a missing tool is fixed in the Dockerfile, never installed on helga by hand (no sudo there).
+#
+# Each checkout gets a copy of its own on helga, helga:~/rush2049/<name>/repo (name: the checkout's folder), made by
+# cloning origin and kept between runs with its build dirs, so a second build compiles only what changed. One ccache
+# and one Emscripten cache (ports such as SDL2 and FreeType) under ~/rush2049 serve every copy, and ccache hits across
+# them because paths in a checkout are relative to it (N64Recomp-browser's frontend/build_speed.cmake). A container is
+# capped at $HELGA_CPUS cores (12) and 24 GB: helga also runs CI runners and other teams' services. Runs on one copy
+# wait for each other (flock), and its container is named rush2049-<name>, so `docker stop` names it.
+#
+# Usage: tools/helga.sh [-C <checkout>] [-n <name>] <command>
+#   sync [<commit>]   send <commit> (default HEAD, with the uncommitted changes to tracked files; untracked files are
+#                     not sent) to the copy, check it out there with its submodules, apply runtime-patches/, and copy
+#                     roms/rush2049.us.recomp.z64 when it differs. A commit on origin is fetched there, not sent.
+#   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of helga's
+#                     home isn't mounted)
+#   web [<target>]    sync, regenerate the recompiled code (tools/recompile.sh), and build <target>
+#                     (Rush2049Recompiled, the game's page) in build-web, at -O3 unless the configure says otherwise:
+#                     tools/helga.sh run "cmake build-web -DN64RECOMP_BROWSER_FAST_LINK=ON" for a quick try
+#   get <dir> <local dir>   copy the files at the top of <dir> (relative to the copy) here, build files left out
+#   clean             delete the copy (ccache and the Emscripten cache stay)
+# -C works on another checkout, a game fork for one (only sync, run, get and clean mean anything there); -n names the
+# copy, for one shared by several runs, as tools/publish_page.sh does.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+checkout="$(cd "$here/.." && pwd)"
+name=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -C) checkout="$(cd "$2" && pwd)"; shift 2 ;;
+    -n) name="$2"; shift 2 ;;
+    *) break ;;
+    esac
+done
+cmd="${1:-}"
+[[ -n "$cmd" ]] && shift
+name="${name:-$(basename "$checkout")}"
+base=rush2049                     # under helga's home
+dir="$base/$name"
+dockerfile="$here/helga/Dockerfile"
+image="n64recomp-build:$(git hash-object "$dockerfile" | cut -c1-12)"
+cpus="${HELGA_CPUS:-12}"
+
+remote() { ssh -o BatchMode=yes helga "$@"; }
+
+# The image, built on helga when it isn't there. The Dockerfile goes in on stdin: a build needs no context.
+ensure_image() {
+    remote "docker image inspect $image > /dev/null 2>&1 || { echo 'building $image on helga (once, ~10 min)'; \
+        docker build -q -t $image - > /dev/null; }" < "$dockerfile"
+}
+
+# Runs a bash command in the image on the copy, holding its lock. The base dir is mounted at the same path inside, so
+# paths in logs and caches read the same in and out of the container.
+in_image() {
+    ensure_image
+    remote "set -e; cd ~/$dir; exec flock .lock docker run --rm --name $base-$name --cpus $cpus --memory 24g \
+        -u \$(id -u):\$(id -g) -v \$HOME/$base:\$HOME/$base -w \$HOME/$dir/repo -e HOME=\$HOME/$dir/home \
+        -e CCACHE_DIR=\$HOME/$base/ccache -e EM_CACHE=\$HOME/$base/emcache $image bash -c $(printf %q "$1")"
+}
+
+sync() {
+    local commit="${1:-HEAD}" sha url diff=""
+    sha="$(git -C "$checkout" rev-parse "$commit^{commit}")"
+    url="$(git -C "$checkout" remote get-url origin)"
+    remote "mkdir -p ~/$base/ccache ~/$base/emcache ~/$dir/home && chmod 700 ~/$base && cd ~/$dir && \
+        { [ -d repo/.git ] || git clone -q $url repo; }"
+    # The commit and what it stands on that origin's main hasn't, as a bundle (none if origin has it all).
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    if git -C "$checkout" bundle create -q "$tmp/head.bundle" "$sha" --not origin/main 2> /dev/null; then
+        scp -q "$tmp/head.bundle" "helga:$dir/head.bundle"
+    fi
+    if [[ "$commit" == HEAD ]]; then
+        git -C "$checkout" diff HEAD --binary --ignore-submodules > "$tmp/work.diff"
+        [[ -s "$tmp/work.diff" ]] && scp -q "$tmp/work.diff" "helga:$dir/work.diff" && diff=1
+    fi
+    remote "set -e; cd ~/$dir; exec flock .lock bash -s" << EOF
+set -e
+cd repo
+git fetch -q origin
+[ -f ../head.bundle ] && git fetch -q ../head.bundle && rm ../head.bundle
+git checkout -q -f --detach $sha
+git clean -fdq
+[ -n "$diff" ] && git apply ../work.diff && rm ../work.diff
+# Submodules: the ones whose commit moved are reset (patches off) and updated; nested ones move once their parents
+# have, hence twice. One that didn't move keeps its files and their times, so ninja rebuilds nothing there.
+moved=\$(git submodule status | sed -n 's/^[-+][0-9a-f]* \([^ ]*\).*/\1/p')
+for sub in \$moved; do
+    if [ -e "\$sub/.git" ]; then
+        git -C "\$sub" submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
+        git -C "\$sub" reset -q --hard && git -C "\$sub" clean -fdq
+    fi
+done
+for i in 1 2; do git submodule sync -q --recursive; git submodule update -q --init --recursive; done
+if [ -f tools/apply_runtime_patches.sh ]; then
+    # A patch main has since edited makes the script stop before it touches anything: then all of them start over.
+    bash tools/apply_runtime_patches.sh > /dev/null 2>&1 || {
+        git submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
+        bash tools/apply_runtime_patches.sh > /dev/null; }
+fi
+git log --oneline -1
+EOF
+    local rom=roms/rush2049.us.recomp.z64
+    if [[ -f "$checkout/$rom" ]] &&
+        [[ "$(remote "sha1sum ~/$dir/repo/$rom 2> /dev/null | cut -c1-40")" != "$(sha1sum < "$checkout/$rom" | cut -c1-40)" ]]; then
+        remote "mkdir -p ~/$dir/repo/roms"
+        scp -q "$checkout/$rom" "helga:$dir/repo/$rom"
+    fi
+}
+
+case "$cmd" in
+sync) sync "$@" ;;
+run) in_image "$1" ;;
+web)
+    sync
+    in_image "set -e
+        bash tools/recompile.sh -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+        [ -f build-web/build.ninja ] || emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release > build-web.log 2>&1 ||
+            { tail -20 build-web.log; rm -f build-web/build.ninja; exit 1; }
+        ninja -C build-web -j $cpus ${1:-Rush2049Recompiled} > build-web/build.log 2>&1 ||
+            { grep -E ' error|FAILED|undefined' build-web/build.log | head -20; exit 1; }
+        tail -1 build-web/build.log"
+    ;;
+get)
+    mkdir -p "$2"
+    remote "cd ~/$dir/repo/$1 && find . -maxdepth 1 -type f ! -name '*.ninja*' ! -name '*.log' ! -name CMakeCache.txt \
+        ! -name '*.cmake' ! -name '.*' | tar cf - -T -" | tar xf - -C "$2"
+    ;;
+clean) remote "cd ~/$base && flock $name/.lock rm -rf $name" ;;
+*) sed -n 2,28p "$0"; exit 1 ;;
+esac
