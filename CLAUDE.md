@@ -567,7 +567,7 @@ What to know before changing it:
   host has cores (2-16). Cold in the game's page, Chrome 154 headless, RTX 2070, host 97-100% busy with other
   sessions (2026-10-12): all 105 took 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order),
   10.2-11.0 s largest first at 6, 6.3-7.2 s at 12, this host's cores; the 45 took 6.5-7 s with e839610 (6 at a time,
-  in list order) and W45C s with de43acc, and the other 60 were built 16-19 s after the game started. GoldenEye's page
+  in list order) and 4.1-5.4 s with de43acc (12 at a time, largest first; 0.2 s on the visits after), and the other 60 were built 16-19 s after the game started. GoldenEye's page
   waits 10 s for 34 of its 340 against 84-87 s for all of them (both before de43acc). Before rt64 25a65b7 halved
   them: 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s. Chrome keeps them for the next visit, if they fit: measured
   2026-10-12 (headless Chrome 154, host 100% busy

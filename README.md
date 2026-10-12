@@ -134,7 +134,7 @@ browser only shows a page its gamepads after that.
 The game's first start is a one-time setup: it holds its first frame under **Preparing graphics** and a progress bar
 while the browser builds the shaders the title screen and the first attract race draw with, a fast one for each
 effect, and it builds the rest while the game runs, before a menu or race needs them. In Chrome and Edge the setup
-takes about W45R seconds on a desktop with a graphics card and longer on a laptop's integrated graphics, and the browser
+takes about 5 seconds on a desktop with a graphics card and longer on a laptop's integrated graphics, and the browser
 keeps what it built, so after that the game starts straight away. The setup comes back after an update to the game,
 the browser or the graphics driver, or if the browser's cache is cleared, and for a while after one it can come back
 on every visit: the browser keeps only a few megabytes of these for all sites together, and the old ones can take
