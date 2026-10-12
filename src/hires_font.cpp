@@ -24,12 +24,13 @@
 // smooth upscale of the whole atlas reads across those edges: where one glyph's soft edge column meets the next
 // glyph's stem, the stem lands in the outer quarter of that column at full brightness, and the glyph's rectangle ends
 // there, so it shows as a thin line beside the letter (TRANSMISSION, AUTOMATIC, HANDLING in car select). So each glyph
-// is upscaled on its own, reading only its own texels, the edge ones repeated past it. Which texels are a glyph the
-// game says itself: the walk keeps every texel box a texture rectangle draws from an atlas, beside its texture in the
-// pack (<hash>.glyphs), and makes the texture again when a glyph turns up that it hasn't drawn before. A texel no
-// rectangle has drawn yet is upscaled with the whole atlas around it. The upscale also puts a faint strip into an
-// empty texel next to a full one, so a texel that is 0 in the atlas stays fully transparent in the pack: a vector
-// glyph covers none of it.
+// is upscaled on its own, reading only its own texels. Past its edge it reads as empty, so a soft edge column ends
+// crisply inside its texel rather than as a faint band; a solid edge texel is repeated instead, so pieces drawn side
+// by side (a meter drawn a column at a time) stay joined. Which texels are a glyph the game says itself: the walk keeps
+// every texel box a texture rectangle draws from an atlas, beside its texture in the pack (<hash>.glyphs), and makes
+// the texture again when a glyph turns up that it hasn't drawn before. A texel no rectangle has drawn yet is upscaled
+// with the whole atlas around it. The upscale also puts a faint strip into an empty texel next to a full one, so a
+// texel that is 0 in the atlas stays fully transparent in the pack: a vector glyph covers none of it.
 //
 // Hi-res title screen. The title screen's 320x220 picture is 35 copy-mode strips of an 8-bit colour-indexed texture.
 // An upscaled picture of it (4x, by Real-ESRGAN) is cut into those strips the same way: each strip the walk finds is
@@ -79,6 +80,11 @@ namespace {
 const char* const pack_version = "v4";
 constexpr int scale = 4;
 constexpr float contrast = 2.5f;
+// Glyphs kept for one texture, past which a new one no longer makes it again: text scrolled through a texture would
+// otherwise remake it every frame. A 96-texel atlas of 5-texel glyphs has a couple of hundred.
+constexpr size_t max_glyphs = 512;
+// An edge texel at least this much of the brightest is solid: repeated past its glyph's box rather than ended.
+constexpr float solid = 0.75f;
 
 constexpr uint32_t tmem_bytes = 4096;
 constexpr uint32_t rdram_bytes = (uint32_t)recomp::mem_size;
@@ -294,7 +300,7 @@ struct Rdp {
         Glyph glyph;
         if (texels != nullptr && glyph_box(tile, *texels, width, height, glyph)) {
             std::vector<Glyph>& glyphs = atlas_glyphs[hash];
-            if (std::find(glyphs.begin(), glyphs.end(), glyph) == glyphs.end()) {
+            if (glyphs.size() < max_glyphs && std::find(glyphs.begin(), glyphs.end(), glyph) == glyphs.end()) {
                 glyphs.push_back(glyph);
                 make = true;
             }
@@ -614,9 +620,9 @@ void Rdp::make_texture(uint64_t hash, uint32_t width, uint32_t height, const std
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
     uint8_t colour = (uint8_t)std::lround(peak * 255.0f);
     auto texel = [&](const Glyph& g, int x, int y) {
-        x = std::clamp(x, (int)g.x0, (int)g.x1 - 1);
-        y = std::clamp(y, (int)g.y0, (int)g.y1 - 1);
-        return src[y * width + x];
+        int cx = std::clamp(x, (int)g.x0, (int)g.x1 - 1), cy = std::clamp(y, (int)g.y0, (int)g.y1 - 1);
+        float v = src[cy * width + cx];
+        return (cx == x && cy == y) || v >= solid * peak ? v : 0.0f;
     };
     for (uint32_t oy = 0; oy < out_h; oy++) {
         float sy = (oy + 0.5f) / scale - 0.5f;
