@@ -261,9 +261,10 @@ force-pushes the page from here as the only commit on the orphan branch `gh-page
 2026-10-12 it built here, in a worktree beside the main checkout, `n64-recomp-publish`, which nothing uses now.
 
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
-each one's README: GoldenEye64Recomp-web and CBFD-Recompiled-web since 2026-10-12, built from main then. They are
-built on helga, in Docker (it has no compiler and no sudo), each fork's BUILDING.md steps with the ROM copied there,
-then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
+each one's README, all five since 2026-10-12, built from main then (Banjo's, Majora's Mask's and DK64's with their
+prebuilt shader lists, checked from Pages in headless Chrome to the game drawing). They are built on helga, in Docker
+(the `tools/helga/Dockerfile` image, with `EM_CACHE` set to a mounted folder in the build script, since emsdk's
+environment resets it), each fork's BUILDING.md steps with the ROM copied there, then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
 <name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
 `gh` is another account. A page published before a fork's change has merged doesn't have it; republish after.
 The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
