@@ -126,6 +126,10 @@ rt64 fcc6fe4           without it every draw uses the ubershader and no speciali
 rt64 0fa77cf           file_to_c, run in node at build time, linked at -O1 whatever the build's level
 plume f6d48d3          backgroundPipelineBuilds false on an Intel adapter too (plume_webgpu_device.js keeps its info);
 rt64 524a570           without specialized shaders no spec constant WGSL shaders at setup either
+N64Recomp 8038212      a tail call (a j or jr out of the function) written RECOMP_TAIL_CALL, a forced return_call
+                       with -mtail-call: wasm kept them calls, and Conker's chains of them overflowed the stack
+rt64 9e37a5b           a pass's color and depth targets grown until every pair matches: a target in two pairs could
+                       outgrow one partner, and WebGPU dropped the command buffer (as Conker's intro began)
 rt64 25a65b7           RasterPS on WebGPU without the slot switch around the native texel's address or the linear
                        samplers: each draw binds its tiles' linear samplers beside their textures; WGSL about half
 rt64 0034023           prebuilt shaders: a game's RT64_PREBUILT_SHADER_LIST specialized at build time
@@ -149,8 +153,8 @@ code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/bui
 `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
 SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570. ae2dbe9 moves
-N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which this
-game's code isn't compiled with yet, so it builds as before) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
+N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which both web
+builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
 which leaves this game's generated code as it was.
 
@@ -368,6 +372,17 @@ both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump t
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
 
+`amazingalek/CBFD-Recompiled-web` (branch `main`) is the sixth (2026-10-12): sciaschi's Conker's Bad Fur Day:
+Recompiled (MIT; its CONTRIBUTING.md welcomes AI-assisted work, but nothing has been offered to it). It keeps its
+tools as submodules in `tools/`, patched by `build.sh` from `recomp/*.patch`; on the fork they are the forks, with
+those patches rebased onto them, and `tools/N64Recomp-browser`. In headless Chrome: launcher, Add ROM, the intro, the
+bar, Conker walking outside it, sound. Its code runs TLB-mapped (`.game` at 0x15000000), and the host copies those
+pages to `rdram + vram + 0x80000000`, ~2.4 GB past RDRAM, inside the desktop's 4 GB reservation; on a page RDRAM is
+an allocation in the wasm heap, so `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with
+`-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar,
+which is what N64Recomp 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream
+resampling the game's rate to the page's. Render to RAM stays on (not tried off). The ROM is the US one.
+
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
 stays here: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
@@ -418,6 +433,9 @@ N64ModernRuntime-0003 and N64Recomp-0001:
   truncating float-to-int conversions round instead, and the attract race walks off RDRAM after 40 seconds.
 - Float to int out of range saturates in wasm and gives 0x80000000 on x86. Nothing has hit it yet.
 - RDRAM has no guard pages, so a stray access corrupts memory rather than faulting, unless it lands past the heap.
+- A tail call (a jump to another function) is a call and a return in the C, which the optimizer makes a jump natively
+  and wasm keeps a call: N64Recomp 8038212 forces a `return_call` with `-mtail-call`, which both web builds use. This
+  game never chained enough of them to notice; Conker's Bad Fur Day ran out of stack minutes in.
 
 Measured on 2026-10-10 (title screen and attract races, 60 retraces and 30 display lists a second wanted, HQ mix):
 
