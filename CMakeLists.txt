@@ -46,6 +46,15 @@ if (EMSCRIPTEN)
     # stays scalar, as it was before -msimd128.
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
+    # With ccache on PATH, emcc runs its clang through it (EM_COMPILER_WRAPPER, so the key is clang's own command and
+    # binary), and paths inside this checkout are made relative (CCACHE_BASEDIR), so a fresh build dir at the same place
+    # in another checkout, or after a move, reuses the objects instead of compiling them again (README).
+    find_program(CCACHE_PROGRAM ccache)
+    if (CCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER
+            ${CMAKE_COMMAND} -E env EM_COMPILER_WRAPPER=${CCACHE_PROGRAM} CCACHE_BASEDIR=${CMAKE_SOURCE_DIR})
+        set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_C_COMPILER_LAUNCHER})
+    endif()
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
 endif()
