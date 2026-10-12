@@ -22,7 +22,8 @@ works for every N64 recomp, not just this one, and lives in a project of its own
 [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
 of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
 Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com/amazingalek/Zelda64Recomp-web) (not
-made by the Zelda 64: Recompiled team).
+made by the Zelda 64: Recompiled team), and Donkey Kong 64: Recompiled, in
+[Donkey-Kong-64-Recompiled-web](https://github.com/amazingalek/Donkey-Kong-64-Recompiled-web) (not made by its team).
 
 ## Modern enhancements
 
