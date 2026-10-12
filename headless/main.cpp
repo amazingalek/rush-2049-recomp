@@ -313,17 +313,15 @@ int main(int argc, char** argv) {
         .message_box = [](const char* message) { fprintf(stderr, "[headless] %s\n", message); },
     };
 
-    recomp::start(
-        {},
-        {},
-        rsp_callbacks,
-        renderer_callbacks,
-        audio_callbacks,
-        input_callbacks,
-        gfx_callbacks,
-        thread_callbacks,
-        error_handling_callbacks,
-        ultramodern::threads::callbacks_t{ .get_game_thread_name = rush2049::game_thread_name }
-    );
+    recomp::start({
+        .rsp_callbacks = rsp_callbacks,
+        .renderer_callbacks = renderer_callbacks,
+        .audio_callbacks = audio_callbacks,
+        .input_callbacks = input_callbacks,
+        .gfx_callbacks = gfx_callbacks,
+        .events_callbacks = thread_callbacks,
+        .error_handling_callbacks = error_handling_callbacks,
+        .threads_callbacks = { .get_game_thread_name = rush2049::game_thread_name },
+    });
     return EXIT_SUCCESS;
 }
