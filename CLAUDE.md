@@ -160,8 +160,8 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - The desktop is 3840x2160 at 59 Hz (`Win32_VideoController.CurrentRefreshRate`) since 2026-10-12. Until then Windows
   drove the monitor (a Philips BDM4065 on DisplayPort) at 29 Hz, so measurements from before that date that mention
   the display's rate, presented frames or interpolation were taken at 30 frames a second.
-- Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
-  (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
+- Other games' ROMs, to try the web support on another recomp: the folder is named in the user's own
+  `~/.claude/CLAUDE.md`, and never in this repo. Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
@@ -215,6 +215,11 @@ clean checkout of `origin/main` with a full setup: `bash tools/release.sh` (`--d
 only). It builds Release in `build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
 and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
 no ROM.
+
+The web page (https://amazingalek.github.io/rush-2049-recomp/, the repo is public) is published the same way, after
+a change to the game or the web side has merged: `bash tools/publish_page.sh` (emsdk on `PATH` as in The web target;
+`--dry-run` builds and stages it in `out/page` only, to serve and try first). It builds in `build-web/` and
+force-pushes the page as the only commit on the orphan branch `gh-pages`, which Pages serves.
 
 ## Developer flags
 
@@ -555,7 +560,6 @@ without the two headers through `coi_serviceworker.js`. What to know:
 
 **Still to do, each its own card:**
 
-- Publishing the page (GitHub Pages).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods a player adds stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
