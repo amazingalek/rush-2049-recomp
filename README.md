@@ -124,7 +124,9 @@ same storage, written back every couple of seconds and when you leave the page. 
 browser removes all of it.
 
 What differs from the desktop build: no mods, no MSAA and no HDR output. The launcher has no Mods or Exit: close
-the tab to leave. The keyboard works as below, and
+the tab to leave. In Firefox, and on Intel graphics (the built-in GPU of most laptops), the page draws everything with
+one general shader rather than preparing a faster one for each effect as it goes, since preparing them stalled the
+page there for minutes. The keyboard works as below, and
 gamepads the browser knows the layout of (it calls them standard, as it does Xbox and PlayStation pads) use the same
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
