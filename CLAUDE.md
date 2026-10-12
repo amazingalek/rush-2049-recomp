@@ -399,7 +399,7 @@ both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump t
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
 Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), ~85 s
-under "Preparing graphics" on every visit in Chrome, warm or cold. Unlike Rush 2049 every level adds dozens (26
+under "Preparing graphics" on every visit in Chrome, warm or cold: they don't fit its cache (Step 2). Unlike Rush 2049 every level adds dozens (26
 combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
 level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
 10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
@@ -556,8 +556,18 @@ What to know before changing it:
   `Module.arguments` for split screen); add the new ones to the list. 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
   13-18 s on the bare test page (2026-10-12, RTX 2070, 6 at a time, host 94-100% busy with other sessions); Chrome's
   GPU process compiles them on the CPU, 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s (before rt64 25a65b7 halved
-  them). Chrome's pipeline cache (`DawnWebGPUCache`, ~21 MB) can't hold them, so the wait comes on every visit; one
-  shader alone was cached from the third. Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
+  them). Chrome keeps them for the next visit, if they fit: measured 2026-10-12 (headless Chrome 154, host 100% busy
+  with other sessions), Rush 2049's 105 took 16.5 s on the first visit and 0.6-0.7 s on each later one, GoldenEye's 340
+  83, 70 and 69 s. The cache (`DawnWebGPUCache` in the profile) is one per profile for every site, 6 MB
+  (`GetDefaultGpuDiskCacheSize`), and the GPU process reads it into a memory cache of 6 MB when it starts, so only
+  that much can hit. Dawn keeps the parse, each stage's DXIL and the D3D12 pipeline (PSO) of each: about 4 MB for
+  Rush 2049's (its big entries 27 KB a pipeline), 16 MB for GoldenEye's (41 KB). A second set of keys, which a Chrome
+  or driver update makes (tried with `--enable-dawn-features=disable_symbol_renaming`), missed twice in a row while the
+  old set still hit: after an update the wait can come on every visit again. A page can't change any of it: WebGPU
+  gives it no pipeline binaries to keep in IndexedDB, and `--gpu-disk-cache-size-kb` only grows the disk side. To
+  measure it, start a new `--user-data-dir` once on the launcher before the cold visit: a profile's first run stores
+  nothing that hits later, and one whose first run built the shaders never hit at all (why this said, until then,
+  that the wait came on every visit). Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
   bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
   page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
   yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
