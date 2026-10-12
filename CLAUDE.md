@@ -124,6 +124,8 @@ rt64 551f33e           the RSP's vertex Z test picked its multisampled shader fo
 plume 9c69058          backgroundPipelineBuilds, false in Firefox, whose GPU process builds an async pipeline in line;
 rt64 fcc6fe4           without it every draw uses the ubershader and no specialized shader is built
 rt64 0fa77cf           file_to_c, run in node at build time, linked at -O1 whatever the build's level
+plume f6d48d3          backgroundPipelineBuilds false on an Intel adapter too (plume_webgpu_device.js keeps its info);
+rt64 524a570           without specialized shaders no spec constant WGSL shaders at setup either
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -135,7 +137,7 @@ N64Recomp-browser 035f224 moves N64ModernRuntime to 456e025 for N64Recomp 9eb59c
 code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/build_speed.cmake` (ccache) and
 `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
-SDL's queue, and the page's notice about integrated Intel graphics.
+SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -268,7 +270,8 @@ VI pass (it scales with the window instead) and about 50k of compute and uploads
 measured here. On a laptop (2026-10-12: Intel UHD, Tiger Lake, beside an RTX A3000; 1920x1080 at 2x scale) Chrome 155
 gave the page the Intel chip, since Chrome on Windows ignores `powerPreference` (crbug.com/369219127): ~1 fps for
 minutes in menus and 20-30 fps in races until the specialized pipelines were built, then close to 60. With
-`chrome://flags/#force-high-performance-gpu` on the RTX it played well from the start.
+`chrome://flags/#force-high-performance-gpu` on the RTX it played well from the start. Since then no specialized
+pipelines are built on an Intel adapter (Step 2).
 
 ## Testing in the game
 
@@ -449,6 +452,13 @@ What to know before changing it:
   9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
   2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
   ubershader's (above).
+- Chrome on an Intel adapter stalls the same way: the laptop under Where a frame goes (UHD Graphics on D3D12, a canvas
+  of about 960x500, so Auto at 1x-2x and the drawing cheap) crawled until its specialized pipelines were built, and its
+  RTX A3000, same CPU and an empty cache, played at once. So Intel's driver compiler is what stalls, and
+  RT64 builds none on any Intel adapter either (plume f6d48d3, rt64 524a570, `adapter.info.vendor`). Checked here
+  only by reporting the adapter as Intel to the page (a CDP script overriding `GPUAdapter.prototype.info`): the
+  console says so, and the title and attract races draw. Not yet measured on the laptop. The canvas is CSS-sized, not
+  device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back

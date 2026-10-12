@@ -130,8 +130,9 @@ bindings, with rumble where the browser supports it (Chrome and Edge). Press a b
 browser only shows a page its gamepads after that.
 
 On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
-one the browser itself uses, usually the integrated one, whatever the page asks for, and there the game crawls for its
-first minutes and runs slowly after. The page says so when it finds integrated Intel graphics: open
+one the browser itself uses, usually the integrated one, whatever the page asks for. On Intel graphics, and in Firefox,
+the page draws everything with one general shader rather than preparing a faster one for each effect as it goes, since
+preparing them stalled it there for minutes; a graphics card still runs it better. The page says so when it finds integrated Intel graphics: open
 `chrome://flags/#force-high-performance-gpu` (`edge://` in Edge), set it to Enabled and relaunch the browser.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
