@@ -133,7 +133,7 @@ browser only shows a page its gamepads after that.
 
 In Chrome and Edge the game's first start is a one-time setup: it holds its first frame under **Preparing graphics**
 and a progress bar while the browser builds the shaders the game draws with, a fast one for each effect, so that no
-menu or race waits for one later. It takes 15-20 seconds on a desktop with a graphics card and longer on a laptop's
+menu or race waits for one later. It takes about 10 seconds on a desktop with a graphics card and longer on a laptop's
 integrated graphics. The browser keeps them, so after that the game starts straight away; the setup comes back only
 after an update to the game, the browser or the graphics driver, or if the browser's cache is cleared. Firefox skips it and draws
 everything with one general shader instead, since building them there stalls the page; that shader is slow on weak

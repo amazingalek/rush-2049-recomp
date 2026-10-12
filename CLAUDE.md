@@ -137,6 +137,8 @@ rt64 0034023           prebuilt shaders: a game's RT64_PREBUILT_SHADER_LIST spec
                        to the page (Module.rt64ShaderProgress); ?record-shaders prints what the game asks for
 plume 90bb27d          background pipeline builds on an Intel adapter again (f6d48d3 undone: it was the ubershader
 rt64 ada5231           that crawled there, not the builds)
+rt64 RT64SHA           prebuilt shaders largest first, as many at once as the host has cores, the progress by WGSL
+                       size with those in flight counted half done
 N64Recomp 9aabea3      a jump table outside its function's section read from the section that holds it, not at the
                        function's ROM offset (GoldenEye keeps them all in a .rodata of their own)
 N64Recomp ec0748e      a function the config renames is renamed in a patch's calls to it too (GoldenEye's patches call
@@ -156,7 +158,8 @@ SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 name
 N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which both web
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
-which leaves this game's generated code as it was.
+which leaves this game's generated code as it was. NRBSHA moves rt64 to RT64SHA and makes the shell's bar a one-time
+setup panel with the time left.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -510,18 +513,28 @@ What to know before changing it:
   ubershader alone (plume f6d48d3, since undone) it still crawled, and at Resolution Original it ran well. The canvas
   is CSS-sized, not device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
-  recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
-  time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
+  recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build time
+  (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
   graphics" bar until they are built. Not in Firefox, which builds none. Recording again: the page prints an
   `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
-  `Module.arguments` for split screen); add the new ones to the list. 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
-  13-18 s on the bare test page (2026-10-12, RTX 2070, 6 at a time, host 94-100% busy with other sessions); Chrome's
-  GPU process compiles them on the CPU, 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s (before rt64 25a65b7 halved
-  them). Chrome's pipeline cache (`DawnWebGPUCache`, ~21 MB) can't hold them, so the wait comes on every visit; one
-  shader alone was cached from the third. Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
-  bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
-  page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
-  yet measured on the laptop.
+  `Module.arguments` for split screen); add the new ones to the list. Chrome's GPU process compiles them on the CPU,
+  so rt64 RT64SHA builds the largest first (WGSL size goes with build time) and as many at once as the host has cores
+  (2-16). 105 shaders cold in the game's page, Chrome 154 headless, interleaved (2026-10-12, RTX 2070, host 100% busy
+  with other sessions): 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order), 10.2-11.0 s largest first
+  at 6, 6.9-7.2 s at 12, this host's cores. Before rt64 25a65b7 halved them: 1 at a time 118 s, 3 55 s, 12 34.5 s.
+  Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB, bigger than the 291 KB ubershader:
+  specialized, the loops unroll). Checked with the adapter reported as Intel to the page (a CDP script overriding
+  `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not yet measured on the laptop.
+- Chrome keeps them, so the wait is one-time: in a profile Chrome had been launched in before, the visit after the
+  cold one built all 105 in 0.4 s, and so did every one after. Its cache is per site, 6 MB of memory in the GPU
+  process (`kDefaultMaxProgramCacheMemoryBytes`), filled from the profile's `DawnWebGPUCache` (the bytes it holds are
+  the int64 at offset 48 of its `index`, the entries the int32 at 8). This game's 105 took 5.59 MB of it: a list past
+  6 MB would lose its least recently used and build again on every visit, so check the figure when the list grows. Two
+  things read as a miss that isn't one: the first launch of a fresh `--user-data-dir` caches under keys later launches
+  don't look for, and Chrome killed before it has closed loses what it wrote (close it with `Browser.close` and wait
+  for the process to end). So: launch the profile once with nothing, then the cold visit, then the warm ones. The page
+  shows its panel ("one-time setup", the bar, the time left by WGSL size) only after a second, so a warm visit shows
+  nothing.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
