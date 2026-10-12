@@ -263,7 +263,9 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 - The forks, each with a `web` branch: the commit upstream pins, plus the web support one commit per change (table
   in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web` and its `src/contrib/hlslpp`
   `hlslpp-web`), `N64ModernRuntime-web` (its `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. They stay
-  forks: upstream takes no LLM-written code (Rules).
+  forks: upstream takes no LLM-written code (Rules). Each one's README opens with a banner, and its GitHub
+  description with "AI-written fork:", saying it is AI-written, not upstream's, and offered to nobody upstream (hlslpp
+  has no ban, so hlslpp-web's says only the first two); keep that true of a new fork.
 - `recomp-web`, the submodule `lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
   a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
   page), `tests/` (the plume device thread test, `hlslpp_wasm_test.cpp`, `wgsl_check.mjs`, and `build/`, every
@@ -301,7 +303,8 @@ of its own in your scratch directory:
    game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
    change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
-   N64ModernRuntime-web: commit and push that too.
+   N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
+   are SHAs, so a fork's `web` may sit ahead of what `forks.txt` names.
 3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
    for its CI: `gh run list -R amazingalek/recomp-web`.
 4. Here, move the submodules and `lib/recomp-web` to those commits, rerun the patch script (rebase a game
