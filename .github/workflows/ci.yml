@@ -79,6 +79,10 @@ jobs:
     timeout-minutes: 90
     env:
       SCCACHE_GHA_ENABLED: "true"
+      # A new value starts sccache's entries afresh. clang-cl's cached /showIncludes output names headers by absolute
+      # path, so entries compiled before the game moved out of rush2049/ (2026-10-11) gave ninja deps that don't
+      # exist, and every run rebuilt those 166 objects. Change it (and the build cache's prefix) if the tree moves again.
+      SCCACHE_GHA_VERSION: "2"
     steps:
       # Not actions/checkout: its cleanup walks every submodule the cache restored, ~15 s on Windows.
       - name: Checkout
@@ -93,7 +97,7 @@ jobs:
         id: key
         shell: bash
         run: |
-          prefix="build-v4-$ImageOS-"
+          prefix="build-v5-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "key=$prefix$ImageVersion-$(git ls-tree HEAD lib | git hash-object --stdin)-${{ hashFiles('runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
@@ -151,9 +155,6 @@ jobs:
       - name: Configure again before a build that gets cached
         if: steps.cache.outputs.cache-hit != 'true'
         run: cmake build
-      - name: DEBUG explain
-        shell: bash
-        run: ninja -C build -n -d explain librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -60
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -210,12 +211,22 @@ jobs:
           exit 1
       - name: Apply runtime patches
         run: bash tools/apply_runtime_patches.sh
-      - name: DEBUG preinstalled
-        run: dpkg -l clang lld libsdl2-dev libgtk-3-dev libfreetype-dev 2>&1 | tail -8; ls /var/lib/man-db
+      # The packages' .debs are cached per runner image: the mirror sends them at ~1 MB/s (20 MB, ~18 s). Installed
+      # without an apt-get update when every one is in the cache, and as before when one isn't.
+      - uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          key: apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-1
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang lld libsdl2-dev libgtk-3-dev libfreetype-dev
+          pkgs="clang lld libsdl2-dev libgtk-3-dev libfreetype-dev"
+          mkdir -p ~/apt-archives
+          sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          sudo apt-get install -y --no-install-recommends --no-download $pkgs || {
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends $pkgs
+          }
+          cp /var/cache/apt/archives/*.deb ~/apt-archives/
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: "~3.31.0"
