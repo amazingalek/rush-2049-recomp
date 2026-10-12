@@ -151,6 +151,9 @@ jobs:
       - name: Configure again before a build that gets cached
         if: steps.cache.outputs.cache-hit != 'true'
         run: cmake build
+      - name: DEBUG explain
+        shell: bash
+        run: ninja -C build -n -d explain librecomp ultramodern rt64 recompui recompinput nfd 2>&1 | head -60
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -207,6 +210,8 @@ jobs:
           exit 1
       - name: Apply runtime patches
         run: bash tools/apply_runtime_patches.sh
+      - name: DEBUG preinstalled
+        run: dpkg -l clang lld libsdl2-dev libgtk-3-dev libfreetype-dev 2>&1 | tail -8; ls /var/lib/man-db
       - name: Install dependencies
         run: |
           sudo apt-get update
