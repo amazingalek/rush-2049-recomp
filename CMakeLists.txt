@@ -46,19 +46,8 @@ if (EMSCRIPTEN)
     # stays scalar, as it was before -msimd128.
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
-    # With ccache on PATH, every compile goes through it, so a hit never starts emcc (its Python costs about a second a
-    # file). Paths inside this checkout are made relative (CCACHE_BASEDIR), so a fresh build dir at the same place in
-    # another checkout, or after a move, reuses the objects (README). em++.exe is a launcher that stays the same from one
-    # Emscripten to the next, so the version is the compiler's identity. Depend mode reads what a file included from
-    # the compile's own .d file instead of running emcc a second time to preprocess it.
-    find_program(CCACHE_PROGRAM ccache)
-    if (CCACHE_PROGRAM)
-        set(CMAKE_C_COMPILER_LAUNCHER ${CMAKE_COMMAND} -E env CCACHE_BASEDIR=${CMAKE_SOURCE_DIR}
-            CCACHE_COMPILERCHECK=string:${EMSCRIPTEN_VERSION} CCACHE_DEPEND=1 ${CCACHE_PROGRAM})
-        set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_C_COMPILER_LAUNCHER})
-        # RmlUi's precompiled header: ccache won't cache what includes one, and it holds absolute paths anyway.
-        set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
-    endif()
+    # ccache when it is on PATH (README, "Building the page").
+    include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
 endif()
@@ -305,12 +294,6 @@ if (EMSCRIPTEN)
     target_link_options(Rush2049Recompiled PRIVATE
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets@/assets"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/recompcontrollerdb.txt@/recompcontrollerdb.txt")
-    # For a build to try something: the page is linked at -O1, where Binaryen's wasm-opt doesn't optimize the whole
-    # module, which takes most of a link at -O3 (1.5-3 minutes on one core). The code is still compiled at -O3.
-    option(RUSH2049_WEB_FAST_LINK "Link the page without wasm-opt's optimizations (test builds)" OFF)
-    if (RUSH2049_WEB_FAST_LINK)
-        target_link_options(Rush2049Recompiled PRIVATE -O1)
-    endif()
 else()
     target_link_libraries(Rush2049Recompiled PRIVATE nfd)
 endif()
