@@ -119,9 +119,11 @@ plume ba97511          the browser's animation frames timed for the display's ra
 rt64 d92a792           taken by RT64, so the Display frame rate interpolates on a page (before, the rate was 0)
 rt64 551f33e           the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU
                        dropped every command buffer that tested a flare
+plume 9c69058          backgroundPipelineBuilds, false in Firefox, whose GPU process builds an async pipeline in line;
+rt64 fcc6fe4           without it every draw uses the ubershader and no specialized shader is built
 ```
 
-Not pinned here yet, recomp-web 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
+Pinned here since recomp-web 033134c, which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
 on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would only gain the line) and OfflineModRecomp
 `--static` writes a mod as C to link in; N64ModernRuntime 7bb2ee1 runs a built-in mod from that code
 (`register_precompiled_mod`) and its replacements and hooks as those redirects; recomp-web's `worker_alert.js` turns an
@@ -151,9 +153,9 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
 - RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
-- The desktop is 3840x2160 at **30 Hz**: the monitor is a 60 Hz one, but Windows drives it at 29 Hz (`EnumDisplaySettings`,
-  2026-10-11). So Framerate Display presents 30 frames a second while the game renders 60, and interpolation can't be
-  seen or measured here.
+- The desktop is 3840x2160 at 59 Hz (`Win32_VideoController.CurrentRefreshRate`) since 2026-10-12. Until then Windows
+  drove the monitor (a Philips BDM4065 on DisplayPort) at 29 Hz, so measurements from before that date that mention
+  the display's rate, presented frames or interpolation were taken at 30 frames a second.
 - Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
   (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
@@ -288,9 +290,9 @@ it is on recomp-web main's forks (19ef581), with no externs header, and `recomp:
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web 6b67064's forks (v0.4.0's, pinned here, plus the built-in mods). In headless Chrome: launcher, Load ROM, the attract demo, title, file
-select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
-headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
+RecompFrontend), on recomp-web 6b67064's forks (v0.4.0's plus the built-in mods; this repo pins 033134c, those and the Firefox pipeline change). In headless Chrome: launcher, Load ROM, the attract demo, title, file
+select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here
+then: headless Chrome's animation frames follow the desktop's rate, so a page here presented no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
 time and linked in (its icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md
 names (the page takes the plain one).
@@ -407,6 +409,13 @@ What to know before changing it:
   boot ran at 17-20 display lists a second for ~10 s and about one run in fifteen froze for good. One compilation
   thread: six at once took ~9 cores and halved the frame rate. The wasm grows from 7.3 to 16.6 MB (the spec
   constant shaders).
+- Firefox (157, Windows) builds a `createRenderPipelineAsync` pipeline on its GPU process in line with the device's
+  other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
+  Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
+  shader they use had been built. So in Firefox RT64 builds none and draws everything with the ubershader (plume
+  9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
+  2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
+  ubershader's (above).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
