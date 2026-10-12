@@ -223,9 +223,11 @@ and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes 
 no ROM.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/, the repo is public) is published the same way, after
-a change to the game or the web side has merged: `bash tools/publish_page.sh` (emsdk on `PATH` as in The web target;
-`--dry-run` builds and stages it in `out/page` only, to serve and try first). It builds in `build-web/` and
-force-pushes the page as the only commit on the orphan branch `gh-pages`, which Pages serves.
+a change to the game or the web side has merged: `bash tools/publish_page.sh` from any set-up checkout (emsdk on `PATH`
+as in The web target; `--dry-run` builds and stages it only, to serve and try first). It builds origin/main in a
+worktree of its own kept beside the main checkout, `n64-recomp-publish` (made the first time, with its `build-web/`),
+so a republish rebuilds only what changed, and force-pushes the page as the only commit on the orphan branch
+`gh-pages`, which Pages serves. Don't build or edit in that worktree either.
 
 ## Developer flags
 
