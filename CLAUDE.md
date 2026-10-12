@@ -119,6 +119,8 @@ plume ba97511          the browser's animation frames timed for the display's ra
 rt64 d92a792           taken by RT64, so the Display frame rate interpolates on a page (before, the rate was 0)
 rt64 551f33e           the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU
                        dropped every command buffer that tested a flare
+plume 9c69058          backgroundPipelineBuilds, false in Firefox, whose GPU process builds an async pipeline in line;
+rt64 fcc6fe4           without it every draw uses the ubershader and no specialized shader is built
 ```
 
 `runtime-patches/`, this game's, on top of the forks:
@@ -400,6 +402,13 @@ What to know before changing it:
   boot ran at 17-20 display lists a second for ~10 s and about one run in fifteen froze for good. One compilation
   thread: six at once took ~9 cores and halved the frame rate. The wasm grows from 7.3 to 16.6 MB (the spec
   constant shaders).
+- Firefox (157, Windows) builds a `createRenderPipelineAsync` pipeline on its GPU process in line with the device's
+  other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
+  Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
+  shader they use had been built. So in Firefox RT64 builds none and draws everything with the ubershader (plume
+  9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
+  2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
+  ubershader's (above).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
