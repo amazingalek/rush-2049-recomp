@@ -185,6 +185,7 @@ jobs:
           prefix="build-v4-$ImageOS-"
           echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
           echo "key=$prefix$ImageVersion-$(git ls-tree HEAD lib | git hash-object --stdin)-${{ hashFiles('runtime-patches/*.patch') }}" >> "$GITHUB_OUTPUT"
+          echo "apt=apt-$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: cache
         with:
@@ -211,22 +212,20 @@ jobs:
           exit 1
       - name: Apply runtime patches
         run: bash tools/apply_runtime_patches.sh
-      # The packages' .debs are cached per runner image: the mirror sends them at ~1 MB/s (20 MB, ~18 s). Installed
-      # without an apt-get update when every one is in the cache, and as before when one isn't.
+      # The .debs apt installed are cached per runner image and installed with dpkg: the mirror can send them at ~1 MB/s
+      # (20 MB, ~18 s), and apt-get update takes another ~8 s. On the same image they are the same set apt would pick.
       - uses: actions/cache@v4
         with:
           path: ~/apt-archives
-          key: apt-${{ env.ImageOS }}-${{ env.ImageVersion }}-1
+          key: ${{ steps.key.outputs.apt }}
       - name: Install dependencies
         run: |
           pkgs="clang lld libsdl2-dev libgtk-3-dev libfreetype-dev"
-          mkdir -p ~/apt-archives
-          sudo cp ~/apt-archives/*.deb /var/cache/apt/archives/ 2>/dev/null || true
-          sudo apt-get install -y --no-install-recommends --no-download $pkgs || {
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends $pkgs
-          }
-          cp /var/cache/apt/archives/*.deb ~/apt-archives/
+          if ls ~/apt-archives/*.deb > /dev/null 2>&1 && sudo dpkg -i ~/apt-archives/*.deb > /dev/null &&
+              dpkg -s $pkgs > /dev/null; then exit 0; fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $pkgs
+          mkdir -p ~/apt-archives && cp /var/cache/apt/archives/*.deb ~/apt-archives/
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: "~3.31.0"
