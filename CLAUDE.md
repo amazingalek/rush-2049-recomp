@@ -133,6 +133,10 @@ rt64 0034023           prebuilt shaders: a game's RT64_PREBUILT_SHADER_LIST spec
                        to the page (Module.rt64ShaderProgress); ?record-shaders prints what the game asks for
 plume 90bb27d          background pipeline builds on an Intel adapter again (f6d48d3 undone: it was the ubershader
 rt64 ada5231           that crawled there, not the builds)
+N64Recomp 9aabea3      a jump table outside its function's section read from the section that holds it, not at the
+                       function's ROM offset (GoldenEye keeps them all in a .rodata of their own)
+N64Recomp ec0748e      a function the config renames is renamed in a patch's calls to it too (GoldenEye's patches call
+                       its strtol, which clashes with the C library's and must become strtol_recomp)
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -147,7 +151,8 @@ code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/bui
 SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570. ae2dbe9 moves
 N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which this
 game's code isn't compiled with yet, so it builds as before) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
-"Preparing graphics" bar to the shell.
+"Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
+which leaves this game's generated code as it was.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -321,7 +326,7 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
-All three are on N64Recomp-browser da0b835 and its forks (v0.8.0's: not yet a5904a9's rt64 and plume, which build no
+Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser da0b835 and its forks (v0.8.0's: not yet a5904a9's rt64 and plume, which build no
 specialized pipelines on an Intel adapter), and include its `frontend/build_speed.cmake`: their BUILDING.md says to
 keep `build-web` inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h`
 on Emscripten, as this game's does (2026-10-12, headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's
@@ -350,6 +355,17 @@ Its hooks and patches called C functions whose signatures didn't match the call,
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on
 (its code reads its framebuffers; not tried off). The ROM is the US 1.0 (`Donkey_Kong_64-USA-AGS` on D:), decompressed
 with the DK64 decomp's `tools/generate_decompressed_rom.py` for building.
+
+`amazingalek/GoldenEye64Recomp-web` (branch `main`) is the fifth (2026-10-12): GoldenEye 007, from cblock85's
+GoldenEye64Recomp (itself from kholdfuzion's GoldenRecomp), which ran on neither RecompFrontend nor these forks, moved
+onto both, on N64Recomp-browser c2ee9ae's forks, compiled with `-mtail-call`. In headless Chrome: launcher, Load ROM,
+the gun-barrel intro, the credits, mission select, Dam walked on the keyboard, sound, 60 retraces a second; natively
+the intro and attract demo. The code is recompiled from the "TLBFREE" ROM, which its BUILDING.md makes from the retail
+dump with an xdelta; the program takes the retail dump and converts it in memory in `on_init_callback`. What porting it
+found: its own strtol, strncmp, acos and others clash with funcs.h's C library declarations, so they are `renamed` in
+both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another section
+(9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
+s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
