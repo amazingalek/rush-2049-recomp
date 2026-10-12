@@ -13,11 +13,11 @@ six race tracks race to the results screen, two- and four-player split screen re
 survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
 one pad.
 
-**In a browser: it runs, not yet published.** The same game builds as a web page (see **In a browser** below), with
-the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
-uploaded. It plays the title screen, the menus and races in Chrome at close to 60 frames a second, as the desktop
-build does, and the title and demo races in Firefox. It isn't hosted anywhere yet, so for now you build it and
-serve it yourself. The web support
+**In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
+builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
+ROM picked from disk and kept in the browser, never uploaded. It plays the title screen, the menus and races in
+Chrome at close to 60 frames a second, as the desktop build does, and the title and demo races in Firefox. The web
+support
 works for every N64 recomp, not just this one, and lives in a project of its own,
 [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
 of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
@@ -116,7 +116,7 @@ otherwise pick it with Load ROM.
 
 ## In a browser
 
-The page needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
+The page is at **https://amazingalek.github.io/rush-2049-recomp/**. It needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
 newer on Windows (Safari hasn't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
 does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
 asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Controller Pak saves are kept in the
