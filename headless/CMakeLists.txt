@@ -37,10 +37,10 @@ endif()
 
 add_library(RecompiledFuncs STATIC)
 target_compile_options(RecompiledFuncs PRIVATE -fno-strict-aliasing -Wno-unused-variable)
-# A call to an undeclared function links to a trap in WebAssembly (recompiled_externs.h), so it is an error there.
+# A call to an undeclared function links to a trap in WebAssembly, so it is an error there (N64Recomp's funcs.h declares
+# every function the recompiled code calls).
 if (EMSCRIPTEN)
-    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration
-        -include ${CMAKE_CURRENT_SOURCE_DIR}/recompiled_externs.h)
+    target_compile_options(RecompiledFuncs PRIVATE -Werror=implicit-function-declaration)
 else()
     target_compile_options(RecompiledFuncs PRIVATE -Wno-implicit-function-declaration)
 endif()
