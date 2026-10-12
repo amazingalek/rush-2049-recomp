@@ -111,16 +111,17 @@ RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chai
 rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
                        int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
-                       ignored functions, reference symbols (8eb7338: recomp_trigger_event for a patches library's
-                       own events, not pinned here yet: no patches here trigger one)
+                       ignored functions, reference symbols
+N64Recomp 8eb7338      recomp_trigger_event declared for a patches library's own events (no patches here trigger one)
+every fork             upstream merged in at the commits Zelda64Recomp's `recomp-frontend` branch pins: the runtime's
+                       recomp::start takes a recomp::Configuration, with a MessageQueueControl (defaults as before)
+plume ba97511          the browser's animation frames timed for the display's rate, reported as displayTiming;
+rt64 d92a792           taken by RT64, so the Display frame rate interpolates on a page (before, the rate was 0)
+rt64 551f33e           the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU
+                       dropped every command buffer that tested a flare
 ```
 
-Not pinned here yet (recomp-web main after v0.3.0, rt64-web 551f33e): upstream merged into every fork at the commits
-Zelda64Recomp's `recomp-frontend` branch pins (the runtime's `recomp::Configuration` among them); plume ba97511 times
-the browser's animation frames for the display's rate and reports displayTiming, and rt64 d92a792 takes it, so the
-Display frame rate interpolates on a page (before, the window's rate was 0 and nothing was interpolated); rt64 551f33e:
-the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU dropped every command
-buffer that tested a flare. Nor recomp-web 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
+Not pinned here yet, recomp-web 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
 on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would only gain the line) and OfflineModRecomp
 `--static` writes a mod as C to link in; N64ModernRuntime 7bb2ee1 runs a built-in mod from that code
 (`register_precompiled_mod`) and its replacements and hooks as those redirects; recomp-web's `worker_alert.js` turns an
@@ -268,7 +269,9 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 - The forks, each with a `web` branch: the commit upstream pins, plus the web support one commit per change (table
   in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web` and its `src/contrib/hlslpp`
   `hlslpp-web`), `N64ModernRuntime-web` (its `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. They stay
-  forks: upstream takes no LLM-written code (Rules).
+  forks: upstream takes no LLM-written code (Rules). Each one's README opens with a banner, and its GitHub
+  description with "AI-written fork:", saying it is AI-written, not upstream's, and offered to nobody upstream (hlslpp
+  has no ban, so hlslpp-web's says only the first two); keep that true of a new fork.
 - `recomp-web`, the submodule `lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
   a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
   page), `tests/` (the plume device thread test, `hlslpp_wasm_test.cpp`, `wgsl_check.mjs`, and `build/`, every
@@ -279,11 +282,13 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
   (CI's checks job compares them), with `runtime-patches/` on top.
 
 `amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
-second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Its README
+second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
+it is on recomp-web main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
+`recomp::Configuration` (`requeue_pi` kept on, as the runtime did before). Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web main's forks. In headless Chrome: launcher, Load ROM, the attract demo, title, file
+RecompFrontend), on recomp-web 6b67064's forks (v0.4.0's, pinned here, plus the built-in mods). In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
 headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
@@ -305,7 +310,8 @@ of its own in your scratch directory:
    game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
    change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
-   N64ModernRuntime-web: commit and push that too.
+   N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
+   are SHAs, so a fork's `web` may sit ahead of what `forks.txt` names.
 3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
    for its CI: `gh run list -R amazingalek/recomp-web`.
 4. Here, move the submodules and `lib/recomp-web` to those commits, rerun the patch script (rebase a game
