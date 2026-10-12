@@ -123,6 +123,7 @@ rt64 551f33e           the RSP's vertex Z test picked its multisampled shader fo
                        dropped every command buffer that tested a flare
 plume 9c69058          backgroundPipelineBuilds, false in Firefox, whose GPU process builds an async pipeline in line;
 rt64 fcc6fe4           without it every draw uses the ubershader and no specialized shader is built
+rt64 0fa77cf           file_to_c, run in node at build time, linked at -O1 whatever the build's level
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -131,8 +132,10 @@ on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would
 (`register_precompiled_mod`) and its replacements and hooks as those redirects; N64Recomp-browser's `worker_alert.js` turns an
 `alert` on a thread (a mod that fails to load) into a console error instead of an exception that stops the page.
 N64Recomp-browser 035f224 moves N64ModernRuntime to 456e025 for N64Recomp 9eb59c4, which leaves this game's generated
-code as it was. N64Recomp-browser da0b835 adds `frontend/audio_output.h`, sound played on the browser's audio thread,
-which `main.cpp` uses on Emscripten in place of SDL's queue, and the page's notice about integrated Intel graphics.
+code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/build_speed.cmake` (ccache) and
+`N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds
+`frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
+SDL's queue, and the page's notice about integrated Intel graphics.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -153,7 +156,7 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 
 - Windows 10 LTSC 17763, RTX 2070, **no admin rights**: the toolchain is per-user under
   `%LOCALAPPDATA%\Programs\n64-toolchain\` (LLVM 22 clang-cl, CMake 3.31, Ninja, GNU make, portable MSVC 14.44 and
-  SDK 10.0.26100, MSYS2 clang 23 for MIPS). Source `tools/env.sh` (Git Bash) or `tools/env.ps1` before building:
+  SDK 10.0.26100, MSYS2 clang 23 for MIPS, ccache 4.14 for the web build). Source `tools/env.sh` (Git Bash) or `tools/env.ps1` before building:
   they set `PATH`, `INCLUDE`/`LIB`, and `MIPS_CC`, `MIPS_LD`, `MIPS_OBJDUMP`.
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
@@ -161,8 +164,8 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - The desktop is 3840x2160 at 59 Hz (`Win32_VideoController.CurrentRefreshRate`) since 2026-10-12. Until then Windows
   drove the monitor (a Philips BDM4065 on DisplayPort) at 29 Hz, so measurements from before that date that mention
   the display's rate, presented frames or interpolation were taken at 30 frames a second.
-- Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
-  (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
+- Other games' ROMs, to try the web support on another recomp: the folder is named in the user's own
+  `~/.claude/CLAUDE.md`, and never in this repo. Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
@@ -216,6 +219,11 @@ clean checkout of `origin/main` with a full setup: `bash tools/release.sh` (`--d
 only). It builds Release in `build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
 and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
 no ROM.
+
+The web page (https://amazingalek.github.io/rush-2049-recomp/, the repo is public) is published the same way, after
+a change to the game or the web side has merged: `bash tools/publish_page.sh` (emsdk on `PATH` as in The web target;
+`--dry-run` builds and stages it in `out/page` only, to serve and try first). It builds in `build-web/` and
+force-pushes the page as the only commit on the orphan branch `gh-pages`, which Pages serves.
 
 ## Developer flags
 
@@ -558,13 +566,23 @@ without the two headers through `coi_serviceworker.js`. What to know:
   (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
   real pad has been tried on the page. Exit, before it was hidden, left a black canvas, and the next input aborted
   the program (`emscripten_proxy_async failed`).
+- Building the page is ~640 compiles, each starting emcc's Python (about a second on Windows), and a link whose
+  Binaryen pass at -O3 runs on one core. Measured on 2026-10-12, the host 100% busy with other sessions throughout
+  (wall times there run 1.5-2 times a quiet host's): a fresh build dir, nothing cached, configure 72-200 s and build
+  590-810 s, the link 120-190 s of it. With ccache on `PATH` (`tools/env.sh` puts it there; N64Recomp-browser's
+  `frontend/build_speed.cmake`), a fresh build dir of sources compiled before, from another worktree through a
+  junction: 636 of 636 hits, build 382 s at -O3 (the link 170 s; the objects waited ~200 s for the shader chain,
+  dxc and naga) and 116 s with `-DN64RECOMP_BROWSER_FAST_LINK=ON`. One changed file: 185 s at -O3, 25 s with the fast
+  link. The fast link is -O1: 11 s against 190 s, the wasm 21.1 MB against 19.7. What it costs the frame rate wasn't
+  measurable on the busy host (42-54 presents a second either way), so a page people play links at -O3. On helga
+  (Linux, 16 cores) N64Recomp-browser's `tests/build` libraries build in 47 s, and in 5 s from a second fresh dir. A
+  build dir outside the checkout gets half the hits: ccache makes paths relative only inside `CCACHE_BASEDIR`.
 - N64Recomp-browser's CI builds every library of a page with Emscripten, recompui's `Interface*.wgsl` included, but no page
   (that needs a game), and this repo's CI builds no Emscripten target: the page and `file.cpp`'s picker are checked
   only by a build and a run here.
 
 **Still to do, each its own card:**
 
-- Publishing the page (GitHub Pages).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
 Mods a player adds stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
@@ -600,3 +618,7 @@ No other N64 recomp running in a browser was found to learn from.
   reached the compositor 0.6 ms later with either value, so nothing queues there. Fullscreen wasn't measured (a
   shared desktop). What did queue was the game's own scheduler (`frame_rate.cpp`, the Input Lag option).
 - SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.
+- Shorter web builds by other means (2026-10-12): ccache behind emcc (`EM_COMPILER_WRAPPER`) still starts emcc's
+  Python for every hit, so it goes in front; configure checks compiled without linking measured nothing against the
+  host's noise; building `RecompiledFuncs/` at -O2 would touch 3.5% of the compile time. Precompiled headers are off
+  for the page because ccache can't cache a file that includes one.

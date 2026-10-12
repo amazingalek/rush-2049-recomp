@@ -46,6 +46,8 @@ if (EMSCRIPTEN)
     # stays scalar, as it was before -msimd128.
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
+    # ccache when it is on PATH (README, "Building the page").
+    include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
 endif()

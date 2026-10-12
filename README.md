@@ -13,11 +13,11 @@ six race tracks race to the results screen, two- and four-player split screen re
 survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
 one pad.
 
-**In a browser: it runs, not yet published.** The same game builds as a web page (see **In a browser** below), with
-the launcher and menus, sound, keyboard controls, and your ROM picked from disk and kept in the browser, never
-uploaded. It plays the title screen, the menus and races in Chrome at close to 60 frames a second, as the desktop
-build does, and the title and demo races in Firefox. It isn't hosted anywhere yet, so for now you build it and
-serve it yourself. The web support
+**In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
+builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
+ROM picked from disk and kept in the browser, never uploaded. It plays the title screen, the menus and races in
+Chrome at close to 60 frames a second, as the desktop build does, and the title and demo races in Firefox. The web
+support
 works for every N64 recomp, not just this one, and lives in a project of its own,
 [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
 of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
@@ -116,7 +116,7 @@ otherwise pick it with Load ROM.
 
 ## In a browser
 
-The page needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
+The page is at **https://amazingalek.github.io/rush-2049-recomp/**. It needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
 newer on Windows (Safari hasn't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
 does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
 asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Controller Pak saves are kept in the
@@ -141,9 +141,17 @@ recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downl
 ```sh
 source <emsdk>/emsdk_env.sh
 embuilder build sdl2-mt freetype-legacysjlj      # once
-emcmake cmake -S . -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
-ninja -C <build dir> Rush2049Recompiled
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
+ninja -C build-web Rush2049Recompiled
 ```
+
+A first build compiles about 640 files, which takes 10 to 20 minutes. Two things make later builds shorter:
+
+- [ccache](https://ccache.dev) on `PATH` when you configure. Every compile then goes through it, so a new build dir,
+  or another checkout of the repo with its build dir in the same place (`build-web`), compiles nothing that was
+  compiled before. Its cache is per user, so it also serves other recomps built on the same web support.
+- `-DN64RECOMP_BROWSER_FAST_LINK=ON` when you only want to try something. The last step then takes seconds instead of
+  minutes, because it skips Binaryen's optimization of the whole program. Leave it off for a page that people play.
 
 That writes `Rush2049Recompiled.html` with its `.js`, `.wasm` and `.data` and `coi_serviceworker.js` into the build
 dir; none of them holds the ROM. Serve that folder over https, or http on localhost, and open the `.html`. The page
