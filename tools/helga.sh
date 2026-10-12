@@ -13,7 +13,7 @@
 # Usage: tools/helga.sh [-C <checkout>] [-n <name>] <command>
 #   sync [<commit>]   send <commit> (default HEAD, with the uncommitted changes to tracked files; untracked files are
 #                     not sent) to the copy, check it out there with its submodules, apply runtime-patches/, and copy
-#                     roms/rush2049.us.recomp.z64 when it differs. A commit on origin is fetched there, not sent.
+#                     roms/*.z64 when they differ. A commit on origin is fetched there, not sent.
 #   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of helga's
 #                     home isn't mounted)
 #   build [<target>]  regenerate the recompiled code (tools/recompile.sh) and build <target> (Rush2049Recompiled, the
@@ -105,12 +105,15 @@ if [ -f tools/apply_runtime_patches.sh ]; then
 fi
 git log --oneline -1
 EOF
-    local rom=roms/rush2049.us.recomp.z64
-    if [[ -f "$checkout/$rom" ]] &&
-        [[ "$(remote "sha1sum ~/$dir/repo/$rom 2> /dev/null | cut -c1-40")" != "$(sha1sum < "$checkout/$rom" | cut -c1-40)" ]]; then
-        remote "mkdir -p ~/$dir/repo/roms"
-        scp -q "$checkout/$rom" "helga:$dir/repo/$rom"
-    fi
+    # The ROMs (N64Recomp reads the recomp one, RSPRecomp the plain one), each copied when it differs from helga's.
+    local rom have
+    have="$(remote "mkdir -p ~/$dir/repo/roms && cd ~/$dir/repo && sha1sum roms/*.z64 2> /dev/null || true")"
+    for rom in "$checkout"/roms/*.z64; do
+        [[ -f "$rom" ]] || continue
+        if ! grep -qx "$(sha1sum < "$rom" | cut -c1-40)  roms/$(basename "$rom")" <<< "$have"; then
+            scp -q "$rom" "helga:$dir/repo/roms/"
+        fi
+    done
 }
 
 case "$cmd" in

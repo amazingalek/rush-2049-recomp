@@ -10,7 +10,7 @@
 # its build-web/, so a republish rebuilds only what changed. The page comes back here into out/page and is pushed from
 # here, with this PC's push access.
 # Usage: tools/publish_page.sh [--dry-run]
-#   Run from a checkout with roms/rush2049.us.recomp.z64 (the README's build steps) and push access to origin. --dry-run
+#   Run from a checkout with roms/ (the README's build steps: the ROM and the recomp ROM extract.py makes) and push access to origin. --dry-run
 #   builds and stages the page in out/page but pushes nothing: serve that with the README's headers and try it first.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
