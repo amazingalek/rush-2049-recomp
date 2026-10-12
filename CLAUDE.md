@@ -308,15 +308,17 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
+All three are on N64Recomp-browser v0.8.0 (c8a2a10) and its forks, the ones pinned here, and include its
+`frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web` inside the checkout and put ccache on `PATH`.
 
 `amazingalek/BanjoRecomp-web` (branch `main`) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
-it is on N64Recomp-browser main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
+it has no externs header, and `recomp::start` takes upstream's
 `recomp::Configuration` (`requeue_pi` kept on, as the runtime did before). Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in N64Recomp-browser's README. `amazingalek/Zelda64Recomp-web` (branch `main`) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on N64Recomp-browser 6b67064's forks (v0.4.0's plus the built-in mods; this repo pins 804cfc2, those and the Firefox pipeline change). In headless Chrome: launcher, Load ROM, the attract demo, title, file
+RecompFrontend). In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here
 then: headless Chrome's animation frames follow the desktop's rate, so a page here presented no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
@@ -324,7 +326,7 @@ time and linked in (its icon draws by the HUD in play), and building it needs th
 names (the page takes the plain one).
 
 `amazingalek/Donkey-Kong-64-Recompiled-web` (branch `main`) is the fourth (2026-10-12): Rainchus's Donkey
-Kong 64: Recompiled, on N64Recomp-browser 035f224's forks, the ones pinned here. In headless Chrome: launcher, Load
+Kong 64: Recompiled. In headless Chrome: launcher, Load
 ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his house, the pause menu, sound. Its
 upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
 and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and argv): the page leaves all of those out.
@@ -587,6 +589,10 @@ without the two headers through `coi_serviceworker.js`. What to know:
   measurable on the busy host (42-54 presents a second either way), so a page people play links at -O3. On helga
   (Linux, 16 cores) N64Recomp-browser's `tests/build` libraries build in 47 s, and in 5 s from a second fresh dir. A
   build dir outside the checkout gets half the hits: ccache makes paths relative only inside `CCACHE_BASEDIR`.
+  Little carries over from one game to another, though their libraries are the same commits: on 2026-10-12 a first
+  build of Banjo's page hit 71 of 754 compiles and Donkey Kong 64's 4 of 674 (Majora's Mask's 150 of 932, with the
+  other two building beside it), and a second fresh dir of the same game 753, 673 and 932. Their builds went from
+  ~2050-2100 s to 480-650 s, of which the link was 250-330 s; configure took 230-590 s either way (host 70-100% busy).
 - N64Recomp-browser's CI builds every library of a page with Emscripten, recompui's `Interface*.wgsl` included, but no page
   (that needs a game), and this repo's CI builds no Emscripten target: the page and `file.cpp`'s picker are checked
   only by a build and a run here.
