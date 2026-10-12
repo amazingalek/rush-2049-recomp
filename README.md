@@ -131,12 +131,11 @@ gamepads the browser knows the layout of (it calls them standard, as it does Xbo
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
 
-In Chrome and Edge the game stops on its first frame for a moment while a bar at the bottom says **Preparing
-graphics**: the browser is building the shaders the game draws with, a fast one for each effect, so that no menu or
-race waits for one later. It takes 15-20 seconds on a desktop with a graphics card and longer on a laptop's
-integrated graphics, on every visit, since the browser keeps them for no later one. Firefox skips it and draws
-everything with one general shader instead, since building them there stalls the page; that shader is slow on weak
-graphics.
+The game stops on its first frame for a moment while a bar at the bottom says **Preparing
+graphics**: the browser is building the shaders the title screen and the first attract race draw with, a fast one for
+each effect, and it builds the rest while the game runs, before a menu or race needs them. The wait takes about 7
+seconds on a desktop with a graphics card and longer on a laptop's integrated graphics, on every visit, since the
+browser keeps them for no later one. Firefox builds them all behind the bar, which takes about 30 seconds there.
 
 On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
 one the browser itself uses, usually the integrated one, whatever the page asks for. The game runs better on the
