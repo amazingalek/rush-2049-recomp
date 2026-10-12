@@ -69,9 +69,11 @@ sync() {
     # The commit and what it stands on that origin's main hasn't, as a bundle (none if origin has it all).
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
-    if git -C "$checkout" bundle create -q "$tmp/head.bundle" "$sha" --not origin/main 2> /dev/null; then
+    git -C "$checkout" update-ref refs/helga-sync "$sha"
+    if git -C "$checkout" bundle create -q "$tmp/head.bundle" refs/helga-sync --not origin/main 2> /dev/null; then
         scp -q "$tmp/head.bundle" "helga:$dir/head.bundle"
     fi
+    git -C "$checkout" update-ref -d refs/helga-sync
     if [[ "$commit" == HEAD ]]; then
         git -C "$checkout" diff HEAD --binary --ignore-submodules > "$tmp/work.diff"
         [[ -s "$tmp/work.diff" ]] && scp -q "$tmp/work.diff" "helga:$dir/work.diff" && diff=1
@@ -80,7 +82,7 @@ sync() {
 set -e
 cd repo
 git fetch -q origin
-[ -f ../head.bundle ] && git fetch -q ../head.bundle && rm ../head.bundle
+[ -f ../head.bundle ] && git fetch -q ../head.bundle refs/helga-sync && rm ../head.bundle
 git checkout -q -f --detach $sha
 git clean -fdq
 [ -n "$diff" ] && git apply ../work.diff && rm ../work.diff
