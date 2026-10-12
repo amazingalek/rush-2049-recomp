@@ -301,6 +301,12 @@ if (EMSCRIPTEN)
     target_link_options(Rush2049Recompiled PRIVATE
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets@/assets"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/recompcontrollerdb.txt@/recompcontrollerdb.txt")
+    # For a build to try something: the page is linked at -O1, where Binaryen's wasm-opt doesn't optimize the whole
+    # module, which takes most of a link at -O3 (1.5-3 minutes on one core). The code is still compiled at -O3.
+    option(RUSH2049_WEB_FAST_LINK "Link the page without wasm-opt's optimizations (test builds)" OFF)
+    if (RUSH2049_WEB_FAST_LINK)
+        target_link_options(Rush2049Recompiled PRIVATE -O1)
+    endif()
 else()
     target_link_libraries(Rush2049Recompiled PRIVATE nfd)
 endif()
