@@ -352,8 +352,9 @@ ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his hou
 upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
 and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and argv): the page leaves all of those out.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
-signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on
-(its code reads its framebuffers; not tried off). The ROM is the US 1.0 (`Donkey_Kong_64-USA-AGS` on D:), decompressed
+signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
+Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
+says more); its transition snapshots are copied on the GPU. The ROM is the US 1.0 (`Donkey_Kong_64-USA-AGS` on D:), decompressed
 with the DK64 decomp's `tools/generate_decompressed_rom.py` for building.
 
 `amazingalek/GoldenEye64Recomp-web` (branch `main`) is the fifth (2026-10-12): GoldenEye 007, from cblock85's
