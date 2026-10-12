@@ -190,6 +190,18 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
+**Build on helga**, the Linux build server (`ssh helga`, 32 cores; the host entry is in `~/.ssh/config` here), not on
+this PC, whose CPU the other sessions keep busy: every web build (the game's page, the headless page, a game fork's
+page) and anything else that builds on Linux. `tools/helga.sh` (its header says how) sends a checkout's HEAD and its
+uncommitted changes to a copy of its own there, `~/rush2049/<worktree folder>/repo`, and builds in a Docker image of
+the tools, `tools/helga/Dockerfile`, which it builds on helga when it is missing. So a tool a build lacks goes into
+the Dockerfile, never onto helga by hand (no sudo there, and other teams' services and CI runners share it).
+`bash tools/helga.sh web` builds the game's page in that copy's `build-web/`; `get build-web <dir>` brings it here to
+serve and test; `-C <checkout>` does `sync`, `run` and `get` for another repo, a game fork. What stays here is what
+only builds or runs on Windows: the desktop exe (`iterate.sh`, `release.sh`), and running and measuring anything.
+`helga.sh clean` deletes the copy when the card is done. A container there is stopped by its name
+(`docker stop rush2049-<worktree folder>`), never anything by pattern.
+
 **A fresh worktree** has none of the generated files. From its root, in Git Bash:
 
 ```sh
@@ -242,11 +254,11 @@ and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes 
 no ROM.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/, the repo is public) is published the same way, after
-a change to the game or the web side has merged: `bash tools/publish_page.sh` from any set-up checkout (emsdk on `PATH`
-as in The web target; `--dry-run` builds and stages it only, to serve and try first). It builds origin/main in a
-worktree of its own kept beside the main checkout, `n64-recomp-publish` (made the first time, with its `build-web/`),
-so a republish rebuilds only what changed, and force-pushes the page as the only commit on the orphan branch
-`gh-pages`, which Pages serves. Don't build or edit in that worktree either.
+a change to the game or the web side has merged: `bash tools/publish_page.sh` from any checkout with `roms/`
+(`--dry-run` builds and stages it in `out/page` only, to serve and try first). It builds origin/main on helga, in the
+copy `helga.sh` names `publish` (kept with its `build-web/`, so a republish rebuilds only what changed), and
+force-pushes the page from here as the only commit on the orphan branch `gh-pages`, which Pages serves. Until
+2026-10-12 it built here, in a worktree beside the main checkout, `n64-recomp-publish`, which nothing uses now.
 
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
 each one's README: GoldenEye64Recomp-web and CBFD-Recompiled-web since 2026-10-12, built from main then. They are
