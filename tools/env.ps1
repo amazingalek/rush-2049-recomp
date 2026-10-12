@@ -4,7 +4,7 @@ $vc    = "$N64TC\portable-msvc\msvc\VC\Tools\MSVC\14.44.35207"
 $sdk   = "$N64TC\portable-msvc\msvc\Windows Kits\10"
 $sdkv  = "10.0.26100.0"
 
-$env:PATH    = "$N64TC\llvm\bin;$N64TC\cmake\bin;$N64TC\ninja;$N64TC\make\bin;$vc\bin\Hostx64\x64;$sdk\bin\$sdkv\x64;$env:PATH"
+$env:PATH    = "$N64TC\llvm\bin;$N64TC\cmake\bin;$N64TC\ninja;$N64TC\ccache;$N64TC\make\bin;$vc\bin\Hostx64\x64;$sdk\bin\$sdkv\x64;$env:PATH"
 $env:INCLUDE = "$vc\include;$sdk\Include\$sdkv\ucrt;$sdk\Include\$sdkv\shared;$sdk\Include\$sdkv\um;$sdk\Include\$sdkv\winrt;$sdk\Include\$sdkv\cppwinrt"
 $env:LIB     = "$vc\lib\x64;$sdk\Lib\$sdkv\ucrt\x64;$sdk\Lib\$sdkv\um\x64"
 

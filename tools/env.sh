@@ -1,6 +1,7 @@
 # Source this from Git Bash: `. tools/env.sh`
 # Puts the per-user N64 toolchain (installed under %LOCALAPPDATA%\Programs\n64-toolchain,
-# see CLAUDE.md, "This machine") on PATH and points clang-cl at the portable MSVC + Windows SDK.
+# see CLAUDE.md, "This machine") on PATH and points clang-cl at the portable MSVC + Windows SDK. ccache is
+# only used by the web build (lib/N64Recomp-browser/frontend/build_speed.cmake).
 N64TC="${LOCALAPPDATA:-$HOME/AppData/Local}/Programs/n64-toolchain"
 N64TC="$(cygpath -u "$N64TC")"
 _msvc="$N64TC/portable-msvc/msvc"
@@ -8,7 +9,7 @@ _vc="$_msvc/VC/Tools/MSVC/14.44.35207"
 _sdk="$_msvc/Windows Kits/10"
 _sdkv="10.0.26100.0"
 
-export PATH="$N64TC/llvm/bin:$N64TC/cmake/bin:$N64TC/ninja:$N64TC/make/bin:$_vc/bin/Hostx64/x64:$_sdk/bin/$_sdkv/x64:$PATH"
+export PATH="$N64TC/llvm/bin:$N64TC/cmake/bin:$N64TC/ninja:$N64TC/ccache:$N64TC/make/bin:$_vc/bin/Hostx64/x64:$_sdk/bin/$_sdkv/x64:$PATH"
 export INCLUDE="$(cygpath -w "$_vc/include");$(cygpath -w "$_sdk/Include/$_sdkv/ucrt");$(cygpath -w "$_sdk/Include/$_sdkv/shared");$(cygpath -w "$_sdk/Include/$_sdkv/um");$(cygpath -w "$_sdk/Include/$_sdkv/winrt");$(cygpath -w "$_sdk/Include/$_sdkv/cppwinrt")"
 export LIB="$(cygpath -w "$_vc/lib/x64");$(cygpath -w "$_sdk/Lib/$_sdkv/ucrt/x64");$(cygpath -w "$_sdk/Lib/$_sdkv/um/x64")"
 
