@@ -41,9 +41,9 @@ here, and a finding that explains code goes beside that code.
   `tools/apply_runtime_patches.sh`; never commit them inside `lib/`. A new change is a new patch
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
   of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
-- Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend or
-  BanjoRecomp: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI talking to its
-  maintainers). The web forks stay forks.
+- Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend,
+  BanjoRecomp or Zelda64Recomp: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI
+  talking to its maintainers). The web forks stay forks.
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
@@ -115,6 +115,13 @@ N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: t
                        own events, not pinned here yet: no patches here trigger one)
 ```
 
+Not pinned here yet (recomp-web main after v0.3.0, rt64-web 551f33e): upstream merged into every fork at the commits
+Zelda64Recomp's `recomp-frontend` branch pins (the runtime's `recomp::Configuration` among them); plume ba97511 times
+the browser's animation frames for the display's rate and reports displayTiming, and rt64 d92a792 takes it, so the
+Display frame rate interpolates on a page (before, the window's rate was 0 and nothing was interpolated); rt64 551f33e:
+the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU dropped every command
+buffer that tested a flare.
+
 `runtime-patches/`, this game's, on top of the forks:
 
 ```
@@ -142,6 +149,8 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - The desktop is 3840x2160 at **30 Hz**: the monitor is a 60 Hz one, but Windows drives it at 29 Hz (`EnumDisplaySettings`,
   2026-10-11). So Framerate Display presents 30 frames a second while the game renders 60, and interpolation can't be
   seen or measured here.
+- Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
+  (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
   (`.venv`) and a full build. Never build or edit there.
 
@@ -268,7 +277,13 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 `amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
-it found is in recomp-web's README.
+it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
+(2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
+RecompFrontend), on recomp-web main's forks. In headless Chrome: launcher, Load ROM, the attract demo, title, file
+select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
+headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
+stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live
+recompiler), and building it needs the decompressed ROM its BUILDING.md names (the page takes the plain one).
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
