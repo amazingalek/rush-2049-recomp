@@ -15,7 +15,9 @@
 #include <thread>
 #include <vector>
 
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+#include "audio_output.h"
+#else
 #include "nfd.h" // a browser has no native file dialogs; RecompFrontend asks the page instead
 #endif
 
@@ -249,6 +251,9 @@ void update_gfx(void*) {
 // tens of ms as the game queues its 8.7 ms buffers in bursts. Rather than throwing samples away when it runs long,
 // the resampler plays up to 1% faster or slower (17 cents, too little to hear as pitch) to keep it near
 // audio_queue_target_ms: a long queue drains and a short one refills without a seam.
+//
+// On a page the device is N64Recomp-browser's AudioWorklet output (audio_output.h) instead of SDL's queue, which
+// Emscripten's SDL2 plays from the page's thread: the music broke up whenever WebGPU kept that thread busy.
 
 static rush2049::Resampler resampler;
 static uint32_t resampler_input_rate = 0;
@@ -260,6 +265,24 @@ constexpr uint32_t bytes_per_frame = 2 * sizeof(float);
 constexpr double audio_queue_target_ms = 40.0;
 constexpr double audio_speed_ppm_per_ms = 200.0;  // 1% at 50 ms off target
 constexpr double audio_max_speed_ppm = 10000.0;
+
+#ifdef __EMSCRIPTEN__
+static size_t device_queued_frames() {
+    return n64recomp_browser::audio::queued_frames();
+}
+
+static void device_queue(const float* frames, size_t frame_count) {
+    n64recomp_browser::audio::queue(frames, frame_count);
+}
+#else
+static size_t device_queued_frames() {
+    return SDL_GetQueuedAudioSize(audio_device) / bytes_per_frame;
+}
+
+static void device_queue(const float* frames, size_t frame_count) {
+    SDL_QueueAudio(audio_device, frames, uint32_t(frame_count * bytes_per_frame));
+}
+#endif
 
 // The rate the samples reach the converter at.
 static uint32_t input_sample_rate() {
@@ -291,7 +314,7 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
     rush2049::probe_audio(input.data(), input.size() / 2);
 
     // Real time queued on the device, smoothed over about 30 buffers (a quarter of a second).
-    uint32_t queued_us = uint32_t(uint64_t(SDL_GetQueuedAudioSize(audio_device)) / bytes_per_frame * 1000000 / output_sample_rate);
+    uint32_t queued_us = uint32_t(uint64_t(device_queued_frames()) * 1000000 / output_sample_rate);
     static double queued_ms = audio_queue_target_ms;
     queued_ms += (queued_us / 1000.0 - queued_ms) / 32.0;
     double speed_ppm = std::clamp((queued_ms - audio_queue_target_ms) * audio_speed_ppm_per_ms, -audio_max_speed_ppm,
@@ -312,12 +335,12 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     size_t frames = output.size() / 2;
     rush2049::probe_output(output.data(), frames, output_sample_rate);
-    SDL_QueueAudio(audio_device, output.data(), uint32_t(frames * bytes_per_frame));
+    device_queue(output.data(), frames);
 }
 
 size_t get_frames_remaining() {
     constexpr float buffer_offset_frames = 1.0f;
-    uint64_t buffered_byte_count = SDL_GetQueuedAudioSize(audio_device);
+    uint64_t buffered_byte_count = uint64_t(device_queued_frames()) * bytes_per_frame;
     buffered_byte_count = buffered_byte_count * 2 * sample_rate / output_sample_rate / output_channels;
 
     uint32_t frames_per_vi = (sample_rate / 60);
@@ -342,6 +365,9 @@ void set_frequency(uint32_t freq) {
 }
 
 bool reset_audio(uint32_t output_freq) {
+#ifdef __EMSCRIPTEN__
+    output_freq = n64recomp_browser::audio::open(output_channels);
+#else
     SDL_AudioSpec spec_desired{
         .freq = (int)output_freq,
         .format = AUDIO_F32,
@@ -362,6 +388,7 @@ bool reset_audio(uint32_t output_freq) {
     }
 
     SDL_PauseAudioDevice(audio_device, 0);
+#endif
     output_sample_rate = output_freq;
     rush2049::output_limiter.reset(output_sample_rate);
     update_audio_converter();
