@@ -406,7 +406,13 @@ pages to `rdram + vram + 0x80000000`, ~2.4 GB past RDRAM, inside the desktop's 4
 an allocation in the wasm heap, so `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with
 `-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar,
 which is what N64Recomp 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream
-resampling the game's rate to the page's. Render to RAM stays on (not tried off). The ROM is the US one.
+resampling the game's rate to the page's. The ROM is the US one. Render to RAM stays on: the camera reads a row of
+the depth buffer to step aside from walls and the lens flares read it to hide behind them (without it, only the game's
+far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README has the table, 2026-10-12).
+A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first compute pass:
+emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
+`-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
+`target_link_libraries(<target> PRIVATE -sINITIAL_MEMORY=...)` comes last.
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
