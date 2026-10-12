@@ -273,8 +273,11 @@ force-pushes the page from here as the only commit on the orphan branch `gh-page
 2026-10-12 it built here, in a worktree beside the main checkout, `n64-recomp-publish`, which nothing uses now.
 
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
-each one's README, all five since 2026-10-12, built from main then (Banjo's, Majora's Mask's and DK64's with their
-prebuilt shader lists, checked from Pages in headless Chrome to the game drawing). They are built on helga, in Docker
+each one's README, all five since 2026-10-12, each built from main with its prebuilt shader list (GoldenEye's from
+00b606e and Conker's from e7cd6b0, republished that night) and checked from Pages in headless Chrome to the game
+drawing. Build a page in a fresh build dir when the fork's rt64 has moved: an incremental build keeps the WGSL made
+from an `.hlsli` that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding
+doesn't exist". They are built on helga, in Docker
 (the `tools/helga/Dockerfile` image, with `EM_CACHE` set to a mounted folder in the build script, since emsdk's
 environment resets it), each fork's BUILDING.md steps with the ROM copied there, then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
 <name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
@@ -407,8 +410,9 @@ found: its own strtol, strncmp, acos and others clash with funcs.h's C library d
 both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another section
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
-Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), ~85 s
-under "Preparing graphics" on every visit in Chrome, warm or cold: they don't fit its cache (Step 2). Unlike Rush 2049 every level adds dozens (26
+Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), and since
+main 00b606e waits only for the 34 above its `background` line (6.6 s cold from Pages, 2026-10-12, Chrome 154 headless,
+host 15% busy), building the rest behind the game; all 340 took ~85 s and don't fit Chrome's cache (Step 2). Unlike Rush 2049 every level adds dozens (26
 combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
 level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
 10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
