@@ -52,6 +52,9 @@ if (EMSCRIPTEN)
     include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)
+    # The shaders the page specializes at build time and builds before the game starts (src/rt64_shaders.txt says
+    # why and how it was recorded).
+    set(RT64_PREBUILT_SHADER_LIST ${CMAKE_SOURCE_DIR}/src/rt64_shaders.txt)
 endif()
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

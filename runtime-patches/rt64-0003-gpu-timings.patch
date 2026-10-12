@@ -246,7 +246,7 @@ index fbf469b..5deb645 100644
 +            RenderCommandList *timedCommandList = ext.workloadGraphicsWorker->commandList.get();
 +            timedCommandList->resetQueryPool(queryPool.get(), 0, queryPool->getCount());
 +            partTimer.begin(timedCommandList, queryPool.get());
-             framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workload.drawData.gpuTiles, workloadConfig.raytracingEnabled);
+             framebufferRenderer->endFramebuffers(ext.workloadGraphicsWorker, &workload.drawBuffers, &workload.outputBuffers, workload.drawData.gpuTiles, workload.drawData.rdpTiles, workloadConfig.raytracingEnabled);
              framebufferRenderer->recordSetup(ext.workloadGraphicsWorker, bufferUploaders, processRSP ? rspProcessor.get() : nullptr, processWorldVertices ? vertexProcessor.get() : nullptr, &workload.outputBuffers, workloadConfig.raytracingEnabled);
 +            partTimer.mark(GPUTimings::RenderSetup);
 +            uint64_t drawCallsRecorded = 0;

@@ -131,10 +131,16 @@ gamepads the browser knows the layout of (it calls them standard, as it does Xbo
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
 
+In Chrome and Edge the game stops on its first frame for a moment while a bar at the bottom says **Preparing
+graphics**: the browser is building the shaders the game draws with, a fast one for each effect, so that no menu or
+race waits for one later. It takes 15-20 seconds on a desktop with a graphics card and longer on a laptop's
+integrated graphics, on every visit, since the browser keeps them for no later one. Firefox skips it and draws
+everything with one general shader instead, since building them there stalls the page; that shader is slow on weak
+graphics.
+
 On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
-one the browser itself uses, usually the integrated one, whatever the page asks for. On Intel graphics, and in Firefox,
-the page draws everything with one general shader rather than preparing a faster one for each effect as it goes, since
-preparing them stalled it there for minutes; a graphics card still runs it better. The page says so when it finds integrated Intel graphics: open
+one the browser itself uses, usually the integrated one, whatever the page asks for. The game runs better on the
+graphics card, and the page says so when it finds integrated Intel graphics: open
 `chrome://flags/#force-high-performance-gpu` (`edge://` in Edge), set it to Enabled and relaunch the browser.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
