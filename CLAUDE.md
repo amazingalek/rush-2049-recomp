@@ -42,7 +42,7 @@ here, and a finding that explains code goes beside that code.
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
   of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
 - Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend,
-  BanjoRecomp or Zelda64Recomp: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI
+  BanjoRecomp, Zelda64Recomp or Donkey-Kong-64-Recompiled: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI
   talking to its maintainers). The web forks stay forks.
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
