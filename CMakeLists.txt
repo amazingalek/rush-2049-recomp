@@ -46,13 +46,15 @@ if (EMSCRIPTEN)
     # stays scalar, as it was before -msimd128.
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions)
-    # With ccache on PATH, emcc runs its clang through it (EM_COMPILER_WRAPPER, so the key is clang's own command and
-    # binary), and paths inside this checkout are made relative (CCACHE_BASEDIR), so a fresh build dir at the same place
-    # in another checkout, or after a move, reuses the objects instead of compiling them again (README).
+    # With ccache on PATH, every compile goes through it, so a hit never starts emcc (its Python costs about a second a
+    # file). Paths inside this checkout are made relative (CCACHE_BASEDIR), so a fresh build dir at the same place in
+    # another checkout, or after a move, reuses the objects (README). em++.exe is a launcher that stays the same from one
+    # Emscripten to the next, so the version is the compiler's identity. Depend mode reads what a file included from
+    # the compile's own .d file instead of running emcc a second time to preprocess it.
     find_program(CCACHE_PROGRAM ccache)
     if (CCACHE_PROGRAM)
-        set(CMAKE_C_COMPILER_LAUNCHER
-            ${CMAKE_COMMAND} -E env EM_COMPILER_WRAPPER=${CCACHE_PROGRAM} CCACHE_BASEDIR=${CMAKE_SOURCE_DIR})
+        set(CMAKE_C_COMPILER_LAUNCHER ${CMAKE_COMMAND} -E env CCACHE_BASEDIR=${CMAKE_SOURCE_DIR}
+            CCACHE_COMPILERCHECK=string:${EMSCRIPTEN_VERSION} CCACHE_DEPEND=1 ${CCACHE_PROGRAM})
         set(CMAKE_CXX_COMPILER_LAUNCHER ${CMAKE_C_COMPILER_LAUNCHER})
         # RmlUi's precompiled header: ccache won't cache what includes one, and it holds absolute paths anyway.
         set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
