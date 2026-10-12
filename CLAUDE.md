@@ -248,6 +248,14 @@ worktree of its own kept beside the main checkout, `n64-recomp-publish` (made th
 so a republish rebuilds only what changed, and force-pushes the page as the only commit on the orphan branch
 `gh-pages`, which Pages serves. Don't build or edit in that worktree either.
 
+The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
+each one's README: GoldenEye64Recomp-web and CBFD-Recompiled-web since 2026-10-12, built from main then. They are
+built on helga, in Docker (it has no compiler and no sudo), each fork's BUILDING.md steps with the ROM copied there,
+then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
+<name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
+`gh` is another account. A page published before a fork's change has merged doesn't have it; republish after.
+The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
+
 ## Developer flags
 
 ```
