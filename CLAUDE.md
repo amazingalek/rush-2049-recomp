@@ -570,7 +570,8 @@ What to know before changing it:
   that much can hit. Dawn keeps the parse, each stage's DXIL and the D3D12 pipeline (PSO) of each: about 4 MB for
   Rush 2049's (its big entries 27 KB a pipeline), 16 MB for GoldenEye's (41 KB). A second set of keys, which a Chrome
   or driver update makes (tried with `--enable-dawn-features=disable_symbol_renaming`), missed twice in a row while the
-  old set still hit: after an update the wait can come on every visit again. A page can't change any of it: WebGPU
+  old set still hit: after an update the wait can come on every visit, until Chrome trims the cache (a visit left open
+  ~5 minutes did, next bullet). A page can't change any of it: WebGPU
   gives it no pipeline binaries to keep in IndexedDB, and `--gpu-disk-cache-size-kb` only grows the disk side. To
   measure it, start a new `--user-data-dir` once on the launcher before the cold visit: a profile's first run stores
   nothing that hits later, and one whose first run built the shaders never hit at all (why this said, until then,
