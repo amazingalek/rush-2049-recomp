@@ -141,6 +141,8 @@ N64Recomp 9aabea3      a jump table outside its function's section read from the
                        function's ROM offset (GoldenEye keeps them all in a .rodata of their own)
 N64Recomp ec0748e      a function the config renames is renamed in a patch's calls to it too (GoldenEye's patches call
                        its strtol, which clashes with the C library's and must become strtol_recomp)
+rt64 bfe07cb           the prebuilt shaders built in every browser (Firefox too) and on every adapter: each one's
+                       pixel shader packed without dual-source blending too, for a device that lacks it
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -156,7 +158,8 @@ SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 name
 N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which both web
 builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
 "Preparing graphics" bar to the shell. c2ee9ae moves N64ModernRuntime to af4e99c (N64Recomp-web 9aabea3 and ec0748e),
-which leaves this game's generated code as it was.
+which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
+step of a port in its README.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -501,10 +504,8 @@ What to know before changing it:
 - Firefox (157, Windows) builds a `createRenderPipelineAsync` pipeline on its GPU process in line with the device's
   other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
   Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
-  shader they use had been built. So in Firefox RT64 builds none and draws everything with the ubershader (plume
-  9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
-  2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
-  ubershader's (above).
+  shader they use had been built. So in Firefox RT64 builds none during play, and what isn't prebuilt (below) draws
+  with the ubershader (plume 9c69058, rt64 fcc6fe4, a user agent check).
 - On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3, since undone) it still crawled, and at Resolution Original it ran well. The canvas
@@ -512,7 +513,10 @@ What to know before changing it:
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
   recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
   time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until they are built. Not in Firefox, which builds none. Recording again: the page prints an
+  graphics" bar until they are built, in every browser and on every adapter (rt64 bfe07cb; until then Firefox and a
+  device without dual-source blending skipped them and drew everything with the ubershader). Alek's call: without
+  them the page is unplayable, so **every web port records a list and builds it**, not as an afterthought
+  (N64Recomp-browser's README, what a recomp does itself). Recording again: the page prints an
   `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
   `Module.arguments` for split screen); add the new ones to the list. 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
   13-18 s on the bare test page (2026-10-12, RTX 2070, 6 at a time, host 94-100% busy with other sessions); Chrome's
@@ -521,7 +525,14 @@ What to know before changing it:
   shader alone was cached from the third. Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
   bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
   page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
-  yet measured on the laptop.
+  yet measured on the laptop. In Firefox 157 (2026-10-12, RTX 2070, host 100% busy with other sessions) the bar took
+  27.9-30.2 s, since its GPU process builds them one at a time and presents nothing meanwhile; then the attract races
+  and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap 89 ms. On the 2070
+  the ubershader page measured the same within the host's noise, at 1280x876 and at 2386x1309: what the list buys is
+  on weaker GPUs. Firefox under WebDriver BiDi in a window moved off the desktop never has focus, so its key actions
+  reach nothing: dispatch `KeyboardEvent`s on `window` from `script.evaluate` instead. Its file dialog event gave an
+  element that `input.setFiles` filled with no `change`: a preload script replacing a file input's `click()` with a
+  fetch of the ROM from the local server loads it.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
