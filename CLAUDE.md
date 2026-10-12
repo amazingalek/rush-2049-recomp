@@ -111,16 +111,15 @@ RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chai
 rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
                        int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
-                       ignored functions, reference symbols (8eb7338: recomp_trigger_event for a patches library's
-                       own events, not pinned here yet: no patches here trigger one)
+                       ignored functions, reference symbols
+N64Recomp 8eb7338      recomp_trigger_event declared for a patches library's own events (no patches here trigger one)
+every fork             upstream merged in at the commits Zelda64Recomp's `recomp-frontend` branch pins: the runtime's
+                       recomp::start takes a recomp::Configuration, with a MessageQueueControl (defaults as before)
+plume ba97511          the browser's animation frames timed for the display's rate, reported as displayTiming;
+rt64 d92a792           taken by RT64, so the Display frame rate interpolates on a page (before, the rate was 0)
+rt64 551f33e           the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU
+                       dropped every command buffer that tested a flare
 ```
-
-Not pinned here yet (recomp-web main after v0.3.0, rt64-web 551f33e): upstream merged into every fork at the commits
-Zelda64Recomp's `recomp-frontend` branch pins (the runtime's `recomp::Configuration` among them); plume ba97511 times
-the browser's animation frames for the display's rate and reports displayTiming, and rt64 d92a792 takes it, so the
-Display frame rate interpolates on a page (before, the window's rate was 0 and nothing was interpolated); rt64 551f33e:
-the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU dropped every command
-buffer that tested a flare.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -281,7 +280,7 @@ it is on recomp-web main's forks (19ef581), with no externs header, and `recomp:
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
 it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web main's forks. In headless Chrome: launcher, Load ROM, the attract demo, title, file
+RecompFrontend), on recomp-web v0.4.0's forks, the ones pinned here. In headless Chrome: launcher, Load ROM, the attract demo, title, file
 select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
 headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live

@@ -1,8 +1,8 @@
 diff --git a/ultramodern/include/ultramodern/ultramodern.hpp b/ultramodern/include/ultramodern/ultramodern.hpp
-index 3b28af3..2813bdf 100644
+index 46aea61..6f53c6c 100644
 --- a/ultramodern/include/ultramodern/ultramodern.hpp
 +++ b/ultramodern/include/ultramodern/ultramodern.hpp
-@@ -99,6 +99,9 @@ void init_audio();
+@@ -121,6 +121,9 @@ void init_audio();
  void set_audio_frequency(uint32_t freq);
  void queue_audio_buffer(RDRAM_ARG PTR(s16) audio_data, uint32_t byte_count);
  uint32_t get_remaining_audio_bytes();
@@ -45,7 +45,7 @@ index 3198be0..87ade88 100644
      // Calculate the number of samples from the number of bytes.
      uint32_t sample_count = byte_count / sizeof(int16_t);
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
-index 090cc42..fd9b27f 100644
+index 2f1cfb5..57e50bf 100644
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
 @@ -244,8 +244,30 @@ void vi_thread_func() {
@@ -53,7 +53,7 @@ index 090cc42..fd9b27f 100644
              }
              if (events_context.ai.mq != NULLPTR) {
 -                // Send a message to the VI queue, and do not set it to be requeued if the queue was full for the same reason as the VI message above.
--                ultramodern::enqueue_external_message(events_context.ai.mq, events_context.ai.msg, false, false);
+-                ultramodern::enqueue_external_message_src(events_context.ai.mq, events_context.ai.msg, false, ultramodern::EventMessageSource::Ai);
 +                // The AI interrupt fires each time the AI starts playing a queued buffer, so send one AI event per
 +                // buffer's worth of audio played during this VI. A game that queues one buffer per frame gets about
 +                // one event per VI; one that keeps a ring of short buffers gets several. Until the game has queued
@@ -75,8 +75,8 @@ index 090cc42..fd9b27f 100644
 +                    }
 +                }
 +                for (int i = 0; i < events; i++) {
-+                    // Do not requeue if the queue was full, for the same reason as the VI message above.
-+                    ultramodern::enqueue_external_message(events_context.ai.mq, events_context.ai.msg, false, false);
++                    // Requeued only if the game asked for it (MessageQueueControl), for the reason of the VI message above.
++                    ultramodern::enqueue_external_message_src(events_context.ai.mq, events_context.ai.msg, false, ultramodern::EventMessageSource::Ai);
 +                }
              }
          }
@@ -108,10 +108,10 @@ index f9c0fa1..2e376eb 100644
  
      return false;
 diff --git a/ultramodern/src/threads.cpp b/ultramodern/src/threads.cpp
-index 812c556..e4f3bed 100644
+index 5bce061..c82c9a0 100644
 --- a/ultramodern/src/threads.cpp
 +++ b/ultramodern/src/threads.cpp
-@@ -233,7 +233,22 @@ extern "C" void osStartThread(RDRAM_ARG PTR(OSThread) t_) {
+@@ -246,7 +246,22 @@ extern "C" void osStartThread(RDRAM_ARG PTR(OSThread) t_) {
  
      // If this is a game thread, insert the new thread into the running queue and then check the running queue.
      if (thread_self) {
@@ -135,7 +135,7 @@ index 812c556..e4f3bed 100644
          ultramodern::check_running_queue(PASS_RDRAM1);
      }
      // Otherwise, immediately start the thread and terminate this one.
-@@ -274,8 +289,21 @@ extern "C" void osStopThread(RDRAM_ARG PTR(OSThread) t_) {
+@@ -287,8 +302,21 @@ extern "C" void osStopThread(RDRAM_ARG PTR(OSThread) t_) {
      if (t_ == thread_self) {
          ultramodern::run_next_thread_and_wait(PASS_RDRAM1);
      }
