@@ -126,6 +126,13 @@ rt64 fcc6fe4           without it every draw uses the ubershader and no speciali
 rt64 0fa77cf           file_to_c, run in node at build time, linked at -O1 whatever the build's level
 plume f6d48d3          backgroundPipelineBuilds false on an Intel adapter too (plume_webgpu_device.js keeps its info);
 rt64 524a570           without specialized shaders no spec constant WGSL shaders at setup either
+rt64 25a65b7           RasterPS on WebGPU without the slot switch around the native texel's address or the linear
+                       samplers: each draw binds its tiles' linear samplers beside their textures; WGSL about half
+rt64 0034023           prebuilt shaders: a game's RT64_PREBUILT_SHADER_LIST specialized at build time
+                       (src/tools/shader_specializer), built before the game passes its first frame, the progress
+                       to the page (Module.rt64ShaderProgress); ?record-shaders prints what the game asks for
+plume 90bb27d          background pipeline builds on an Intel adapter again (f6d48d3 undone: it was the ubershader
+rt64 ada5231           that crawled there, not the builds)
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -137,7 +144,10 @@ N64Recomp-browser 035f224 moves N64ModernRuntime to 456e025 for N64Recomp 9eb59c
 code as it was. N64Recomp-browser c8a2a10 shortens a page's build: `frontend/build_speed.cmake` (ccache) and
 `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they gave here). N64Recomp-browser da0b835 adds
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
-SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570.
+SDL's queue, and the page's notice about integrated Intel graphics; a5904a9 names rt64 524a570. ae2dbe9 moves
+N64ModernRuntime to a7b406e (N64Recomp-web 8038212: a tail call as a `return_call` with `-mtail-call`, which this
+game's code isn't compiled with yet, so it builds as before) and rt64 to 9e37a5b; f44f945 moves rt64 to ada5231 and adds the
+"Preparing graphics" bar to the shell.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -272,8 +282,9 @@ VI pass (it scales with the window instead) and about 50k of compute and uploads
 measured here. On a laptop (2026-10-12: Intel UHD, Tiger Lake, beside an RTX A3000; 1920x1080 at 2x scale) Chrome 155
 gave the page the Intel chip, since Chrome on Windows ignores `powerPreference` (crbug.com/369219127): ~1 fps for
 minutes in menus and 20-30 fps in races until the specialized pipelines were built, then close to 60. With
-`chrome://flags/#force-high-performance-gpu` on the RTX it played well from the start. Since then no specialized
-pipelines are built on an Intel adapter (Step 2).
+`chrome://flags/#force-high-performance-gpu` on the RTX it played well from the start. Drawing with the ubershader
+alone on the Intel chip (PR #88) it still crawled, and at Resolution Original it ran well: the ubershader's cost a
+pixel, not the pipeline builds. So the page now builds the shaders the game uses before it starts (Step 2).
 
 ## Testing in the game
 
@@ -459,13 +470,23 @@ What to know before changing it:
   9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
   2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
   ubershader's (above).
-- Chrome on an Intel adapter stalls the same way: the laptop under Where a frame goes (UHD Graphics on D3D12, a canvas
-  of about 960x500, so Auto at 1x-2x and the drawing cheap) crawled until its specialized pipelines were built, and its
-  RTX A3000, same CPU and an empty cache, played at once. So Intel's driver compiler is what stalls, and
-  RT64 builds none on any Intel adapter either (plume f6d48d3, rt64 524a570, `adapter.info.vendor`). Checked here
-  only by reporting the adapter as Intel to the page (a CDP script overriding `GPUAdapter.prototype.info`): the
-  console says so, and the title and attract races draw. Not yet measured on the laptop. The canvas is CSS-sized, not
-  device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
+- On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
+  built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
+  ubershader alone (plume f6d48d3, since undone) it still crawled, and at Resolution Original it ran well. The canvas
+  is CSS-sized, not device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
+- So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
+  recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
+  time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
+  graphics" bar until they are built. Not in Firefox, which builds none. Recording again: the page prints an
+  `rt64 shader:` line for each new description (drive it over CDP as in Step 3, with `--players <n>` through
+  `Module.arguments` for split screen); add the new ones to the list. 105 shaders: 15.6-21 s cold in the game's page in Chrome 154 headless,
+  13-18 s on the bare test page (2026-10-12, RTX 2070, 6 at a time, host 94-100% busy with other sessions); Chrome's
+  GPU process compiles them on the CPU, 1 at a time 118 s, 3 55 s, 6 37 s, 12 34.5 s (before rt64 25a65b7 halved
+  them). Chrome's pipeline cache (`DawnWebGPUCache`, ~21 MB) can't hold them, so the wait comes on every visit; one
+  shader alone was cached from the third. Their WGSL went 15.5 MB to 8.8 MB with rt64 25a65b7 (the largest 370 KB,
+  bigger than the 291 KB ubershader: specialized, the loops unroll). Checked with the adapter reported as Intel to the
+  page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build, and the game draws. Not
+  yet measured on the laptop.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back

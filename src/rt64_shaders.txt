@@ -1,0 +1,115 @@
+# The RT64 shaders the web page builds before the game starts: one shader description a line, other mode L and H,
+# color combiner L and H, flags, in hex. RT64 specializes each one's WGSL when the page is built and compiles them
+# all while the page shows "Preparing graphics", so no race waits on a shader and none draws with the ubershader,
+# which integrated graphics can't afford (CLAUDE.md, The web target).
+#
+# Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, at the page's
+# default settings: the attract races, every menu, 1P races (one with Backward, Mirror, Fog and Wind on), a crash and
+# the pause menu, 2P Practice, 2P and 4P Battle, 1P and 4P Stunt. Not yet: Ghost Race, the results screens, the other
+# stunt arenas, 3 players. A description missing here draws with the ubershader until its shader is built, as before.
+# Flags follow settings (filtering, HDR, MSAA, upscaling), so a change to one of those defaults means recording again.
+00504240 00800cef fc119623 ff2fffff 0003540b
+00504240 00800cef fc11fe23 fffff3f9 0003540b
+00504240 00800cef fc11fe23 fffff3f9 04cb540b
+00504240 00800cef fcffffff fffdf6fb 0800000b
+00504240 00808cef fc119623 ff2fffff 0003540b
+00504240 00808cef fc119623 ff2fffff 04cb540b
+00504240 00808cef fcffffff fffdf6fb 0800000b
+00504240 00882cef fc121824 ff33ffff 088a000e
+00504241 00808cef fc119623 ff2fffff 04cb540b
+00504241 00882cff fc121824 ff33ffff 0ccb540e
+00504a74 00800cef fc119623 ff2fffff 0003540b
+00504a74 00800cef fc119623 ff2fffff 04cb540b
+00504a74 00800cef fc11fe23 fffff3f9 0003540b
+00504a74 00808cef fc119623 ff2fffff 0003540b
+00504a74 00808cef fcffffff fffcf279 0003540b
+00504a74 00808cef fcffffff fffcf279 04cb540b
+00504a75 00808cef fcffffff fffcf279 04cb540b
+00504e50 00882cef fc309661 552eff7f 0a22220e
+0f0a4000 0088acaf fc121824 ff33ffff 0ccb540e
+0f0a4000 0088acef fc121824 ff33ffff 088a000e
+0f0a4000 00a08cef fcffffff fffcf279 0003540b
+0f0a4000 00a08cef fcffffff fffcf279 04cb540b
+0f0a4001 00a08cef fcffffff fffcf279 04cb540b
+c8104a50 00982caf fc127e03 ff0ff3ff 088a000e
+c8104a50 00982caf fc127e03 ff0ff3ff 099b100e
+c8104a50 00982caf fc127fff fffff238 0bba440e
+c8104a50 00982caf fc127fff fffff238 0ccb540e
+c8104a50 00982cef fc1217ff fffffe38 088a000e
+c8104a50 00982cef fc1217ff fffffe38 0ccb540e
+c8104a50 00982cef fc127e03 ff0ff3ff 088a000e
+c8104a50 00982cef fc127fff fffff238 0803dc0e
+c8104a50 00982cef fc127fff fffff238 088a000e
+c8104a50 00982cef fc127fff fffff238 0aaaaa0e
+c8104a50 00982cef fc127fff fffff238 0b33320e
+c8104a50 00982cef fc127fff fffff238 0bba440e
+c8104a50 00982cef fc127fff fffff238 0ccb540e
+c8104a50 00982cef fc127fff fffff238 0ccb760e
+c8104a50 00982cef fc50fe04 3ffdf3f8 088a000e
+c8104a50 00982cef fc50fe04 3ffdf3f8 099b100e
+c8104a50 00982cef fc50fe04 3ffdf3f8 0a22220e
+c8104a50 0098acef fc1217ff fffffe38 088a000e
+c8104a50 0098acef fc1217ff fffffe38 0ccb540e
+c8104a50 00992caf fc26a004 1ffc93f8 1806008e
+c8104a50 00992cef fc26a004 1ffc93f8 1806008e
+c8104a50 00992cef fc26a004 1ffc93f8 1ccf540e
+c8104a51 00982cef fc127fff fffff238 088a000e
+c8104a54 0098acef fc1217ff fffffe38 088a000e
+c8104a60 0098acef fc127e03 ff0ff3ff 088a000e
+c8104a70 00982cef fc127e03 ff0ff3ff 088a000e
+c8104a70 00982cef fc127e03 ff0ff3ff 0ccb540e
+c8104a70 0098acef fc127e03 ff0ff3ff 0802ee0e
+c8104a70 0098acef fc127e03 ff0ff3ff 0803540e
+c8104a70 0098acef fc127e03 ff0ff3ff 0803760e
+c8104a70 0098acef fc127e03 ff0ff3ff 088a000e
+c8104a70 0098acef fc127e03 ff0ff3ff 088b540e
+c8104a70 0098acef fc127e03 ff0ff3ff 0913dc0e
+c8104a70 0098acef fc127e03 ff0ff3ff 0a22220e
+c8104a70 0098acef fc127e03 ff0ff3ff 0a23760e
+c8104a70 0098acef fc127e03 ff0ff3ff 0b33320e
+c8104a70 0098acef fc127e03 ff0ff3ff 0b33760e
+c8104a70 0098acef fc127e03 ff0ff3ff 0c42cc0e
+c8104a70 0098acef fc127e03 ff0ff3ff 0ccb540e
+c8104a70 0098acef fc26a003 1f0c93ff 088e000e
+c8104a70 0099acef fc26a003 1f0c93ff 188e000e
+c8112230 00982caf fc127fff fffff238 0a22220e
+c8112230 00982cef fc127fff fffff238 0a22220e
+c8112230 00982cef fc50fe04 3ffdf3f8 0a22220e
+c8112230 00982cef fcffffff fffe7c38 0800000e
+c8112230 0098acaf fc127fff fffff238 088a000e
+c8112230 0098acaf fc127fff fffff238 0a22220e
+c8112230 0098acaf fc127fff fffff238 0ccb540e
+c8112230 0098acef fc127fff fffff238 088a000e
+c8112230 0098acef fc127fff fffff238 088a010e
+c8112230 0098acef fc127fff fffff238 0a22220e
+c8112230 0098acef fcffffff fffe7c38 0800000e
+c8112230 00992caf fc26a004 1ffc93f8 1a26220e
+c8112230 00992cef fc26a004 1ffc93f8 199f100e
+c8112230 00992cef fc26a004 1ffc93f8 1ccf540e
+c8112230 0099acaf fc26a004 1ffc93f8 1806008e
+c8112230 0099acaf fc26a004 1ffc93f8 188e000e
+c8112230 0099acaf fc26a004 1ffc93f8 1916880e
+c8112230 0099acaf fc26a004 1ffc93f8 1a26220e
+c8112230 0099acaf fc26a004 1ffc93f8 1aaeaa0e
+c8112230 0099acef fc26a004 1ffc93f8 1806008e
+c8112230 0099acef fc26a004 1ffc93f8 1807320e
+c8112230 0099acef fc26a004 1ffc93f8 1807540e
+c8112230 0099acef fc26a004 1ffc93f8 188e000e
+c8112230 0099acef fc26a004 1ffc93f8 1916880e
+c8112230 0099acef fc26a004 1ffc93f8 199f100e
+c8112230 0099acef fc26a004 1ffc93f8 1a26220e
+c8112230 0099acef fc26a004 1ffc93f8 1aaeaa0e
+c8112230 0099acef fc26a004 1ffc93f8 1b37320e
+c8112230 0099acef fc26a004 1ffc93f8 1ccf540e
+c8113278 00982cef fc127fff fffff238 0912880e
+c8113278 0098acef fc127fff fffff238 0803540e
+c8113278 0098acef fc127fff fffff238 088a000e
+c8113278 0098acef fc127fff fffff238 0912880e
+c8113278 0098acef fc127fff fffff238 099b100e
+c8113278 0098acef fc127fff fffff238 0a22220e
+c8113278 0098acef fc127fff fffff238 0ccb540e
+c8113278 00992cef fc26a004 1ffc93f8 1806008e
+c8113278 0099acef fc26a004 1ffc93f8 1806008e
+c8113278 0099acef fc26a004 1ffc93f8 188e000e
+c8113278 0099acef fc26a004 1ffc93f8 1a26220e
+c8113278 0099acef fc26a004 1ffc93f8 1ccf540e
