@@ -71,7 +71,7 @@ here, and a finding that explains code goes beside that code.
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
-The submodules are amazingalek's forks (The web target): each `web` branch is the upstream commit plus the web
+The submodules are amazingalek's forks (The web target): each one's `main` is the upstream commit plus the web
 support, one commit per change, named here by the patch file it was until 2026-10-11, as the notes below still call
 them, and a later one by its fork and commit (the why is in the code they touch):
 
@@ -119,7 +119,15 @@ plume ba97511          the browser's animation frames timed for the display's ra
 rt64 d92a792           taken by RT64, so the Display frame rate interpolates on a page (before, the rate was 0)
 rt64 551f33e           the RSP's vertex Z test picked its multisampled shader for any sample count above 0, so WebGPU
                        dropped every command buffer that tested a flare
+plume 9c69058          backgroundPipelineBuilds, false in Firefox, whose GPU process builds an async pipeline in line;
+rt64 fcc6fe4           without it every draw uses the ubershader and no specialized shader is built
 ```
+
+Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
+on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would only gain the line) and OfflineModRecomp
+`--static` writes a mod as C to link in; N64ModernRuntime 7bb2ee1 runs a built-in mod from that code
+(`register_precompiled_mod`) and its replacements and hooks as those redirects; N64Recomp-browser's `worker_alert.js` turns an
+`alert` on a thread (a mod that fails to load) into a console error instead of an exception that stops the page.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -145,9 +153,9 @@ rt64-0005              a high-res replacement on a rect drawn backwards is sampl
 - llvm.org's clang has no MIPS target, so the patches library and mods use MSYS2's clang with llvm.org's `ld.lld`
   (MSYS2's `ld.lld` rejects `--emit-relocs`). Bare `python` is 2.7: use `py -3` or the venv.
 - RT64 can't get a D3D12 device with the features it needs here and falls back to Vulkan.
-- The desktop is 3840x2160 at **30 Hz**: the monitor is a 60 Hz one, but Windows drives it at 29 Hz (`EnumDisplaySettings`,
-  2026-10-11). So Framerate Display presents 30 frames a second while the game renders 60, and interpolation can't be
-  seen or measured here.
+- The desktop is 3840x2160 at 59 Hz (`Win32_VideoController.CurrentRefreshRate`) since 2026-10-12. Until then Windows
+  drove the monitor (a Philips BDM4065 on DisplayPort) at 29 Hz, so measurements from before that date that mention
+  the display's rate, presented frames or interpolation were taken at 30 frames a second.
 - Other games' ROMs, to try the web support on another recomp, are in `D:\Torrents\Nintendo64-N64.SCENE.ARCHIVE.-.COMPLETE`
   (Majora's Mask US: `Legend_of_Zelda_Majoras_Mask_USA-TC`). Never copy one into a repo.
 - The main checkout `C:\Users\Alek\Documents\Source\n64-recomp` holds the ROMs (`roms/`), the Python venv
@@ -170,6 +178,8 @@ bash tools/iterate.sh 30
 Until 2026-10-11 the game lived in `rush2049/` (and the tools in `tools/rush2049/`, the symbols in `syms/rush2049/`).
 `copy_submodules.sh` still copies from a checkout like that. To move one over, pull, then `bash tools/copy_submodules.sh .`
 (it finds the submodules in `rush2049/lib/` and keeps their git dirs), rerun the patch script, and delete `rush2049/`.
+The submodule `lib/recomp-web` became `lib/N64Recomp-browser` on 2026-10-12: in a checkout from before, the update
+clones the new one, and `lib/recomp-web` is left over to delete.
 
 Copying the submodules from another checkout is faster than cloning them (about 2 minutes): in place of the
 submodule update, `bash tools/copy_submodules.sh $M` (or another worktree), then the patch script. It also moves a
@@ -260,11 +270,15 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 **It has moved out** (2026-10-11, as Alek chose). Seven repos under amazingalek, all public:
 
-- The forks, each with a `web` branch: the commit upstream pins, plus the web support one commit per change (table
+- The forks, on their `main` branch (named `web` until 2026-10-12, when the unused upstream mirror that was main
+  went): the commit upstream pins, plus the web support one commit per change (table
   in How it fits together). `rt64-web` (its `src/contrib/plume` is `plume-web` and its `src/contrib/hlslpp`
   `hlslpp-web`), `N64ModernRuntime-web` (its `N64Recomp` is `N64Recomp-web`) and `RecompFrontend-web`. They stay
-  forks: upstream takes no LLM-written code (Rules).
-- `recomp-web`, the submodule `lib/recomp-web`: `forks.txt` (the fork commits that work together; a tag is
+  forks: upstream takes no LLM-written code (Rules). Each one's README opens with a banner, and its GitHub
+  description with "AI-written fork:", saying it is AI-written, not upstream's, and offered to nobody upstream (hlslpp
+  has no ban, so hlslpp-web's says only the first two); keep that true of a new fork.
+- `N64Recomp-browser` (amazingalek/recomp-web until 2026-10-12; GitHub redirects that address), the submodule
+  `lib/N64Recomp-browser`: `forks.txt` (the fork commits that work together; a tag is
   a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
   page), `tests/` (the plume device thread test, `hlslpp_wasm_test.cpp`, `wgsl_check.mjs`, and `build/`, every
   library of a page built with Emscripten from the forks), and the CI that runs those four. Its README is the guide
@@ -275,37 +289,39 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 
 `amazingalek/BanjoRecomp-web` (branch `web`, its default) is Banjo-Kazooie: Recompiled on the same forks, the
 second recomp the web support was tried on (2026-10-11): the page boots, draws and plays in Chrome. Since 2026-10-12
-it is on recomp-web main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
+it is on N64Recomp-browser main's forks (19ef581), with no externs header, and `recomp::start` takes upstream's
 `recomp::Configuration` (`requeue_pi` kept on, as the runtime did before). Its README
 says up front that it is AI-written and not the Banjo team's, its BUILDING.md how to build the page, and what porting
-it found is in recomp-web's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
+it found is in N64Recomp-browser's README. `amazingalek/Zelda64Recomp-web` (branch `web`, its default) is the third
 (2026-10-12): Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it onto
-RecompFrontend), on recomp-web v0.4.0's forks, the ones pinned here. In headless Chrome: launcher, Load ROM, the attract demo, title, file
-select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here:
-headless Chrome's animation frames follow this desktop's 29 Hz, so a page here presents no more). Render to RAM
-stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod stays out (no live
-recompiler), and building it needs the decompressed ROM its BUILDING.md names (the page takes the plain one).
+RecompFrontend), on N64Recomp-browser 6b67064's forks (v0.4.0's plus the built-in mods; this repo pins 804cfc2, those and the Firefox pipeline change). In headless Chrome: launcher, Load ROM, the attract demo, title, file
+select, the intro, Link walking, the pause menu; its 20 frames a second interpolated to the display's rate (29 here
+then: headless Chrome's animation frames follow the desktop's rate, so a page here presented no more). Render to RAM
+stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
+time and linked in (its icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md
+names (the page takes the plain one).
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
 stays here: `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN`
-branches of `CMakeLists.txt` that make the game a page with `recomp-web/frontend/`. The link options in
+branches of `CMakeLists.txt` that make the game a page with `N64Recomp-browser/frontend/`. The link options in
 `headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
 runtime's own interfaces, as every recomp does.
 
 **Changing it.** The submodule here holds the game's patches as uncommitted changes, so commit to a fork from a clone
 of its own in your scratch directory:
 
-1. `git clone -b web https://github.com/amazingalek/<fork>`, make the change behind `__EMSCRIPTEN__`/`__wasm__` (or
+1. `git clone https://github.com/amazingalek/<fork>` (its `main`), make the change behind `__EMSCRIPTEN__`/`__wasm__` (or
    an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
    game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
-2. Push it to `web` as a fast-forward, never a force-push: this repo and recomp-web's tags pin those commits. A
+2. Push it to `main` as a fast-forward, never a force-push: this repo and N64Recomp-browser's tags pin those commits. A
    change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
-   N64ModernRuntime-web: commit and push that too.
-3. Bump `forks.txt` in a clone of recomp-web (and anything of its own the change needs), push to its `main`, and wait
-   for its CI: `gh run list -R amazingalek/recomp-web`.
-4. Here, move the submodules and `lib/recomp-web` to those commits, rerun the patch script (rebase a game
-   patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag recomp-web
+   N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
+   are SHAs, so a fork's `main` may sit ahead of what `forks.txt` names.
+3. Bump `forks.txt` in a clone of N64Recomp-browser (and anything of its own the change needs), push to its `main`, and wait
+   for its CI: `gh run list -R amazingalek/N64Recomp-browser`.
+4. Here, move the submodules and `lib/N64Recomp-browser` to those commits, rerun the patch script (rebase a game
+   patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag N64Recomp-browser
    (`v0.<n+1>.0`).
 
 **Step 1, done: the CPU side.** `headless/` (its `main.cpp` header says how) builds the recompiled code,
@@ -353,7 +369,7 @@ with their own CPU use unchanged, so what drops frames there is threads waiting 
 **Step 2, done: the game on a canvas.** `plume-0001` adds a WebGPU backend to plume, the layer RT64 and recompui
 draw through (`plume_webgpu.h`'s header says what stands in for what core WebGPU lacks), `plume-0002` runs it on the
 page's main thread for every caller, `plume-0003`, `plume-0004` and `plume-0006` add what RT64 needs, and rt64-0006
-to rt64-0011 make RT64 build for it and fit it. `recomp-web/renderer/` is the RecompFrontend RT64 context without
+to rt64-0011 make RT64 build for it and fit it. `N64Recomp-browser/renderer/` is the RecompFrontend RT64 context without
 recompui, and the
 headless build draws through it by default (`HEADLESS_RT64`), as a page, `Rush2049Headless.html`: the title screen,
 the Midway screen and the attract races draw as they do natively, with no WebGPU errors. To build and run it:
@@ -375,8 +391,8 @@ console) build with `emcmake cmake -S lib/rt64/src/contrib/plume -B <dir> -DPLUM
 
 Shaders go HLSL → SPIR-V (dxc, without `-fvk-invert-y`: WebGPU's clip space is D3D's) → WGSL (naga
 `--keep-coordinate-space`), spec constants become `override`s and push constants a uniform buffer at `@group(3)
-@binding(999)`. `node lib/recomp-web/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in
-headless Chrome. recomp-web's CI `wgsl` job builds and checks them on every push there, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
+@binding(999)`. `node lib/N64Recomp-browser/tests/wgsl_check.mjs <dir>` checks every `.wgsl` against core WebGPU in
+headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on every push there, on SwiftShader (Chrome's CPU Vulkan, `CHROME_FLAGS` in the
 checker), which has no dual-source blending, so there the 6 `*DualSource` variants are only validated by naga.
 What to know before changing it:
 
@@ -397,6 +413,13 @@ What to know before changing it:
   boot ran at 17-20 display lists a second for ~10 s and about one run in fifteen froze for good. One compilation
   thread: six at once took ~9 cores and halved the frame rate. The wasm grows from 7.3 to 16.6 MB (the spec
   constant shaders).
+- Firefox (157, Windows) builds a `createRenderPipelineAsync` pipeline on its GPU process in line with the device's
+  other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
+  Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
+  shader they use had been built. So in Firefox RT64 builds none and draws everything with the ubershader (plume
+  9c69058, rt64 fcc6fe4, a user agent check): 2026-10-12, attract races at 43-60 frames a second in a
+  2250x1680 canvas, host 100% and GPU 77% busy with other sessions, no stall over 1.7 s. Its GPU cost is the
+  ubershader's (above).
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
@@ -481,7 +504,7 @@ against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there)
 
 **Step 3, done: the game with its frontend.** The game itself builds with Emscripten into
 `Rush2049Recompiled.html`: the launcher, recompui's menus, SDL2's audio and keyboard, the ROM from Load ROM, and
-HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `recomp-web/frontend/CMakeLists.txt`'s header says
+HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `N64Recomp-browser/frontend/CMakeLists.txt`'s header says
 what each part does; the README says how to build and serve it. Checked in headless Chrome 154: launcher, Load ROM,
 title, menus, a race on the keyboard, audio playing (RMS 0.1-0.2), a reload that boots from the stored ROM, and
 without the two headers through `coi_serviceworker.js`. What to know:
@@ -502,14 +525,14 @@ without the two headers through `coi_serviceworker.js`. What to know:
 - hlslpp's wasm SIMD backend, which `-msimd128` picks, had movehl, dot4, load3 of int3 and shifts by a count per
   lane wrong, so transpose, inverse and some mul shapes too. RT64 builds its view and projection matrices with them
   on the CPU: this game didn't show it, Banjo drew a polygon over the whole screen. hlslpp-web fixes them and
-  recomp-web's CI checks the backend against plain C++. `HLSLPP_SCALAR` is no way out: the scalar backend's `frac`
+  N64Recomp-browser's CI checks the backend against plain C++. `HLSLPP_SCALAR` is no way out: the scalar backend's `frac`
   is wrong for negative numbers.
 - Emscripten's SDL2 is built without haptics, and `SDL_Init` with `SDL_INIT_HAPTIC` fails as a whole there, gamepads
   with it: `main.cpp` leaves it out on Emscripten. Gamepads were checked with a stand-in `navigator.getGamepads()`
   (a standard-mapping pad set from CDP, `vibrationActuator.playEffect` logged): launcher, menus, a race, rumble. No
   real pad has been tried on the page. Exit, before it was hidden, left a black canvas, and the next input aborted
   the program (`emscripten_proxy_async failed`).
-- recomp-web's CI builds every library of a page with Emscripten, recompui's `Interface*.wgsl` included, but no page
+- N64Recomp-browser's CI builds every library of a page with Emscripten, recompui's `Interface*.wgsl` included, but no page
   (that needs a game), and this repo's CI builds no Emscripten target: the page and `file.cpp`'s picker are checked
   only by a build and a run here.
 
@@ -518,8 +541,13 @@ without the two headers through `coi_serviceworker.js`. What to know:
 - Publishing the page (GitHub Pages).
 - No `rgba16unorm` (HDR) target on the web, and MSAA is off: WebGPU has no sample positions.
 
-Mods stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would have to emit
-and load wasm modules instead. No other N64 recomp running in a browser was found to learn from.
+Mods a player adds stay off on the web: the live recompiler (sljit) emits machine code, and a wasm port of it would
+have to emit and load wasm modules instead. A recomp's built-in mods work (2026-10-12, N64Recomp-browser's README says how):
+recompiled to C at build time, and what a mod replaces or hooks redirected at each function's entry, since wasm code
+can't be rewritten. Clang folds a function's address used as an array index into the load's offset, and the linker
+fills in the function's index in the module there, not its table index, which hung the page at boot until
+`recomp.h` hid the address behind an empty `asm`. A function pointer is safe in wasm as a value, not as arithmetic.
+No other N64 recomp running in a browser was found to learn from.
 
 ## Ruled out, so don't retry
 

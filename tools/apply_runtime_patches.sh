@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Applies this game's runtime patches, runtime-patches/<Submodule>-*.patch, to the matching submodule under
-# lib, in order of name. The submodules are amazingalek's forks, checked out on their web branches, so the
+# lib, in order of name. The submodules are amazingalek's forks, checked out on their main branches, so the
 # patches go on top of the web support (CLAUDE.md, "The web target"). Patches already applied are skipped.
 # A submodule nested one level down (N64ModernRuntime/N64Recomp), or in a submodule's src/contrib
 # (rt64/src/contrib/plume), is found by its name too; a patch for one inside a submodule that isn't checked out is

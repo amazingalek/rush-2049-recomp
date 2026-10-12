@@ -19,7 +19,7 @@ uploaded. It plays the title screen, the menus and races in Chrome at close to 6
 build does, and the title and demo races in Firefox. It isn't hosted anywhere yet, so for now you build it and
 serve it yourself. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
-[recomp-web](https://github.com/amazingalek/recomp-web). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
+[N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
 of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
 Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com/amazingalek/Zelda64Recomp-web) (not
 made by the Zelda 64: Recompiled team).
@@ -232,9 +232,9 @@ cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush20
 - `src/`, `include/`: runtime glue and enhancements. `tests/`: tests of the pure code, which CI runs.
 - `us.toml`, `patches.toml`, `musyx.toml`: the N64Recomp and RSPRecomp configs, with every hook into the game.
 - `patches/`: the patches library mods build against; `mod_template/`: the example mod.
-- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on a
-  `web` branch, and `recomp-web` is what turns a recomp into a page; see
-  [recomp-web](https://github.com/amazingalek/recomp-web). `runtime-patches/`: this game's fixes on top of them.
+- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on
+  their `main` branch, and `N64Recomp-browser` is what turns a recomp into a page; see
+  [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). `runtime-patches/`: this game's fixes on top of them.
 - `headless/`: a build without the frontend: the browser test page, or with no graphics at all.
 - `assets/`: the menus' fonts, icons and stylesheet, and the hi-res title's patch, shipped beside the executable.
 - `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
