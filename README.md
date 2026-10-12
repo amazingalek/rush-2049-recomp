@@ -135,9 +135,17 @@ recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downl
 ```sh
 source <emsdk>/emsdk_env.sh
 embuilder build sdl2-mt freetype-legacysjlj      # once
-emcmake cmake -S . -B <build dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
-ninja -C <build dir> Rush2049Recompiled
+emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT64_NAGA_EXECUTABLE=<naga>
+ninja -C build-web Rush2049Recompiled
 ```
+
+A first build compiles about 640 files, which takes 10 to 20 minutes. Two things make later builds shorter:
+
+- [ccache](https://ccache.dev) on `PATH` when you configure. Every compile then goes through it, so a new build dir,
+  or another checkout of the repo with its build dir in the same place (`build-web`), compiles nothing that was
+  compiled before. Its cache is per user, so it also serves other recomps built on the same web support.
+- `-DN64RECOMP_BROWSER_FAST_LINK=ON` when you only want to try something. The last step then takes seconds instead of
+  minutes, because it skips Binaryen's optimization of the whole program. Leave it off for a page that people play.
 
 That writes `Rush2049Recompiled.html` with its `.js`, `.wasm` and `.data` and `coi_serviceworker.js` into the build
 dir; none of them holds the ROM. Serve that folder over https, or http on localhost, and open the `.html`. The page
