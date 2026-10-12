@@ -42,7 +42,7 @@ here, and a finding that explains code goes beside that code.
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
   of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
 - Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend,
-  BanjoRecomp or Zelda64Recomp: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI
+  BanjoRecomp, Zelda64Recomp or Donkey-Kong-64-Recompiled: their CONTRIBUTING.md bans LLM-written code (plume's, any AI-made contribution or AI
   talking to its maintainers). The web forks stay forks.
 - Repos without a license are facts only, never code: bryantmh/rush2recompiled (Rush 2, same engine recipe) and
   cabi24/SFRush2049-decomp (same ROM, about 20% matched, IDO 5.3 `-mips2 -G0`).
@@ -113,6 +113,8 @@ rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD
 N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
                        ignored functions, reference symbols
 N64Recomp 8eb7338      recomp_trigger_event declared for a patches library's own events (no patches here trigger one)
+N64Recomp 9eb59c4      a patch's call to a reimplemented, ignored or renamed function goes to <name>_recomp, as the
+                       game's own calls do (Donkey Kong 64's patches call osInitialize; this game's call none)
 every fork             upstream merged in at the commits Zelda64Recomp's `recomp-frontend` branch pins: the runtime's
                        recomp::start takes a recomp::Configuration, with a MessageQueueControl (defaults as before)
 plume ba97511          the browser's animation frames timed for the display's rate, reported as displayTiming;
@@ -128,6 +130,8 @@ on wasm (`RECOMP_FUNC_ENTRY`, empty elsewhere, so the recompiled code here would
 `--static` writes a mod as C to link in; N64ModernRuntime 7bb2ee1 runs a built-in mod from that code
 (`register_precompiled_mod`) and its replacements and hooks as those redirects; N64Recomp-browser's `worker_alert.js` turns an
 `alert` on a thread (a mod that fails to load) into a console error instead of an exception that stops the page.
+N64Recomp-browser 035f224 moves N64ModernRuntime to 456e025 for N64Recomp 9eb59c4, which leaves this game's generated
+code as it was.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -300,6 +304,16 @@ then: headless Chrome's animation frames follow the desktop's rate, so a page he
 stays on there (the Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build
 time and linked in (its icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md
 names (the page takes the plain one).
+
+`amazingalek/Donkey-Kong-64-Recompiled-web` (branch `web`, its default) is the fourth (2026-10-12): Rainchus's Donkey
+Kong 64: Recompiled, on N64Recomp-browser 035f224's forks, the ones pinned here. In headless Chrome: launcher, Load
+ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his house, the pause menu, sound. Its
+upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
+and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and argv): the page leaves all of those out.
+Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
+signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on
+(its code reads its framebuffers; not tried off). The ROM is the US 1.0 (`Donkey_Kong_64-USA-AGS` on D:), decompressed
+with the DK64 decomp's `tools/generate_decompressed_rom.py` for building.
 
 None of these repos has a board: their work is done from cards on this board, and this repo's PR is where it is
 reviewed and lands. Nothing in them names this game, includes from this repo or needs its ROM; what is the game's
