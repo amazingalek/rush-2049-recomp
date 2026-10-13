@@ -372,10 +372,13 @@ porting it found: its own strtol, strncmp, acos and others clash with funcs.h's 
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
 after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
 off. Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
-depth), too many to build at the start or for Chrome's cache. Its list, 455 (193 pipelines), is recorded by a script
-(`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage): the menus, a
-mission's briefing and report, and the start of every solo level and the credits, a section a level. The page builds
-the menus' before the game (2.5 s cold) and a level's when it first draws (Dam 6.6 s cold, 4.5 s on a later visit:
+depth), too many to build at the start or for Chrome's cache. Its list, 465, is recorded by a script
+(`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage): the boot as it plays
+by itself until `g_StageNum` leaves the title (90) for the first attract demo (the logos, the cast credits, the gun
+barrel and the title; later rounds of the cast draw nothing new, and the demos, recorded levels, stay out), the menus,
+a mission's briefing and report, and the start of every solo level and the credits, a section a level. Without the
+boot, a cold visit built 13 shaders behind the intro, which fell to ~15 frames a second. The page builds the boot's
+and the menus' before the game (2.5 s cold for the menus alone) and a level's when it first draws (Dam 6.6 s cold, 4.5 s on a later visit:
 boot and Dam alone are ~9.4 MB of Chrome's 6 MB cache), Chrome 155 headless, RTX 2070. Ending a mission crashes after
 a stage started straight from `shader_survey`: the plan reaches the report through mission select like a player. To
 reach a level from a fresh save by hand, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds
