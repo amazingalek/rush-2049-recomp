@@ -327,10 +327,11 @@ It lives in seven repos under amazingalek, all public:
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
   (CI's checks job compares them), with `runtime-patches/` on top.
 
-N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays by hand in
-Chrome and Firefox on a desktop GPU (an RTX 2070) and on a laptop's Intel UHD. Keep it current: a hand test, or a
-change that moves how a game plays (a fork, a page, a shader list), updates that row and its date, and a new game gets
-a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
+N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays in
+Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
+column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
+or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
+gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. GoldenEye and Banjo are on N64Recomp-browser v0.21.0
