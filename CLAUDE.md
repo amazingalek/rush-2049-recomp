@@ -449,7 +449,13 @@ pages to `rdram + vram + 0x80000000`, ~2.4 GB past RDRAM, inside the desktop's 4
 an allocation in the wasm heap, so `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with
 `-sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar,
 which is what N64Recomp 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream
-resampling the game's rate to the page's. The ROM is the US one. Since main e7cd6b0 it is on N64Recomp-browser v0.11.0
+resampling the game's rate to the page's. The ROM is the US one. Its native build (`build.sh`, `build.cmd`) didn't
+compile on the forks until main 0dce4fc: their runtime has no `argc`/`argv` in `recomp::Configuration` (upstream's
+`--game`), so `--seconds` and `--headless` call `recomp::start_game` on the first VI instead. Checked on helga with
+`build.sh` in the `tools/helga/Dockerfile` image, and the window build run with `--seconds 90` in a container of its
+own with Xvfb and Mesa's software Vulkan (`xvfb mesa-vulkan-drivers`, installed there at run time, `--rom` an absolute
+path): the intro to the bar at 60 VIs a second (2026-10-13). `--headless` in the window build stops at the first
+camera or rumble setting it reads, which only the frontend's General tab holds (upstream's code). Since main e7cd6b0 it is on N64Recomp-browser v0.11.0
 (f44f945, rt64 ada5231; its `recomp/rt64.patch` applies unchanged) and prebuilds 298 shaders (`host/rt64_shaders.txt`:
 the intro, the bar's menus, Hungover, a new game's opening to play, seven multiplayer modes against bots; no later
 chapter, no split screen), 17.3 s cold in headless Chrome (RTX 2070, host 25-52% busy), then the game draws with no
