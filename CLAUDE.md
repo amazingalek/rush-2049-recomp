@@ -165,6 +165,10 @@ rt64 b8bdd0d           waits before each present and skips those the GPU falls b
 rt64 b47ed32           a shader the list missed reported in Firefox too, which builds none during play
 plume 4f0a97e          while a readback or a present waits, an empty submission once a millisecond: Firefox's GPU
 rt64 d070e5c           process calls them back only after a submission or on a 100 ms timer (POLL_TIME_MS)
+rt64 73e9ca0           render to RAM's copy a display list late, for a game that opts in (renderToRAMLate,
+RecompFrontend 06468f9 set_render_to_ram_late): the list's last copy lands when the next list starts, or at a VI once
+                       the GPU has it, so the list doesn't wait for the readback; a framebuffer the CPU wrote to
+                       meanwhile keeps what it wrote
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
@@ -420,8 +424,9 @@ then each chapter (It's War in two) and seven multiplayer modes against bots; no
 with no WebGPU errors. In Firefox it never starts: Firefox refuses `setBindGroup`'s dynamic offsets as a view of a
 heap past 2 GB (card 17919049620830000). Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
-(without it, only the game's far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README
-has the table). A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
+(without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
+a frame into RDRAM a list late (rt64 73e9ca0): in Windy, headless Chrome 155 on a busy host, 10.7-11.8 ms a list
+against 14.8-16.4 with the exact copy, the camera stepping aside from walls the same way (its README has the table). A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
 `-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
 `target_link_libraries(<target> PRIVATE -sINITIAL_MEMORY=...)` comes last.
@@ -615,7 +620,10 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so this
   game turns it off, on the desktop too, since nothing in it reads a frame (`set_render_to_ram` in `main.cpp`,
   RecompFrontend-0004; `create_rt64_renderer`'s argument; `?render-to-ram=1` on the headless page turns it back on).
-  Another recomp whose game reads its frames on the CPU needs it on.
+  Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
+  the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
+  instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
+  queue and reads the pictograph and the pause background at once, so it keeps the exact copy.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
   for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.
