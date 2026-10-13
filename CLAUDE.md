@@ -347,8 +347,8 @@ or a change that moves how a game plays (a fork, a page, a shader list) updates 
 gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. GoldenEye and Conker are on N64Recomp-browser v0.23.0 (0a4ba9d)
-and its forks, Banjo on v0.21.0 (e879a25), Majora's Mask and Donkey Kong 64 on v0.20.0 (6ce41d6); Banjo, Majora's
+every push to main with no ROM, is disabled. GoldenEye, Conker and Donkey Kong 64 are on N64Recomp-browser v0.23.0
+(0a4ba9d) and its forks, Banjo on v0.21.0 (e879a25), Majora's Mask on v0.20.0 (6ce41d6); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -385,7 +385,11 @@ and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and ar
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
-says more); its transition snapshots are copied on the GPU. The ROM is the US 1.0, decompressed with the DK64 decomp's
+says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
+right a list late, but the boot reuses the memory of framebuffers whose copy is still pending, a late copy landed on
+what the game wrote there, and 2 of about 26 boots crashed in the audio microcode (none of about 12 exact; a list in
+DK Isles 6-7 ms exact, about 2 late, headless Chrome 155, RTX 2070). `patches/shader_survey.c`'s `film` gives the
+camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
 
 `amazingalek/GoldenEye64Recomp-web` is GoldenEye 007, from cblock85's GoldenEye64Recomp (itself from kholdfuzion's
@@ -636,7 +640,9 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
   instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
-  queue and reads the pictograph and the pause background at once, so it keeps the exact copy.
+  queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
+  reuses a framebuffer's memory once the RDP is done: the copy lands while the game runs, after its hash check, and
+  Donkey Kong 64's boot crashed on it (The web target).
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
   for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.
