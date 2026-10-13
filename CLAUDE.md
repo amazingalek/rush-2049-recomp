@@ -182,7 +182,9 @@ bar a one-time setup panel with the time left. 2697fe4 moves rt64 to a01b00f and
 (spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before). 9e34219 moves rt64
 to 7910126. dbb362f moves rt64 to 657c222, keeps the learned shaders in the shell's `localStorage`, and adds
 `tools/record_shaders.mjs`, which records a game's list by code (a plan of the game's own reaches each level).
-8c11f69 moves rt64 to b8bdd0d and e03236f to b47ed32.
+8c11f69 moves rt64 to b8bdd0d and e03236f to b47ed32. 6ce41d6 drops the notice in Chrome (every game plays smoothly
+there on integrated graphics now) and shows one in Firefox, always, recommending Chrome or Edge: Firefox's WebGPU
+adapter info is all empty strings, so a page there can't tell what it draws with.
 
 `runtime-patches/`, this game's, on top of the forks:
 
