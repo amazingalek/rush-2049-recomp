@@ -171,6 +171,12 @@ rt64 73e9ca0           render to RAM's copy a display list late, for a game that
 RecompFrontend 06468f9 set_render_to_ram_late): the list's last copy lands when the next list starts, or at a VI once
                        the GPU has it, so the list doesn't wait for the readback; a framebuffer the CPU wrote to
                        meanwhile keeps what it wrote
+rt64 e8e162e           frames paced evenly on WebGPU while the GPU falls behind: after 2 dropped presents in a second
+                       every game frame gets the same number of presents (one, at 30 fps on 60 Hz), the number above
+                       tried again after 10 s, twice as long each time it falls straight back; Banjo at 20-30 fps
+                       showed 10-20% of its frames never and the rest one to three times, in both browsers
+plume 01a7bac          the display's rate from the shortest quarter of a second's animation frame intervals: their
+rt64 f0e6217           median read 20-39 on a 60 Hz display under load, and each change restarts the interpolation
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
