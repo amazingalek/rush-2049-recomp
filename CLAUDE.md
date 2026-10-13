@@ -150,6 +150,8 @@ rt64 de43acc           the prebuilt shaders the game waits for built largest fir
                        cores, the progress by WGSL size with those in flight counted half done
 rt64 a01b00f           the prebuilt shaders run through spirv-opt -O between re-spirv and naga: a RasterPS ~45%
                        smaller, and descriptions that differ only in what the shaders ignore come out the same
+rt64 7910126           a shader rebuilt when an .hlsli or shared header it includes changes (dxc's depfile, with
+                       Ninja and Makefiles): an incremental build kept the old WGSL, and Conker's page failed with it
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -168,7 +170,8 @@ builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CAL
 which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb and makes the shader list a required
 step of a port in its README, and e82d7df moves rt64 to e839610. 4913560 moves rt64 to de43acc and makes the shell's
 bar a one-time setup panel with the time left. 2697fe4 moves rt64 to a01b00f and installs SPIRV-Tools in its CI
-(spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before).
+(spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before). 9e34219 moves rt64
+to 7910126.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -275,9 +278,9 @@ force-pushes the page from here as the only commit on the orphan branch `gh-page
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
 each one's README, all five since 2026-10-12, each built from main with its prebuilt shader list (GoldenEye's from
 00b606e and Conker's from e7cd6b0, republished that night) and checked from Pages in headless Chrome to the game
-drawing. Build a page in a fresh build dir when the fork's rt64 has moved: an incremental build keeps the WGSL made
-from an `.hlsli` that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding
-doesn't exist". They are built on helga, in Docker
+drawing. A fork's rt64 older than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the
+WGSL made from an `.hlsli` that changed, and Conker's page built that way loaded and then failed every pipeline with
+"Binding doesn't exist" (moving onto 7910126 rebuilds every shader). They are built on helga, in Docker
 (the `tools/helga/Dockerfile` image, with `EM_CACHE` set to a mounted folder in the build script, since emsdk's
 environment resets it), each fork's BUILDING.md steps with the ROM copied there, then the build's five files copied back here and published with N64Recomp-browser's `tools/publish_page.sh <build dir>
 <name> amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). Publish from here, not helga: helga's
@@ -518,7 +521,7 @@ the Midway screen and the attract races draw as they do natively, with no WebGPU
 cargo install naga-cli          # naga 30; the GNU toolchain needs MSYS2's clang64/bin on PATH for dlltool
 emcmake cmake -S headless -B <dir> -G Ninja -DCMAKE_BUILD_TYPE=Release -DHEADLESS_ROM=<rom.z64> \
     -DRT64_NAGA_EXECUTABLE=<naga.exe>      # if naga isn't on PATH
-ninja -C <dir>                  # after changing a shader's .hlsli, delete <dir>/src/shaders/*.wgsl* first
+ninja -C <dir>
 ```
 
 Serve `<dir>` over http on localhost with the two cross-origin headers and open
