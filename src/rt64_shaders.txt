@@ -1,8 +1,10 @@
 # The RT64 shaders the web page builds: one shader description a line, other mode L and H, color combiner L and H,
-# flags, in hex. RT64 specializes each one's WGSL when the page is built. The page shows "Preparing graphics" until
-# those above the "background" line are compiled, what the title screen and the first attract race draw, and then the
-# game starts and RT64 builds the rest behind it, in this order but any the game asks for first. A description draws
-# with the ubershader, which integrated graphics can't afford, until its shader is built (CLAUDE.md, The web target).
+# flags, in hex. RT64 specializes each one's WGSL when the page is built, and the page shows "Building shaders" until
+# they are all compiled, before the game starts: they fit Chrome's cache, so later visits skip the wait. A list can
+# have "section <name>" lines, which leave a part of the game to be built when the game gets there, for a game whose
+# list doesn't fit (N64Recomp-browser's README); this one has none. A description missing here draws with the
+# ubershader, which integrated graphics can't afford, until its shader is built behind the game (CLAUDE.md, The web
+# target).
 #
 # Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, in the order it meets
 # them, at the page's default settings: the attract races, every menu, 1P races (one with Backward, Mirror, Fog and
@@ -56,7 +58,6 @@ c8104a70 0098acef fc127e03 ff0ff3ff 0b33760e
 c8112230 0099acaf fc26a004 1ffc93f8 1aaeaa0e
 c8112230 00982cef fcffffff fffe7c38 0800000e
 c8104a51 00982cef fc127fff fffff238 088a000e
-background
 c8104a50 00982cef fc50fe04 3ffdf3f8 099b100e
 c8104a50 00982cef fc127fff fffff238 0bba440e
 c8104a50 00982cef fc127fff fffff238 0ccb760e

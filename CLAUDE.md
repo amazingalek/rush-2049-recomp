@@ -152,6 +152,10 @@ rt64 a01b00f           the prebuilt shaders run through spirv-opt -O between re-
                        smaller, and descriptions that differ only in what the shaders ignore come out the same
 rt64 7910126           a shader rebuilt when an .hlsli or shared header it includes changes (dxc's depfile, with
                        Ninja and Makefiles): an incremental build kept the old WGSL, and Conker's page failed with it
+rt64 657c222           the prebuilt list in sections ("section <name>"; "background" starts one): those above the first
+                       before the game, each section when a frame first wants 4 of its shaders, the game waiting;
+                       a shader the list missed remembered by the page and built with its section on the next visit;
+                       descriptions that make the same pipeline built once (GoldenEye's 455 are 193 pipelines)
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -171,7 +175,8 @@ which leaves this game's generated code as it was. 0efe956 moves rt64 to bfe07cb
 step of a port in its README, and e82d7df moves rt64 to e839610. 4913560 moves rt64 to de43acc and makes the shell's
 bar a one-time setup panel with the time left. 2697fe4 moves rt64 to a01b00f and installs SPIRV-Tools in its CI
 (spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before). 9e34219 moves rt64
-to 7910126.
+to 7910126. dbb362f moves rt64 to 657c222, keeps the learned shaders in the shell's `localStorage`, and adds
+`tools/record_shaders.mjs`, which records a game's list by code (a plan of the game's own reaches each level).
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -418,11 +423,15 @@ found: its own strtol, strncmp, acos and others clash with funcs.h's C library d
 both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another section
 (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page after ~20
 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried off.
-Its page prebuilds 340 shaders (`src/rt64_shaders.txt`, main 54ece68: intro, menus, the start of Dam to Bunker), and since
-main 00b606e waits only for the 34 above its `background` line (6.6 s cold from Pages, 2026-10-12, Chrome 154 headless,
-host 15% busy), building the rest behind the game; all 340 took ~85 s and don't fit Chrome's cache (Step 2). Unlike Rush 2049 every level adds dozens (26
-combiners, but many render modes: palette textures, fog, depth), so the list stops short of the whole game. To reach a
-level from a fresh save, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
+Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
+depth), too many to build at the start or for Chrome's cache. Since main fe28c3d its list, 455 (193 pipelines), is
+recorded by a script (`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage):
+the menus, a mission's briefing and report, and the start of every solo level and the credits, a section a level. The
+page builds the menus' before the game (2.5 s cold) and a level's when it first draws (Dam 6.6 s cold, 4.5 s on a
+later visit: boot and Dam alone are ~9.4 MB of Chrome's 6 MB cache), 2026-10-13, Chrome 155 headless, RTX 2070. Before,
+the list stopped at Bunker and waited for 34 of 340 at the start. Ending a mission crashes after a stage started
+straight from `shader_survey`: the plan reaches the report through mission select like a player. To reach a
+level from a fresh save by hand, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
 10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
 
 `amazingalek/CBFD-Recompiled-web` (branch `main`) is the sixth (2026-10-12): sciaschi's Conker's Bad Fur Day:
@@ -573,15 +582,17 @@ What to know before changing it:
 - So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
   recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
   time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until those above its `background` line are built, in every browser and on every adapter (rt64
+  graphics" bar until they are built, in every browser and on every adapter (rt64
   bfe07cb; until then Firefox and a device without dual-source blending skipped them and drew everything with the
   ubershader). Alek's call: without them the page is unplayable, so **every web port records a list and builds it**,
-  not as an afterthought (N64Recomp-browser's README, what a recomp does itself). Above the line are the 45 the title
-  and the first attract race draw (rt64 e839610); then the game starts, and one thread builds the other 60 behind it
-  in the list's order, any the game asks for first. Firefox waits for all of them. Recording again: the page prints an
+  not as an afterthought (N64Recomp-browser's README, what a recomp does itself). Since rt64 657c222 this game's list
+  has no sections, so all 105 (75 pipelines) are built before the game starts: they fit Chrome's cache (0.2 s on a
+  later visit). A game whose list doesn't fit has a section a level, built when the level first draws (GoldenEye, The
+  web target). A shader the list misses is built behind the game, and the page remembers it (`localStorage`) and
+  builds it with the rest on the next visit. Recording again: the page prints an
   `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
   over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
-  list, below `background` unless the first screens draw them. Chrome's GPU process compiles them on the CPU, so rt64
+  list. N64Recomp-browser's `tools/record_shaders.mjs` drives such a recording from a plan. Chrome's GPU process compiles them on the CPU, so rt64
   de43acc builds the ones the game waits for largest first (WGSL size goes with build time), as many at once as the
   host has cores (2-16). Cold in the game's page, Chrome 154 headless, RTX 2070, host 97-100% busy with other
   sessions (2026-10-12): all 105 took 15.6-16.7 s as rt64 0034023 built them (6 at a time, in list order),
