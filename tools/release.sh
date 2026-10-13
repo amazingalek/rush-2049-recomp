@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build a Windows release from the ROM on this PC and publish it as a GitHub release. CI has no ROM (it never leaves
-# this PC), so it can't link the exe; releases are cut here instead.
+# Build a Windows release from a local ROM and publish it as a GitHub release. CI has no ROM (none is ever uploaded),
+# so it can't link the exe; releases are cut on a machine with the ROM instead.
 # Usage: tools/release.sh [--dry-run]
 #   The tag is v<version_string> from src/main.cpp, so bump that first. Needs a clean tree at origin/main, the
 #   setup from the README's build steps and CLAUDE.md (submodules, runtime patches, extract.py's roms/, the

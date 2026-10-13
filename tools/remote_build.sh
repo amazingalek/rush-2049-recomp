@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# Builds on helga, the Linux build server (32 cores, `ssh helga`), instead of this PC. Everything runs in a Docker
-# image of the build tools, tools/helga/Dockerfile, tagged with a hash of that file and built on helga the first time
-# a run needs it, so a missing tool is fixed in the Dockerfile, never installed on helga by hand (no sudo there).
+# Builds on a Linux host over ssh ($BUILD_HOST, a host name ssh knows) instead of the machine you run it on.
+# Everything runs in a Docker image of the build tools, tools/docker/Dockerfile, tagged with a hash of that file and
+# built on the host the first time a run needs it, so a missing tool is fixed in the Dockerfile, not installed on the
+# host by hand.
 #
-# Each checkout gets a copy of its own on helga, helga:~/rush2049/<name>/repo (name: the checkout's folder), made by
-# cloning origin and kept between runs with its build dirs, so a second build compiles only what changed. One ccache,
+# Each checkout gets a copy of its own there, ~/rush2049/<name>/repo (name: the checkout's folder), made by cloning
+# origin and kept between runs with its build dirs, so a second build compiles only what changed. One ccache,
 # ~/rush2049/ccache, serves every copy, and hits across them because paths in a checkout are relative to it
-# (N64Recomp-browser's frontend/build_speed.cmake): a fresh copy of the game's page builds in ~80 s. A container is
-# capped at $HELGA_CPUS cores (12) and 24 GB: helga also runs CI runners and other teams' services. Runs on one copy
-# wait for each other (flock), and its container is named rush2049-<name>, so `docker stop` names it.
+# (N64Recomp-browser's frontend/build_speed.cmake): a fresh copy of the game's page builds in ~80 s on 12 cores. A
+# container is capped at $BUILD_CPUS cores (12) and 24 GB, so it leaves room for whatever else the host runs. Runs on
+# one copy wait for each other (flock), and its container is named rush2049-<name>, so `docker stop` names it.
 #
-# Usage: tools/helga.sh [-C <checkout>] [-n <name>] <command>
+# Usage: BUILD_HOST=<host> tools/remote_build.sh [-C <checkout>] [-n <name>] <command>
 #   sync [<commit>]   send <commit> (default HEAD, with the uncommitted changes to tracked files; untracked files are
 #                     not sent) to the copy, check it out there with its submodules, apply runtime-patches/, and copy
 #                     roms/*.z64 when they differ. A commit on origin is fetched there, not sent.
-#   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of helga's
-#                     home isn't mounted)
+#   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of the
+#                     host's home isn't mounted)
 #   build [<target>]  regenerate the recompiled code (tools/recompile.sh) and build <target> (Rush2049Recompiled, the
 #                     game's page) in build-web, at -O3 unless the configure says otherwise:
-#                     tools/helga.sh run "cmake build-web -DN64RECOMP_BROWSER_FAST_LINK=ON" for a quick try
+#                     tools/remote_build.sh run "cmake build-web -DN64RECOMP_BROWSER_FAST_LINK=ON" for a quick try
 #   web [<target>]    sync, then build
 #   get <dir> <local dir>   copy the files at the top of <dir> (relative to the copy) here, build files left out
 #   clean             delete the copy (ccache stays)
@@ -38,17 +39,18 @@ done
 cmd="${1:-}"
 [[ -n "$cmd" ]] && shift
 name="${name:-$(basename "$checkout")}"
-base=rush2049                     # under helga's home
+base=rush2049                     # under the host's home
 dir="$base/$name"
-dockerfile="$here/helga/Dockerfile"
+dockerfile="$here/docker/Dockerfile"
 image="n64recomp-build:$(git hash-object "$dockerfile" | cut -c1-12)"
-cpus="${HELGA_CPUS:-12}"
+cpus="${BUILD_CPUS:-12}"
+host="${BUILD_HOST:-}"
 
-remote() { ssh -o BatchMode=yes helga "$@"; }
+remote() { ssh -o BatchMode=yes "$host" "$@"; }
 
-# The image, built on helga when it isn't there. The Dockerfile goes in on stdin: a build needs no context.
+# The image, built on the host when it isn't there. The Dockerfile goes in on stdin: a build needs no context.
 ensure_image() {
-    remote "docker image inspect $image > /dev/null 2>&1 || { echo 'building $image on helga (once, ~10 min)'; \
+    remote "docker image inspect $image > /dev/null 2>&1 || { echo 'building $image on $host (once, ~10 min)'; \
         docker build -q -t $image - > /dev/null; }" < "$dockerfile"
 }
 
@@ -70,20 +72,20 @@ sync() {
     # The commit and what it stands on that origin's main hasn't, as a bundle (none if origin has it all).
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
-    git -C "$checkout" update-ref refs/helga-sync "$sha"
-    if git -C "$checkout" bundle create -q "$tmp/head.bundle" refs/helga-sync --not origin/main 2> /dev/null; then
-        scp -q "$tmp/head.bundle" "helga:$dir/head.bundle"
+    git -C "$checkout" update-ref refs/remote-build-sync "$sha"
+    if git -C "$checkout" bundle create -q "$tmp/head.bundle" refs/remote-build-sync --not origin/main 2> /dev/null; then
+        scp -q "$tmp/head.bundle" "$host:$dir/head.bundle"
     fi
-    git -C "$checkout" update-ref -d refs/helga-sync
+    git -C "$checkout" update-ref -d refs/remote-build-sync
     if [[ "$commit" == HEAD ]]; then
         git -C "$checkout" diff HEAD --binary --ignore-submodules > "$tmp/work.diff"
-        [[ -s "$tmp/work.diff" ]] && scp -q "$tmp/work.diff" "helga:$dir/work.diff" && diff=1
+        [[ -s "$tmp/work.diff" ]] && scp -q "$tmp/work.diff" "$host:$dir/work.diff" && diff=1
     fi
     remote "set -e; cd ~/$dir; exec flock .lock bash -s" << EOF
 set -e
 cd repo
 git fetch -q origin
-[ -f ../head.bundle ] && git fetch -q ../head.bundle refs/helga-sync && rm ../head.bundle
+[ -f ../head.bundle ] && git fetch -q ../head.bundle refs/remote-build-sync && rm ../head.bundle
 git checkout -q -f --detach $sha
 git clean -fdq
 [ -n "$diff" ] && git apply ../work.diff && rm ../work.diff
@@ -105,17 +107,18 @@ if [ -f tools/apply_runtime_patches.sh ]; then
 fi
 git log --oneline -1
 EOF
-    # The ROMs (N64Recomp reads the recomp one, RSPRecomp the plain one), each copied when it differs from helga's.
+    # The ROMs (N64Recomp reads the recomp one, RSPRecomp the plain one), each copied when it differs from the host's.
     local rom have
     have="$(remote "mkdir -p ~/$dir/repo/roms && cd ~/$dir/repo && sha1sum roms/*.z64 2> /dev/null || true")"
     for rom in "$checkout"/roms/*.z64; do
         [[ -f "$rom" ]] || continue
         if ! grep -qx "$(sha1sum < "$rom" | cut -c1-40)  roms/$(basename "$rom")" <<< "$have"; then
-            scp -q "$rom" "helga:$dir/repo/roms/"
+            scp -q "$rom" "$host:$dir/repo/roms/"
         fi
     done
 }
 
+[[ -n "$host" || -z "$cmd" ]] || { echo "set BUILD_HOST to the ssh host to build on"; exit 1; }
 case "$cmd" in
 sync) sync "$@" ;;
 run) in_image "$1" ;;
