@@ -156,6 +156,11 @@ rt64 657c222           the prebuilt list in sections ("section <name>"; "backgro
                        before the game, each section when a frame first wants 4 of its shaders, the game waiting;
                        a shader the list missed remembered by the page and built with its section on the next visit;
                        descriptions that make the same pipeline built once (GoldenEye's 455 are 193 pipelines)
+plume 0ddac9b          at most 2 presents in flight on WebGPU (onSubmittedWorkDone), presentWait reported, so RT64
+rt64 b8bdd0d           waits before each present and skips those the GPU falls behind on: Firefox never holds a page
+                       back, and on a laptop's Intel graphics its queue grew seconds deep
+rt64 b47ed32           a shader the list missed reported in Firefox too, which builds none during play: until then
+                       it was never learned there
 ```
 
 Pinned here since recomp-web 033134c (now N64Recomp-browser 804cfc2, which renamed it and changed no code), which builds on 6b67064 (after v0.4.0): N64Recomp 654519a redirects a function at its entry
@@ -177,6 +182,7 @@ bar a one-time setup panel with the time left. 2697fe4 moves rt64 to a01b00f and
 (spirv-opt, which the helga image has too; without it rt64 warns and the shaders are as before). 9e34219 moves rt64
 to 7910126. dbb362f moves rt64 to 657c222, keeps the learned shaders in the shell's `localStorage`, and adds
 `tools/record_shaders.mjs`, which records a game's list by code (a plan of the game's own reaches each level).
+8c11f69 moves rt64 to b8bdd0d and e03236f to b47ed32.
 
 `runtime-patches/`, this game's, on top of the forks:
 
@@ -575,6 +581,18 @@ What to know before changing it:
   Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
   shader they use had been built. So in Firefox RT64 builds none during play, and what isn't prebuilt (below) draws
   with the ubershader (plume 9c69058, rt64 fcc6fe4, a user agent check).
+- Firefox (157) never holds a WebGPU page back: it takes 60 frames a second whatever the GPU finishes, and Chrome
+  throttles the page itself. On the laptop under Where a frame goes, at 4K and 200% scaling, a session there
+  (2026-10-13) found a present costs Firefox's GPU process and DWM about twice what it costs Chrome (up to 6 times in
+  DWM), ~70% of the Intel chip at 60 presents against ~30%, so a race's passes at Auto resolution took it past 100%;
+  then its queue grew past 8 s, the GPU process's memory climbed by gigabytes, and the canvas showed 1-2 frames a
+  second with the sound and game on time. The passes themselves cost about the same in both browsers, and no WGSL
+  construct was slow in Firefox. So plume keeps at most 2 presents in flight (plume 0ddac9b) and RT64 skips those
+  the GPU falls behind on. Here, with a 1024x1024 pass of 4000 `sin`s per pixel added to each present (a stand-in
+  for the slow GPU, `inject.js` in the card's scratch), Firefox's attract race went from 59 accepted with the queue a
+  second further behind every 10 s to 46 at ~32 ms, Chrome's from 54 at 150-190 ms to 53 at ~27 ms; one in flight
+  gave 34-39 (Firefox calls back late), three 47-48 at ~50 ms. Without the extra pass both keep 59-60. The resolution
+  stays as the player set it (Alek's call), so a GPU that can't draw it at 60 shows fewer frames, not later ones.
 - On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3, since undone) it still crawled, and at Resolution Original it ran well. The canvas
