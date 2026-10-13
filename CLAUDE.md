@@ -390,7 +390,8 @@ porting it found: its own strtol, strncmp, acos and others clash with funcs.h's 
 `renamed` in both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
 after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
-off. Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
+off, with its copy a list late on the page (rt64 73e9ca0): in Dam, headless Chrome 155, 3.8-5.2 ms a list against
+8.0-9.7 with the exact copy. Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
 depth), too many to build at the start or for Chrome's cache. Its list, 465, is recorded by a script
 (`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage): the boot as it plays
 by itself until `g_StageNum` leaves the title (90) for the first attract demo (the logos, the cast credits, the gun
