@@ -678,7 +678,10 @@ and without the two headers through `coi_serviceworker.js`. What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
-  port: IndexedDB belongs to the origin, port included, so a random port starts every run empty.
+  port: IndexedDB belongs to the origin, port included, so a random port starts every run empty. After any mouse
+  click (Load ROM's included) recompui is in mouse mode with nothing focused, and the first key only brings the focus
+  back (`update_focus` in `ui_state.cpp` runs after the key has reached RmlUi): Enter starts the game on the second
+  press, or click Start Game. The desktop build and every RecompFrontend game do the same.
 - Emscripten's SDL2 port opens audio on the page's thread except one line that reads the audio context's rate on the
   calling thread, which fails from a pthread: `sdl_audio.js` works around it. It also plays on the page's thread, a
   ScriptProcessorNode taking 256 frames (5 ms) at a time, and the main thread is WebGPU's: in headless Chrome 368 of
