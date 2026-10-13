@@ -333,8 +333,9 @@ change that moves how a game plays (a fork, a page, a shader list), updates that
 a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser v0.11.0
-(f44f945) and its forks, and include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
+every push to main with no ROM, is disabled. GoldenEye and Banjo are on N64Recomp-browser v0.21.0
+(e879a25) and its forks, Majora's Mask, Donkey Kong 64 and Conker on v0.20.0 (6ce41d6); Banjo, Majora's Mask and
+Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
 the first second). Each has a prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what
@@ -401,8 +402,8 @@ runtime has no `argc`/`argv` in `recomp::Configuration` (upstream's `--game`), s
 `recomp::start_game` on the first VI. Without a GPU, the window build runs under Xvfb with Mesa's software Vulkan
 (`--seconds 90`, `--rom` an absolute path since it moves to its own folder): the intro to the bar at 60 VIs a second.
 `--headless` in the window build stops at the first camera or rumble setting it reads, which only the frontend's
-General tab holds (upstream's code). It is on N64Recomp-browser v0.11.0 (f44f945, rt64 ada5231; its
-`recomp/rt64.patch` applies unchanged) and prebuilds 298 shaders (`host/rt64_shaders.txt`: the intro, the bar's menus,
+General tab holds (upstream's code). Its `recomp/rt64.patch` applies to rt64-web unchanged, and it prebuilds
+298 shaders (`host/rt64_shaders.txt`: the intro, the bar's menus,
 Hungover, a new game's opening to play, seven multiplayer modes against bots; no later chapter, no split screen),
 17.3 s cold in headless Chrome (RTX 2070), then the game draws with no WebGPU errors. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
