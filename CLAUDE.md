@@ -171,6 +171,12 @@ rt64 73e9ca0           render to RAM's copy a display list late, for a game that
 RecompFrontend 06468f9 set_render_to_ram_late): the list's last copy lands when the next list starts, or at a VI once
                        the GPU has it, so the list doesn't wait for the readback; a framebuffer the CPU wrote to
                        meanwhile keeps what it wrote
+rt64 e8e162e           frames paced evenly on WebGPU while the GPU falls behind: after 2 dropped presents in a second
+                       every game frame gets the same number of presents (one, at 30 fps on 60 Hz), the number above
+                       tried again after 10 s, twice as long each time it falls straight back; Banjo at 20-30 fps
+                       showed 10-20% of its frames never and the rest one to three times, in both browsers
+plume 01a7bac          the display's rate from the shortest quarter of a second's animation frame intervals: their
+rt64 f0e6217           median read 20-39 on a 60 Hz display under load, and each change restarts the interpolation
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
@@ -334,10 +340,11 @@ It lives in seven repos under amazingalek, all public:
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
   (CI's checks job compares them), with `runtime-patches/` on top.
 
-N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays by hand in
-Chrome and Firefox on a desktop GPU (an RTX 2070) and on a laptop's Intel UHD. Keep it current: a hand test, or a
-change that moves how a game plays (a fork, a page, a shader list), updates that row and its date, and a new game gets
-a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
+N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays in
+Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
+column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
+or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
+gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. GoldenEye and Conker are on N64Recomp-browser v0.23.0 (0a4ba9d)
