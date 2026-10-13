@@ -163,6 +163,8 @@ plume 0ddac9b          at most 2 presents in flight on WebGPU (onSubmittedWorkDo
 rt64 b8bdd0d           waits before each present and skips those the GPU falls behind on: Firefox never holds a page
                        back, and on a laptop's Intel graphics its queue grew seconds deep
 rt64 b47ed32           a shader the list missed reported in Firefox too, which builds none during play
+plume 4f0a97e          while a readback or a present waits, an empty submission once a millisecond: Firefox's GPU
+rt64 d070e5c           process calls them back only after a submission or on a 100 ms timer (POLL_TIME_MS)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
