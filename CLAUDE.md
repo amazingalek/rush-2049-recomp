@@ -397,7 +397,9 @@ survey warps to an entrance or a map): Majora's Mask 938 descriptions, 730 pipel
 13, the boot 115, since every visit draws the whole DK Rap and a moment of DK TV's Japes demo, a shader or two a frame,
 too few to start a section. In headless Chrome 155 (2026-10-13, RTX 2070, host 15-41% busy), cold and then warm: Majora's
 Mask's boot 2.4 and 0.1 s (16.4 and 10.9 s as one list), Clock Town 1.6 s either way; Donkey Kong 64's 5.0 and 0.4 s
-(9.6 and 5.2 before), Frantic Factory 0.9-1.0 s; FIREFOX_MM_DK. Then each draws with no WebGPU errors. A section's
+(9.6 and 5.2 before), Frantic Factory 0.9-1.0 s. In Firefox 157,
+which keeps no built pipelines between visits, every visit waits as long: Majora's Mask's boot 4.5-4.7 s and Clock Town
+14-16 s, Donkey Kong 64's 15-17 s (26 s as one list) and the Factory 3.6 s. Then each draws with no WebGPU errors. A section's
 name is one word: rt64's shader specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor,
 not the target's (wasm32 chose the arm64 `dxc-linux` on a Linux host).
 
@@ -462,8 +464,9 @@ recorded by code since 2026-10-13 (`tools/record_shaders.sh`, `tools/shader_plan
 `tools/shader_survey.js`, since the fork has no patches library: it starts a chapter's checkpoint through the bar menus'
 fade-then-call): 499 descriptions, 403 pipelines, in 19 sections, the boot 75 (the intro and the bar's menus), then each
 chapter (It's War in two) and seven multiplayer modes against bots; no split screen. In headless Chrome 155 (RTX 2070,
-host 15-41% busy) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s;
-FIREFOX_CONKER. The game draws with no WebGPU errors. Render to RAM stays on: the camera reads a row of
+host 15-41% busy) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s. The game
+draws with no WebGPU errors. In Firefox it never starts: Firefox refuses `setBindGroup`'s dynamic offsets as a view of a
+heap past 2 GB (card 17919049620830000). Render to RAM stays on: the camera reads a row of
 the depth buffer to step aside from walls and the lens flares read it to hide behind them (without it, only the game's
 far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README has the table, 2026-10-12).
 A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first compute pass:
