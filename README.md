@@ -1,7 +1,8 @@
 # San Francisco Rush 2049: Recompiled
 
-> **This is largely done by AI**, because I just wanted to play this game with modern enhancements. If you
-> don't like that, feel free to do it manually yourself.
+> **Made with AI.** Almost all of the code, documentation and tests in this repo were written by AI agents
+> (Claude), directed and play-tested by a person. None of it is offered to the upstream projects it builds on, which
+> don't take AI-written code.
 
 A native PC port of the N64 version of *San Francisco Rush 2049*, made by static recompilation
 ([N64Recomp](https://github.com/N64Recomp/N64Recomp) + [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime)
@@ -99,7 +100,7 @@ it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ni
 ```sh
 git submodule update --init --recursive
 bash tools/apply_runtime_patches.sh            # our fixes to the submodules
-.venv/Scripts/python -I tools/extract.py "<path to Rush 2049 (U) [!].z64>"   # writes roms/
+.venv/Scripts/python -I tools/extract.py "<your Rush 2049 ROM>.z64"   # writes roms/
 bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl   # the game's code as C
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
       -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
