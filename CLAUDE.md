@@ -391,7 +391,12 @@ Its code runs TLB-mapped (`.game` at 0x15000000), and the host copies those page
 `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with `-sALLOW_MEMORY_GROWTH=1
 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar, which is what N64Recomp
 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream resampling the game's
-rate to the page's. The ROM is the US one. It is on N64Recomp-browser v0.11.0 (f44f945, rt64 ada5231; its
+rate to the page's. The ROM is the US one. Its native build (`build.sh`, `build.cmd`) works on the forks too: their
+runtime has no `argc`/`argv` in `recomp::Configuration` (upstream's `--game`), so `--seconds` and `--headless` call
+`recomp::start_game` on the first VI. Without a GPU, the window build runs under Xvfb with Mesa's software Vulkan
+(`--seconds 90`, `--rom` an absolute path since it moves to its own folder): the intro to the bar at 60 VIs a second.
+`--headless` in the window build stops at the first camera or rumble setting it reads, which only the frontend's
+General tab holds (upstream's code). It is on N64Recomp-browser v0.11.0 (f44f945, rt64 ada5231; its
 `recomp/rt64.patch` applies unchanged) and prebuilds 298 shaders (`host/rt64_shaders.txt`: the intro, the bar's menus,
 Hungover, a new game's opening to play, seven multiplayer modes against bots; no later chapter, no split screen),
 17.3 s cold in headless Chrome (RTX 2070), then the game draws with no WebGPU errors. Render to RAM stays on: the
