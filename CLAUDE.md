@@ -339,9 +339,18 @@ Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says 
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
 the first second). Each has a prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what
-not): Banjo 186 shaders, 12.7 s cold; Majora's Mask 722, 52 s; Donkey Kong 64 311, 41 s (Chrome 154 headless, RTX 2070,
-a busy host), then each draws with no WebGPU errors. Their CMakeLists.txt pick rt64's dxc by the host's processor, not
-the target's (wasm32 chose the arm64 `dxc-linux` on a Linux host).
+not). Banjo's, 186 shaders, has no sections and fits Chrome's cache. Majora's Mask's and Donkey Kong 64's are recorded
+by code, a section an area, as GoldenEye's (`patches/shader_survey.c` warps to an entrance or a map,
+`tools/shader_plan.json`, `tools/record_shaders.sh`): Majora's Mask 938 descriptions, 730 pipelines, in 17 sections,
+the boot 39 (launcher to file select), then the attract demo, Clock Town, the intro and each region; Donkey Kong 64 475
+and 361 in 13, the boot 115, since every visit draws the whole DK Rap and a moment of DK TV's Japes demo, a shader or
+two a frame, too few to start a section. Cold and then warm in headless Chrome 155 (RTX 2070, host 15-41% busy):
+Majora's Mask's boot 2.4 and 0.1 s (16.4 and 10.9 s as one list), Clock Town 1.6 s either way; Donkey Kong 64's 5.0 and
+0.4 s (9.6 and 5.2 as one list), Frantic Factory 0.9-1.0 s. Firefox 157 keeps no built pipelines between visits, so
+every visit waits as long: Majora's Mask's boot 4.5-4.7 s and Clock Town 14-16 s, Donkey Kong 64's 15-17 s (26 s as one
+list) and the Factory 3.6 s. Then each draws with no WebGPU errors. A section's name is one word: rt64's shader
+specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
+chose the arm64 `dxc-linux` on a Linux host).
 
 `amazingalek/BanjoRecomp-web` is Banjo-Kazooie: Recompiled on the same forks, the second recomp the web support was
 tried on: the page boots, draws and plays in Chrome. It has no externs header, and `recomp::start` takes upstream's
@@ -402,10 +411,14 @@ runtime has no `argc`/`argv` in `recomp::Configuration` (upstream's `--game`), s
 `recomp::start_game` on the first VI. Without a GPU, the window build runs under Xvfb with Mesa's software Vulkan
 (`--seconds 90`, `--rom` an absolute path since it moves to its own folder): the intro to the bar at 60 VIs a second.
 `--headless` in the window build stops at the first camera or rumble setting it reads, which only the frontend's
-General tab holds (upstream's code). Its `recomp/rt64.patch` applies to rt64-web unchanged, and it prebuilds
-298 shaders (`host/rt64_shaders.txt`: the intro, the bar's menus,
-Hungover, a new game's opening to play, seven multiplayer modes against bots; no later chapter, no split screen),
-17.3 s cold in headless Chrome (RTX 2070), then the game draws with no WebGPU errors. Render to RAM stays on: the
+General tab holds (upstream's code). Its `recomp/rt64.patch` applies to rt64-web unchanged, and it records its shader
+list, `host/rt64_shaders.txt`, by code (`tools/record_shaders.sh`, `tools/shader_plan.json`; the survey is JavaScript,
+`tools/shader_survey.js`, since the fork has no patches library: it starts a chapter's checkpoint through the bar
+menus' fade-then-call): 499 descriptions, 403 pipelines, in 19 sections, the boot 75 (the intro and the bar's menus),
+then each chapter (It's War in two) and seven multiplayer modes against bots; no split screen. In headless Chrome 155
+(RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
+with no WebGPU errors. In Firefox it never starts: Firefox refuses `setBindGroup`'s dynamic offsets as a view of a
+heap past 2 GB (card 17919049620830000). Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README
 has the table). A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
@@ -553,7 +566,8 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   unplayable, so **every web port records a list and builds it**, not as an afterthought (N64Recomp-browser's README,
   what a recomp does itself). This game's list has no sections, so all 105 (75 pipelines) are built before the game
   starts: they fit Chrome's cache (0.2 s on a later visit). A game whose list doesn't fit has a section a level, built
-  when the level first draws (GoldenEye, The web target). A shader the list misses is built behind the game, and the
+  when the level first draws (GoldenEye,
+  Majora's Mask, Donkey Kong 64 and Conker, The web target). A shader the list misses is built behind the game, and the
   page remembers it (`localStorage`) and builds it with the rest on the next visit. Recording again: the page prints
   an `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
   over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
