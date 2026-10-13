@@ -165,6 +165,8 @@ rt64 b8bdd0d           waits before each present and skips those the GPU falls b
 rt64 b47ed32           a shader the list missed reported in Firefox too, which builds none during play
 plume 4f0a97e          while a readback or a present waits, an empty submission once a millisecond: Firefox's GPU
 rt64 d070e5c           process calls them back only after a submission or on a 100 ms timer (POLL_TIME_MS)
+plume 94a4795          setBindGroup's dynamic offsets copied out of a heap past 2 GB: emdawnwebgpu passes the whole
+rt64 c3d781a           heap, and Firefox refuses a view that big as an argument (Conker's page never started there)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
@@ -242,7 +244,8 @@ the only commit on the orphan branch `gh-pages`, which Pages serves.
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
 each one's README, each built from main with its prebuilt shader list and checked from Pages in headless Chrome to the
 game drawing. Each is built by its BUILDING.md steps (in the same Docker image, with `EM_CACHE` set to a mounted folder,
-since emsdk's environment resets it) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
+since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
+fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
 merged doesn't have it; republish after. A fork's rt64 older than 7910126 needs a fresh build dir when it moves: an
 incremental build there keeps the WGSL made from an `.hlsli` that changed, and Conker's page built that way loaded and
@@ -334,7 +337,7 @@ a row. No game is added until every one in it is smooth in both browsers on inte
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. GoldenEye and Banjo are on N64Recomp-browser v0.21.0
-(e879a25) and its forks, Majora's Mask, Donkey Kong 64 and Conker on v0.20.0 (6ce41d6); Banjo, Majora's Mask and
+(e879a25) and its forks, Conker on v0.22.0 (ea0d1fa), Majora's Mask and Donkey Kong 64 on v0.20.0 (6ce41d6); Banjo, Majora's Mask and
 Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -417,8 +420,9 @@ list, `host/rt64_shaders.txt`, by code (`tools/record_shaders.sh`, `tools/shader
 menus' fade-then-call): 499 descriptions, 403 pipelines, in 19 sections, the boot 75 (the intro and the bar's menus),
 then each chapter (It's War in two) and seven multiplayer modes against bots; no split screen. In headless Chrome 155
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
-with no WebGPU errors. In Firefox it never starts: Firefox refuses `setBindGroup`'s dynamic offsets as a view of a
-heap past 2 GB (card 17919049620830000). Render to RAM stays on: the
+with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
+frames a second and Windy 57 (Chrome 155: 59 and 59); before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill), though on the page it makes a list take 20-27 ms against 7-11 off (its README
 has the table). A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
