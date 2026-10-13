@@ -435,9 +435,13 @@ recorded by a script (`tools/record_shaders.sh`, `patches/shader_survey.c`, whic
 the menus, a mission's briefing and report, and the start of every solo level and the credits, a section a level. The
 page builds the menus' before the game (2.5 s cold) and a level's when it first draws (Dam 6.6 s cold, 4.5 s on a
 later visit: boot and Dam alone are ~9.4 MB of Chrome's 6 MB cache), 2026-10-13, Chrome 155 headless, RTX 2070. Before,
-the list stopped at Bunker and waited for 34 of 340 at the start. Ending a mission crashes after a stage started
-straight from `shader_survey`: the plan reaches the report through mission select like a player. To reach a
-level from a fresh save by hand, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
+the list stopped at Bunker and waited for 34 of 340 at the start. Since main aceddf5 (465) section 0 also holds what the
+boot plays by itself until the first attract demo, the logos, the cast credits, the gun barrel and the title: before,
+a cold visit built 13 of them behind the intro, which fell to ~15 frames a second. The plan waits for `g_StageNum` to
+leave the title (90); later rounds of the cast drew nothing new in 12 minutes, and the demos (recorded levels) stay
+out. It clicks Start Game: Enter right after Load ROM does nothing in that page load. Ending a mission crashes after
+a stage started straight from `shader_survey`: the plan reaches the report through mission select like a player. To
+reach a level from a fresh save by hand, mark the earlier ones completed in RAM: `saves` (data_dump.toml) holds 0x60-byte folders whose
 10-bit times start at byte 0x12, and RDRAM is found in the heap by osTvType, osRomBase and osMemSize at 0x80000300.
 
 `amazingalek/CBFD-Recompiled-web` (branch `main`) is the sixth (2026-10-12): sciaschi's Conker's Bad Fur Day:
