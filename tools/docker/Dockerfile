@@ -1,7 +1,7 @@
-# The image tools/helga.sh builds in on helga: emsdk at the version N64Recomp-browser's CI uses, ninja, ccache, clang
+# The image tools/remote_build.sh builds in on its host: emsdk at the version N64Recomp-browser's CI uses, ninja, ccache, clang
 # with lld (N64Recomp and RSPRecomp natively, and the patches library for MIPS), naga 30.0.1 (WGSL from SPIR-V; dxc
 # comes with rt64), cmake and python3 from the emsdk image, SDL2 and GTK 3 for a native Linux build, what the game
-# forks need, and spirv-opt (below). helga.sh tags it with a hash of this file, so a change here makes the next run
+# forks need, and spirv-opt (below). remote_build.sh tags it with a hash of this file, so a change here makes the next run
 # build a new one.
 FROM emscripten/emsdk:6.0.12
 RUN apt-get update && apt-get install -y --no-install-recommends ninja-build ccache clang lld git curl ca-certificates \
