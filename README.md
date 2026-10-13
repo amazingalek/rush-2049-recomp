@@ -17,8 +17,8 @@ one pad.
 **In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
 ROM picked from disk and kept in the browser, never uploaded. It plays the title screen, the menus and races in
-Chrome at close to 60 frames a second, as the desktop build does, and the title and demo races in Firefox. The web
-support
+Chrome at close to 60 frames a second, as the desktop build does. Play it in Chrome or Edge: Firefox draws it slowly
+on many computers. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
 [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
 of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
@@ -119,8 +119,9 @@ otherwise pick it with Load ROM.
 
 ## In a browser
 
-The page is at **https://amazingalek.github.io/rush-2049-recomp/**. It needs a browser with WebGPU: Chrome or Edge 113 or newer on Windows, macOS or ChromeOS, or Firefox 141 or
-newer on Windows (Safari hasn't been tried). Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
+The page is at **https://amazingalek.github.io/rush-2049-recomp/**. Play it in **Chrome or Edge** 113 or newer, on Windows, macOS or
+ChromeOS. Firefox 141 or newer on Windows runs it too, but draws it slowly on many computers, a laptop's integrated
+graphics above all, and the page recommends Chrome or Edge when it opens there. Safari hasn't been tried. Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
 does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
 asking. Nothing is uploaded; the ROM never leaves your computer. Settings and Controller Pak saves are kept in the
 same storage, written back every couple of seconds and when you leave the page. Clearing the site's data in the
@@ -141,11 +142,6 @@ the browser or the graphics driver, or if the browser's cache is cleared, and fo
 on every visit: the browser keeps only a few megabytes of these for all sites together, and the old ones can take
 that room. Firefox builds them more slowly, about 30 seconds. A shader the game draws that the page didn't know of
 is built while the game runs, and the page remembers it and builds it in the setup from then on.
-
-On a laptop with a graphics card besides its integrated graphics, Chrome and Edge on Windows draw every page with the
-one the browser itself uses, usually the integrated one, whatever the page asks for. The game runs better on the
-graphics card, and the page says so when it finds integrated Intel graphics: open
-`chrome://flags/#force-high-performance-gpu` (`edge://` in Edge), set it to Enabled and relaunch the browser.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
 recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html), naga

@@ -172,7 +172,8 @@ from that code with its replacements and hooks as those redirects; `worker_alert
 thread (a mod that fails to load) into a console error instead of an exception that stops the page;
 `frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give);
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
-SDL's queue; the shell's notice about integrated Intel graphics and its one-time setup panel ("Preparing graphics",
+SDL's queue; the shell's notice in Firefox, shown always, recommending Chrome or Edge (Firefox's WebGPU adapter info is
+all empty strings, so a page there can't tell what it draws with; Chrome shows none), and its one-time setup panel ("Preparing graphics",
 a bar with the time left), which keeps the shaders a page learned in `localStorage`; `tools/record_shaders.mjs`, which
 records a game's shader list by code (a plan of the game's own reaches each level); and SPIRV-Tools in its CI
 (spirv-opt; without it rt64 warns and the shaders come out about twice the size). The tail calls are `return_call`s
@@ -554,8 +555,8 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   counted), GoldenEye's 340 210 and 16 MB instead of 624 and 103 MB, the largest RasterPS 224 KB; the whole list took
   10.0-10.8 s instead of 16.1-17.7 s for Rush 2049 and 35-38 s instead of 87-91 s for GoldenEye, and Chrome's GPU
   process spent 47% less CPU on GoldenEye's. Stripping their indentation measured nothing. Checked with the adapter
-  reported as Intel to the page (a CDP script overriding `GPUAdapter.prototype.info`): the notice shows, they build,
-  and the game draws.
+  reported as Intel to the page (a CDP script overriding `GPUAdapter.prototype.info`): they build, and the game
+  draws.
 - Chrome keeps them for the next visit, if they fit: Rush 2049's 105 took 16.5 s on a first visit and 0.6-0.7 s on
   each later one, GoldenEye's 340 83, 70 and 69 s (headless Chrome 154, before spirv-opt). The cache
   (`DawnWebGPUCache` in the profile) is one per profile for every site, 6 MB (`GetDefaultGpuDiskCacheSize`), and the
