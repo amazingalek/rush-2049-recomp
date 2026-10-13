@@ -367,6 +367,11 @@ for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
   (CI's checks job compares them), with `runtime-patches/` on top.
 
+N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays by hand in
+Chrome and Firefox on the RTX 2070 and on a laptop's Intel UHD. Keep it current: a hand test, or a change that moves
+how a game plays (a fork, a page, a shader list), updates that row and its date, and a new game gets a row. Alek's
+call (2026-10-13): no game is added until every one in it is smooth in both browsers on integrated graphics too.
+
 The game forks below are on `main` too (`web` until 2026-10-12, when upstream's mirrored branches went). On
 BanjoRecomp-web upstream's `validate-internal` workflow, a native build on every push to main with no ROM, is disabled.
 Banjo, Majora's Mask and Donkey Kong 64 are on N64Recomp-browser v0.11.0 (f44f945) and its forks, and include its
