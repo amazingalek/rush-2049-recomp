@@ -964,8 +964,8 @@ No other N64 recomp running in a browser was found to learn from.
 - SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.
 - Building Firefox's pipelines in parallel from the page: every device and worker's WebGPU goes to the same thread of
   its GPU process, so Rush 2049's 75 took 15.5-16.7 s from three devices at once against 13.3-14.6 from one (Firefox
-  158). Nor does anything keep them between launches: the same 75 built five times in fresh profiles took as long
-  each time, so the driver's own shader cache doesn't reach Firefox's GPU process either.
+  158). Nor does the driver's own shader cache spare it: the same 75 built five times in fresh profiles took as long
+  each time (DXC, the biggest part, runs before the driver anyway).
 - Shorter web builds by other means: ccache behind emcc (`EM_COMPILER_WRAPPER`) still starts emcc's Python for every
   hit, so it goes in front; configure checks compiled without linking measured nothing against the host's noise;
   building `RecompiledFuncs/` at -O2 would touch 3.5% of the compile time. Precompiled headers are off for the page
