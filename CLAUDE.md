@@ -361,19 +361,45 @@ It lives in seven repos under amazingalek, all public:
   on top, so the tree is the forks' with the game's changes, natively too.
 
 N64Recomp-browser's README has a table of the games (Games): each one's repo and page, how it plays in Chrome and in
-Firefox on a laptop's integrated graphics (Intel UHD), and the date it was last played there; a desktop GPU plays
-them all, so it has no column. Under the table are two lines and no more. Keeping it current is the agent's job, not
-the reader's, so whoever changes how a page plays (a fork, a page published again, a shader list) does all of this in
-the same work:
+Firefox on a laptop's integrated graphics (Intel UHD) or a stand-in for one, and the date it was last played; a
+desktop GPU plays them all, so it has no column. Under the table are two lines and no more. Keeping it current is the
+agent's job, not the reader's, so whoever changes how a page plays (a fork, a page published again, a shader list)
+does all of this in the same work:
 
 - Plays the page from Pages in both Chrome and Firefox before the change lands: launcher, Load ROM, the wait for the
   shaders, menus, a level or race, sound, the frame rate, WebGPU errors in the console. Firefox runs in a window over
   WebDriver BiDi (Step 2 says how).
 - Writes what was played, in which browser, on what GPU and when, in that game's repo, beside its other
   measurements (a fork's README or BUILDING.md; this game's Step 3), never in N64Recomp-browser's README.
-- Writes a table cell only from a run on integrated graphics (a laptop report, or a hand test there). A desktop GPU's
-  result never goes in one. A cell keeps its last result, and the date says when; one whose result a fix was made
-  for reads "not yet on this version" until it is played there again, and one never played "not yet".
+- Writes a table cell from a run on integrated graphics (a laptop report, or a hand test there), or else from the
+  stand-in for one, marked "(stand-in)": the page from Pages on a desktop GPU with a 3840x2000 canvas, about 7 times
+  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (Step 2, Firefox). A desktop GPU at a
+  normal size plays every page, so it never fills a cell. The stand-in is gentler than a laptop: Banjo played smooth
+  on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear one, and a laptop result
+  stays until a newer laptop run replaces it. A cell keeps its last result, and the date says when; one whose result
+  a fix was made for reads "not yet on this version" until it is played again, and one never played "not yet".
+- Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
+
+The stand-in on 2026-10-14, every page from Pages, Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop
+alone at 23% busy and 13 W: the boot's shader wait, then presents a second, GPU busy, watts and the GPU process's
+cores over 25 s of the game playing by itself:
+
+```
+                 wait (s)     presents/s       GPU busy, W         GPU process
+               Chrome  Fx   Chrome  Firefox   Chrome    Firefox    Chrome  Fx
+Rush 2049        3.2  11.4   58-59   49-60    34% 53   67% 99      0.20  0.97
+Banjo            3.1   6.3   59-60   60-61    28% 48   59% 93      0.13  0.84
+GoldenEye        3.1  10.1   58-60   20-100   29% 39   48% 70      0.17  0.71
+Majora's Mask    2.2   5.5   59-60   15-59    34% 47   42% 59      0.24  0.91
+Conker           2.5   7.3   30-60   33-61    31% 46   50% 89      0.20  0.77
+Donkey Kong 64   4.3  14.3   55-56   60-61    35% 26   52% 77      0.12  0.75
+```
+
+At 1280x800 Firefox kept up but for Donkey Kong 64, which sat at 30 presents a second for spells against Chrome's
+55-56 (rt64 e8e162e's even pacing), and its GPU process still took 2-3 times Chrome's CPU. Firefox presents a canvas
+through a texture shared with its compositor only when it is `bgra8unorm`
+(`wgpu_client_use_shared_texture_in_swapChain`), so the pages' `rgba8unorm` frames are read back through the CPU
+each present: the likely cause, not yet tried.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
@@ -694,6 +720,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   preload script replacing a file input's `click()` with a fetch of the ROM from the local server loads it. A page on
   Pages can't fetch from a local server in Firefox, so there the ROM goes to the page in pieces through
   `script.evaluate` and the `click()` sets the input's `files` from a `DataTransfer` and dispatches `change` itself.
+  Pointer actions miss the launcher too: dispatch `mousemove`, `mousedown` and `mouseup` on the canvas itself. Load
+  ROM then shows the page's own "Choose a file" button, clicked from script, which calls that `click()`. Size the
+  window from a DPI-aware process (`SetProcessDPIAware()` before `SetWindowPos`, or a 175% desktop makes it 1.75
+  times as big) with `layout.css.devPixelsPerPx` at 1.0, and Chrome with `--force-device-scale-factor=1`: the canvas
+  is CSS-sized, so otherwise the two draw different numbers of pixels.
 - How full that cache is: the `index` in `DawnWebGPUCache` holds its bytes as the int64 at offset 48 and its entries
   as the int32 at 8. This game's 105 and the launcher's pipelines come to 5.6-6.0 MB of it, so check the figure when
   the list grows. A page whose shaders changed (a build with new ones over a warm profile) left the old entries beside
