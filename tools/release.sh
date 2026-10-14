@@ -2,9 +2,12 @@
 # Build a Windows release from a local ROM and publish it as a GitHub release. CI has no ROM (none is ever uploaded),
 # so it can't link the exe; releases are cut on a machine with the ROM instead.
 # Usage: tools/release.sh [--dry-run]
-#   The tag is v<version_string> from src/main.cpp, so bump that first. Needs a clean tree at origin/main, the
+#   The tag is v<version_string> from src/main.cpp, so bump that first, and write the release's notes beside it in
+#   releases/v<version>.md: what a player gets, not a list of merged PRs (most are web support and other games'
+#   pages, which the zip doesn't have). Without that file it refuses. Needs a clean tree at origin/main, the
 #   setup from the README's build steps and CLAUDE.md (submodules, runtime patches, extract.py's roms/, the
-#   .venv, the toolchain) and gh signed in. --dry-run builds and zips but publishes nothing and skips the two checks.
+#   .venv, the toolchain) and gh signed in. --dry-run builds and zips but publishes nothing and skips the checks on
+#   the tree and the tag.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -14,6 +17,8 @@ dry_run=false
 version=$(sed -n 's/^const std::string version_string = "\(.*\)";$/\1/p' src/main.cpp)
 [ -n "$version" ] || { echo "no version_string in src/main.cpp"; exit 1; }
 tag="v$version"
+notes="releases/$tag.md"
+[ -s "$notes" ] || { echo "no $notes: write the release notes for players first"; exit 1; }
 name="Rush2049Recompiled-$tag-windows-x64"
 
 if ! $dry_run; then
@@ -47,4 +52,4 @@ echo "out/$name.zip ($(du -h "out/$name.zip" | cut -f1))"
 
 $dry_run && { echo "dry run: $tag not published"; exit 0; }
 gh release create "$tag" "out/$name.zip" --target "$(git rev-parse HEAD)" --title "Rush 2049 Recompiled $tag" \
-    --generate-notes
+    --notes-file "$notes"
