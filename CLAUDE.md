@@ -684,6 +684,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   preload script replacing a file input's `click()` with a fetch of the ROM from the local server loads it. A page on
   Pages can't fetch from a local server in Firefox, so there the ROM goes to the page in pieces through
   `script.evaluate` and the `click()` sets the input's `files` from a `DataTransfer` and dispatches `change` itself.
+  Pointer actions miss the launcher too: dispatch `mousemove`, `mousedown` and `mouseup` on the canvas itself. Load
+  ROM then shows the page's own "Choose a file" button, clicked from script, which calls that `click()`. Size the
+  window from a DPI-aware process (`SetProcessDPIAware()` before `SetWindowPos`, or a 175% desktop makes it 1.75
+  times as big) with `layout.css.devPixelsPerPx` at 1.0, and Chrome with `--force-device-scale-factor=1`: the canvas
+  is CSS-sized, so otherwise the two draw different numbers of pixels.
 - How full that cache is: the `index` in `DawnWebGPUCache` holds its bytes as the int64 at offset 48 and its entries
   as the int32 at 8. This game's 105 and the launcher's pipelines come to 5.6-6.0 MB of it, so check the figure when
   the list grows. A page whose shaders changed (a build with new ones over a warm profile) left the old entries beside
