@@ -205,6 +205,11 @@ rt64 6734747, 0fda089  presents paced (e8e162e) only while one in ten or more is
 plume 16e608a          the display's rate from the period that explains the most animation frames (each interval
 rt64 07d608e           tried, the callbacks merged into frames of at least 0.9 of it): Firefox's extra callbacks, 0.1-5
                        ms after a frame, a quarter of them and more, read as hundreds of Hz in the shortest quarter
+plume 97f4e64          bind groups kept by their layout and what they bind (a serial per handle), the 4096 last used:
+                       a browser frees one only when JavaScript collects it, and RT64's sets rewritten every frame made
+                       4,000-14,000 a second in Conker's Windy (checkpoint 33), where Firefox lost the device ("Out of
+                       Memory", wgpu's D3D12 descriptor heap) whenever they outran a collection; 99% repeated one
+                       made in the last 2 s, and the scene makes 40-400 a second now
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
