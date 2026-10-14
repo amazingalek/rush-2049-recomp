@@ -375,7 +375,9 @@ void rush2049::init_config() {
     // 60-62, and in a browser a list waited ~6 ms less for the GPU process (13-14 ms a list with it, 5-6 without).
     // Still, a game that never reads its frames can behave differently without them (a mod, or a path nobody
     // guarded), so the copy is an option. The render context reads it when it is made, at startup after this
-    // loads, so a change takes effect on the next start.
+    // loads, so a change takes effect on the next start. Its default is set here first: a first start has no
+    // graphics.json, and then loading calls no callback, which would leave RT64's own default (on).
+    recompui::renderer::set_render_to_ram(false);
     graphics.add_enum_option(
         copy_frames_to_ram_option,
         "Copy Frames to RAM",
