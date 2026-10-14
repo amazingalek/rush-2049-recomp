@@ -951,7 +951,10 @@ and no other WebGPU error. With rt64 c6cf6c4, built locally against the same com
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
 in Firefox and in Chrome, with no WebGPU errors. On N64Recomp-browser b1c35d1 (plume 97f4e64), a local build, a cold
 profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 not at all, then the attract race at
-58-60 presents a second in both, no sound short after the wait, no WebGPU errors. What to know:
+58-60 presents a second in both, no sound short after the wait, no WebGPU errors. On ed8764a (v0.36.0: the CPU hot
+paths, the flipped rect and the thread stop in the forks, rt64 58fc4e4's pacing), the same way: Chrome 155 headless
+waited not at all and Firefox 158 9.8 s, then 59 presents a second (median) in both through the title and attract races,
+sound short only in the first seconds after Start Game, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
