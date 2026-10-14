@@ -44,7 +44,8 @@ explains code goes beside that code.
 - The game's changes to the submodules go in `runtime-patches/` and are applied by
   `tools/apply_runtime_patches.sh`; never commit them inside `lib/`. A new change is a new patch
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
-  of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
+  of the submodule with N64Recomp-browser's patch in. A game-agnostic web change is a commit on a fork instead (The
+  web target, Changing it).
 - Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend,
   BanjoRecomp, Zelda64Recomp or Donkey-Kong-64-Recompiled: their CONTRIBUTING.md asks for no LLM-written code
   (plume's, no AI-made contribution and no AI talking to its maintainers). The web forks stay forks.
@@ -74,9 +75,10 @@ explains code goes beside that code.
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
-The submodules are amazingalek's forks (The web target): each one's `main` is the upstream commit plus the web
-support, one commit per change. The notes below name each change by the short label in this table, or by its fork and
-commit (the why is in the code they touch):
+The web support is amazingalek's forks (The web target): each one's `main` is the upstream commit plus the web
+support, one commit per change. The submodules here are those upstream commits, and the patch script applies each fork
+to them as one patch from N64Recomp-browser's `patches/`. The notes below name each change by the short label in this
+table, or by its fork and commit (the why is in the code they touch):
 
 ```
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
@@ -183,7 +185,8 @@ rt64 cb75c5c           render to RAM's late copy converted outside RDRAM and wri
                        copy in every chapter, 30 of 89 times while it landed); each write is reported, not the first
 ```
 
-`lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
+`lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
+them. Besides the forks it brings:
 N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm (empty elsewhere), and OfflineModRecomp
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
@@ -197,7 +200,7 @@ records a game's shader list by code (a plan of the game's own reaches each leve
 (spirv-opt; without it rt64 warns and the shaders come out about twice the size). The tail calls are `return_call`s
 with `-mtail-call`, which both web builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`.
 
-`runtime-patches/`, this game's, on top of the forks:
+`runtime-patches/`, this game's, on top of N64Recomp-browser's patches:
 
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
@@ -344,8 +347,10 @@ It lives in seven repos under amazingalek, all public:
   the commits recomps pin, `patches/pins.txt`), and the CI that runs all of it. Its README is the guide
   for another recomp. Source at a tag, not a package: the game's own patches go on top of the source, and everything
   links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
-- Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
-  (CI's checks job compares them), with `runtime-patches/` on top.
+- Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are upstream's, at the commits
+  `patches/patches.txt` names (CI's checks job compares them, plume, hlslpp and N64Recomp inside them too), as any
+  recomp's are. `tools/apply_runtime_patches.sh` applies N64Recomp-browser's patches to them and `runtime-patches/`
+  on top, so the tree is the forks' with the game's changes, natively too.
 
 N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays in
 Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
@@ -487,12 +492,12 @@ Nothing in these repos names this game, includes from this repo or needs its ROM
 `headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
 runtime's own interfaces, as every recomp does.
 
-**Changing it.** The submodule here holds the game's patches as uncommitted changes, so commit to a fork from a
-separate clone of it:
+**Changing it.** The submodules here hold the web support and the game's patches as uncommitted changes, so commit to
+a fork from a separate clone of it:
 
 1. `git clone https://github.com/amazingalek/<fork>` (its `main`), make the change behind `__EMSCRIPTEN__`/`__wasm__`
    (or an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
-   game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
+   game first by applying the same diff to the project in `lib/` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `main` as a fast-forward, never a force-push: this repo and N64Recomp-browser's tags pin those commits.
    A change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
    N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
@@ -501,9 +506,10 @@ separate clone of it:
    `tools/export_patches.sh` and commit `patches/` with it (CI checks that the patches match the forks and still
    apply to every recomp's commits in `patches/pins.txt`), push to its `main`, and wait for its CI:
    `gh run list -R amazingalek/N64Recomp-browser`.
-4. Here, move the submodules and `lib/N64Recomp-browser` to those commits, rerun the patch script (rebase a game
-   patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag
-   N64Recomp-browser (`v0.<n+1>.0`).
+4. Here, move `lib/N64Recomp-browser` to that commit (and the submodules, if a fork merged upstream in and
+   `patches.txt` names new upstream commits), reset each project whose patch changed and rerun the patch script (it
+   stops on one and says how; rebase a game patch that stops applying in the same PR), build and run, and open the PR.
+   Once it has merged, tag N64Recomp-browser (`v0.<n+1>.0`).
 
 **Step 1, done: the CPU side.** `headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and

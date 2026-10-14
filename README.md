@@ -103,7 +103,7 @@ it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ni
 
 ```sh
 git submodule update --init --recursive
-bash tools/apply_runtime_patches.sh            # our fixes to the submodules
+bash tools/apply_runtime_patches.sh            # the web support and our fixes, on the submodules
 .venv/Scripts/python -I tools/extract.py "<your Rush 2049 ROM>.z64"   # writes roms/
 bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl   # the game's code as C
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
