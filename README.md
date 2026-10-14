@@ -52,6 +52,9 @@ option has an Original value that runs the game as it shipped.
   run out of room. Rumble Pak is also supported (General tab, Controller Accessory).
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
   driving-friendly defaults, rebindable on the Controls tab.
+- **No frame copies to RAM**: each frame stays on the GPU instead of also being drawn again at 320×240 and copied
+  back into the console's memory, which the game isn't known to read. Saves GPU time, and about 6 ms a frame in a
+  browser.
 - **Light on the CPU**: the game holds 60 fps on a single CPU core. On a weak GPU, see [Performance](#performance).
 
 Settings are saved as JSON in `%LOCALAPPDATA%\Rush2049Recompiled\` (`~/.config/Rush2049Recompiled/` on Linux), or
@@ -71,6 +74,7 @@ closed. For the game exactly as it shipped, set every Original value:
 | Anti-aliasing | MS Anti-Aliasing | `graphics.json` `msaa_option` | `"MSAA2X"` | `"None"` |
 | Hi-res menu and HUD text | Hi-res Font | `graphics.json` `hires_font` | `"On"` | `"Off"` |
 | Hi-res title screen | Hi-res Title Screen | `graphics.json` `hires_title` | `"On"` | `"Original"` (240p) |
+| No frame copies to RAM | Copy Frames to RAM | `graphics.json` `copy_frames_to_ram` | `"Off"` (takes effect on the next start) | `"Original"` (every frame copied) |
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |

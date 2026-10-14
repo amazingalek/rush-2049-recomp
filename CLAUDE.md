@@ -634,8 +634,9 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
   into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so this
-  game turns it off, on the desktop too, since nothing in it reads a frame (`set_render_to_ram` in `main.cpp`,
-  RecompFrontend-0004; `create_rt64_renderer`'s argument; `?render-to-ram=1` on the headless page turns it back on).
+  game turns it off by default, on the desktop too, since nothing in it was seen reading a frame (the Copy Frames to
+  RAM option in `config.cpp`, Original turns it on; RecompFrontend-0004; `create_rt64_renderer`'s argument;
+  `?render-to-ram=1` on the headless page).
   Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
   instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
