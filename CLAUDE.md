@@ -376,13 +376,16 @@ agent's job, not the reader's, so whoever changes how a page plays (a fork, a pa
 does all of this in the same work:
 
 - Plays the page from Pages in both Chrome and Firefox before the change lands: launcher, Load ROM, the wait for the
-  shaders, menus, a level or race, sound, the frame rate, WebGPU errors in the console. Firefox runs in a window over
-  WebDriver BiDi (Step 2 says how).
+  shaders, menus, a level or race, sound, the frame rate, WebGPU errors in the console. N64Recomp-browser's
+  `tools/play_page.mjs` (from 7b80155; its header says how) plays a page by a plan in either browser, Firefox in a
+  window off the desktop, and prints presents a second, sound frames short, the shader waits, WebGPU errors and the
+  GPU's and the browser's load; this game's plan is `tools/play_plan.json`, a fork's shader plan plays with
+  `--section`. Look at the menus too (a `shot` step).
 - Writes what was played, in which browser, on what GPU and when, in that game's repo, beside its other
   measurements (a fork's README or BUILDING.md; this game's Step 3), never in N64Recomp-browser's README.
 - Writes a table cell from a run on integrated graphics (a laptop report, or a hand test there), or else from the
   stand-in for one, marked "(stand-in)": the page from Pages on a desktop GPU with a 3840x2000 canvas, about 7 times
-  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (Step 2, Firefox). A desktop GPU at a
+  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (`play_page.mjs --size 3840x2000`). A desktop GPU at a
   normal size plays every page, so it never fills a cell. The stand-in is gentler than a laptop: Banjo played smooth
   on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear one, and a laptop result
   stays until a newer laptop run replaces it. A cell keeps its last result, and the date says when; one whose result
@@ -667,7 +670,7 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   flat and the page plays on, 55-60 frames a second at 3840x2000 for those 15 minutes. So read video memory from
   those two. Firefox 157 with a `bgra8unorm` canvas filled an 8 GB card and fell below a frame a second, which is why
   the pages were `rgba8unorm` before. Firefox headless has no WebGPU adapter: drive a window of its own
-  (`-no-remote -profile <dir> --remote-debugging-port <n>`, moved off the desktop) over WebDriver BiDi.
+  moved off the desktop over WebDriver BiDi, as N64Recomp-browser's `tools/page_driver.mjs` does.
 - Chrome builds a pipeline made with `createRenderPipeline` on its GPU process's main thread, which does nothing
   else meanwhile: no frame, no readback, no screenshot, and the page's main thread blocks once its queue to the GPU
   process fills. A specialized RasterPS (1.15 MB of WGSL) takes 1.4-2.1 s there, 6-11 s cold beside another build,
@@ -748,17 +751,9 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   process builds them one at a time and presents nothing meanwhile; then the attract races and a 1P race drew
   correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap 89 ms. With the ubershader alone in
   Firefox the same race fell to 13-29 frames a second with stalls up to 3.7 s and its sound ~25 times as short, and a
-  second run froze for good leaving the title for the menus. Firefox under WebDriver BiDi in a window moved off the
-  desktop never has focus, so its key actions reach nothing: dispatch `KeyboardEvent`s on `window` from
-  `script.evaluate` instead. Its file dialog event gave an element that `input.setFiles` filled with no `change`: a
-  preload script replacing a file input's `click()` with a fetch of the ROM from the local server loads it. A page on
-  Pages can't fetch from a local server in Firefox, so there the ROM goes to the page in pieces through
-  `script.evaluate` and the `click()` sets the input's `files` from a `DataTransfer` and dispatches `change` itself.
-  Pointer actions miss the launcher too: dispatch `mousemove`, `mousedown` and `mouseup` on the canvas itself. Load
-  ROM then shows the page's own "Choose a file" button, clicked from script, which calls that `click()`. Size the
-  window from a DPI-aware process (`SetProcessDPIAware()` before `SetWindowPos`, or a 175% desktop makes it 1.75
-  times as big) with `layout.css.devPixelsPerPx` at 1.0, and Chrome with `--force-device-scale-factor=1`: the canvas
-  is CSS-sized, so otherwise the two draw different numbers of pixels.
+  second run froze for good leaving the title for the menus. How Firefox is driven there (no focus, so keys and
+  clicks dispatched from script; the ROM sent to the page in pieces; the viewport at one CSS pixel a pixel in both
+  browsers, since the canvas is CSS-sized) is in N64Recomp-browser's `tools/page_driver.mjs`.
 - How full that cache is: the `index` in `DawnWebGPUCache` holds its bytes as the int64 at offset 48 and its entries
   as the int32 at 8. This game's 105 and the launcher's pipelines come to 5.6-6.0 MB of it, so check the figure when
   the list grows. A page whose shaders changed (a build with new ones over a warm profile) left the old entries beside
@@ -875,9 +870,9 @@ and no other WebGPU error. With rt64 c6cf6c4, built locally against the same com
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
 in Firefox and in Chrome, with no WebGPU errors. What to know:
 
-- To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
-  with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
-  port: IndexedDB belongs to the origin, port included, so a random port starts every run empty. After any mouse
+- To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
+  with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
+  included, so a random port starts every run empty. After any mouse
   click (Load ROM's included) recompui is in mouse mode with nothing focused, and the first key only brings the focus
   back (`update_focus` in `ui_state.cpp` runs after the key has reached RmlUi): Enter starts the game on the second
   press, or click Start Game. The desktop build and every RecompFrontend game do the same.
