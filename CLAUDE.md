@@ -450,31 +450,30 @@ does all of this in the same work:
   memory beside it (Conker's in Firefox) shows as the other page's climb and its "Out of Memory". Rush 2049 and Banjo
   played alone in Firefox 158 kept 57-62 presents a second at 1256x645 and 3840x2000, the memory flat.
 
-The stand-in on 2026-10-14, every page from Pages built on N64Recomp-browser 7b80155 (the canvas in the browser's
-preferred format, rt64 e46bf19), Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop alone at about 20%
-busy: the boot's shader wait, then presents a second, GPU busy, watts and the GPU process's cores over 25 s of the
-game playing by itself (`play_page.mjs --size 3840x2000 --play 25`):
+The stand-in on 2026-10-14, every page built on N64Recomp-browser ed8764a (v0.36.0: rt64 58fc4e4's pacing, the CPU hot
+paths), Rush 2049's, Banjo's, Majora's Mask's and Donkey Kong 64's from Pages, Chrome 155 and Firefox 158, RTX 2070,
+an idle host, one page at a time, a cold profile each: the boot's shader wait, then presents a second after it, GPU
+busy and watts and the GPU process's cores (medians) over 90 s of the game playing by itself (`play_page.mjs --size
+3840x2000 --play 90`):
 
 ```
                  wait (s)     presents/s       GPU busy, W         GPU process
                Chrome  Fx   Chrome  Firefox   Chrome    Firefox    Chrome  Fx
-Rush 2049          -  10.8   37-59   69-152   34% 63   37% 58      0.32  0.73
-Banjo            1.4   5.2   22-56   18-83    27% 54   31% 71      0.14  0.34
-GoldenEye          -   8.0   53-59   52-61    35% 46   33% 50      1.23  0.25
-Majora's Mask      -   3.2   54-56   20-61    35% 57   46% 87      1.23  0.32
-Conker             -   7.3   48-55   57-61    28% 51   57% 81      1.28  0.84
-Donkey Kong 64     -  13.7   52-56   58-62    39% 54   38% 89      0.23  0.38
+Rush 2049          -   9.6   55-60   58-60    32% 57   34% 64      0.26  0.44
+Banjo            1.5   5.2   55-56   59-60    30% 54   36% 55      0.20  0.27
+GoldenEye          -   8.4   45-60   59-60    29% 48   26% 50      1.14  0.37
+Majora's Mask      -   2.9   54-56   59-60    35% 58   36% 60      1.22  0.41
+Conker             -   5.1   49-56   56-60    29% 52   34% 53      0.30  0.41
+Donkey Kong 64     -  12.6   52-56   57-61    26% 47   27% 48      0.20  0.37
 ```
 
 Chrome builds a page's whole list behind the game (rt64 950188f), so its GPU process takes ~1.2 cores while
-GoldenEye's, Majora's Mask's and Conker's build. In Firefox GoldenEye, Conker and Donkey Kong 64 hold 60, where on
-`rgba8unorm` pages they fell to 20-33 for spells, and Majora's Mask draws 20-29 for ~10 s after the boot's wait. Rush
-2049's and Banjo's pages present unevenly in Firefox, Rush 2049's above the display's rate (69-152 a second on 59 Hz)
-with rt64's pacing switching on and off, and the GPU's memory climbs: Banjo's from 1.9 to 6.5 GB in 25 s, Rush 2049's
-from ~2 to 6.9-7.6 GB within its shader wait, once to WebGPU's "Out of Memory" and invalid textures after it. Those two
-ran beside another Firefox page, whose bursts of animation frames the display's rate read as hundreds of Hz (the bullet
-on one page at a time; plume 16e608a reads through them); alone they kept 57-62. Beside one, Banjo presented 31-136
-a second at 1256x645 too; the other four held 60 there.
+GoldenEye's and Majora's Mask's build, and GoldenEye draws 45-55 until all 202 are built (65 s). Firefox holds about 60
+after every wait. Before rt64 58fc4e4 it didn't: rt64's pacing judged drops on the first few dozen presents after a
+wait longer than its 2 s window, or after each try of the number above, and held Donkey Kong 64 at its 30 for 70 s
+after the boot's wait and Majora's Mask at its 20 nearly throughout (on from the launcher, at about the display's rate).
+Banjo in Chrome is still paced to its 30 for 10 s after its 1.5 s wait, a wait shorter than the window. Sound is short
+only in the waits and the first seconds after Start, except in GoldenEye (its README).
 
 What the canvas format changed: Firefox presents a canvas through a texture shared with its compositor only when it is
 `bgra8unorm` (`wgpu_client_use_shared_texture_in_swapChain`), and the pages were `rgba8unorm`, so every present was
@@ -501,13 +500,13 @@ browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
-submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser b1c35d1 (the canvas in the
-browser's preferred format, rt64 c6cf6c4 and 6734747, plume 16e608a and 97f4e64); Banjo, Majora's
+submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser ed8764a (v0.36.0: the canvas in
+the browser's preferred format, rt64 c6cf6c4 and 58fc4e4, plume 16e608a and 97f4e64); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
 the first second). Each has a prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what
-not). Banjo's, 186 shaders, has no sections and fits Chrome's cache. Majora's Mask's and Donkey Kong 64's are recorded
+not). Banjo's, 186 shaders, fits Chrome's cache and is in four sections, the band's intro its boot. Majora's Mask's and Donkey Kong 64's are recorded
 by code, a section an area, as GoldenEye's (`patches/shader_survey.c` warps to an entrance or a map,
 `tools/shader_plan.json`, `tools/record_shaders.sh`): Majora's Mask 938 descriptions, 730 pipelines, in 17 sections,
 the boot 39 (launcher to file select), then the attract demo, Clock Town, the intro and each region; Donkey Kong 64 475
@@ -810,8 +809,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   "Preparing graphics" indicator (rt64 950188f): cold in headless Chrome 155 (RTX 2070, a busy host) this game never
   waited, its 75 pipelines built 7 s after Start Game behind the logos and the title at 49-57 frames a second, where
   the page before waited 6.0 s at 0-19 behind a full-screen panel. Firefox builds nothing behind the game, so it waits
-  for this game's whole list (one section) before the first frame, 13.7 s (Firefox 158). A game with many levels has
-  a section a level (GoldenEye, Majora's Mask, Donkey Kong 64 and Conker, The web target). A shader the list misses is built behind the game, and the
+  for a list's boot before the first frame and for a section when the game gets there. This game's list is in three
+  (recorded by `tools/shader_plan.json`, its header says how): the boot (the Midway logo, the title, every menu), 21
+  of its 75 pipelines, race (the attract and 1P races) and modes (the other
+  modes, played by hand). A game with many levels has a section a level (GoldenEye, Majora's Mask, Donkey Kong 64 and
+  Conker, The web target). A shader the list misses is built behind the game, and the
   page remembers it (`localStorage`) and builds it with the rest on the next visit. Recording again: the page prints
   an `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
   over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
@@ -963,7 +965,12 @@ profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 n
 58-60 presents a second in both, no sound short after the wait, no WebGPU errors. On ed8764a (v0.36.0: the CPU hot
 paths, the flipped rect and the thread stop in the forks, rt64 58fc4e4's pacing), the same way: Chrome 155 headless
 waited not at all and Firefox 158 9.8 s, then 59 presents a second (median) in both through the title and attract races,
-sound short only in the first seconds after Start Game, no WebGPU errors. What to know:
+sound short only in the first seconds after Start Game, no WebGPU errors. With the list in sections (a local build on
+b1c35d1 against the page published from it, two cold runs each, interleaved; RTX 2070, a quiet host, 1256x645):
+Firefox 158 waited 1.9-2.0 s for the boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s
+for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game
+against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
+second (median) and no WebGPU errors either way. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
