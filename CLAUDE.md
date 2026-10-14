@@ -223,6 +223,9 @@ N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another
 rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
                        at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
                        page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
+rt64 9ed449d           and counted again from a second after any prebuilt shader wait: a wait shorter than the 2 s left
+                       presents from before it in the count beside the burst after it (Banjo's 1.5 s in Chrome, then
+                       30 a second for 10 s)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -491,6 +494,13 @@ none from Pages on 7f40089), Banjo 58-60 after 10 s at 20-30; Majora's Mask and 
 and 30 by rt64's pacing, which switches on just
 after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
 presents above the display's rate and the memory climbing are gone.
+
+Every page again on 2efc795 (rt64 9ed449d), the five forks from Pages and Rush 2049 from a local build of the same
+commit, cold, the same GPU and canvas, a quiet host, 25 s after the waits: rt64's pacing switched on in none of the
+twelve runs. Chrome 155: Banjo waited 1.4-1.7 s for 6 and drew 59-60, where on ed8764a it waited 1.6 s for 12 and was
+paced to 20-30 for 10 s straight after; the others no wait and 56-60. Firefox 158 waited 5.2 s for Banjo's boot, 3.2 s
+for Majora's Mask's, 16.1 s for Donkey Kong 64's, 8.6 s for GoldenEye's, 5.2 s for Conker's and 2.2 and 7.3 s for
+Rush 2049's two sections, then 57-60 every one. No sound short after the waits, no WebGPU errors.
 
 A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
 the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
@@ -980,7 +990,9 @@ b1c35d1 against the page published from it, two cold runs each, interleaved; RTX
 Firefox 158 waited 1.9-2.0 s for the boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s
 for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game
 against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
-second (median) and no WebGPU errors either way. What to know:
+second (median) and no WebGPU errors either way. At 3840x2000, cold: from Pages on ed8764a Firefox 158 waited 2.4 s
+and 8.5 s and then drew 59-60 with the GPU's memory flat; a local build on 2efc795 (rt64 9ed449d) waited 2.2 and 7.3 s
+in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
