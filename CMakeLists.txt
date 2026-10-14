@@ -240,8 +240,10 @@ if (WIN32)
             "${CMAKE_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxcompiler.dll"
             $<TARGET_FILE_DIR:Rush2049Recompiled>)
 
-    # Console subsystem for now: the log is the main debugging tool during bring-up.
     target_link_libraries(Rush2049Recompiled PRIVATE SDL2 Winmm.lib)
+    # A window program, so no console window opens behind the game; main() stays the entry point. The log still
+    # reaches a redirect (iterate.sh's run.log), and --show-console opens a console for it (main.cpp).
+    target_link_options(Rush2049Recompiled PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")

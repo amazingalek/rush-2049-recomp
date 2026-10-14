@@ -120,7 +120,7 @@ to `us.toml` or `syms/`, run it again before `ninja`. To change the symbols, edi
 
 **Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
-otherwise pick it with Load ROM.
+otherwise pick it with Load ROM. It opens no console window; to see its log, run it with `--show-console`.
 
 ## In a browser
 

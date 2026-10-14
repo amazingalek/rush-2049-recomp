@@ -330,6 +330,7 @@ that changed, and Conker's page built that way loaded and then failed every pipe
 
 ```
 --boot                       skip the launcher (needs the ROM already stored)
+--show-console               open a console for the log (the exe is a window program; a redirect gets it too)
 --stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
 --players <n>                ports 2..n copy port 1 (and --input), to drive split screen with one pad
 --input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
