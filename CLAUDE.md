@@ -461,10 +461,16 @@ a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgb
 
 Every page again from Pages on b1c35d1 (plume 16e608a and 97f4e64), one page at a time, the same GPU, an idle host,
 Firefox 158 and Chrome 155 at 3840x2000, 25-60 s after the boot's wait: in Firefox Rush 2049 and GoldenEye 58-60
-presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too), Banjo 58-60 after
+presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too, ~6% on 59dc8e8), Banjo 58-60 after
 10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
 after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
 presents above the display's rate and the memory climbing are gone.
+
+A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
+the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
+so the game made every buffer its minimum (GoldenEye64Recomp-web 59dc8e8, `get_frames_remaining`). A game's
+`get_frames_remaining` must match how its audio manager reads osAiGetLength. To see a page's sound as the game writes
+it, wrap `AudioWorkletNode` in a preload, take `processorOptions.ring` and sample its two counters every few ms.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
