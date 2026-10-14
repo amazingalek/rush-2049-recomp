@@ -226,6 +226,8 @@ rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whol
 rt64 9ed449d           and counted again from a second after any prebuilt shader wait: a wait shorter than the 2 s left
                        presents from before it in the count beside the burst after it (Banjo's 1.5 s in Chrome, then
                        30 a second for 10 s)
+N64ModernRuntime       OSThread's context pointer past libultra's thprof (0x1C) on a 32-bit host: on wasm it sat there,
+53b5583                and Banjo-Tooie writes thprof creating its threads, so osStartThread read a wild pointer
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -234,6 +236,9 @@ N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
 thread (a mod that fails to load) into a console error instead of an exception that stops the page;
+`thread_stdio.js`, which prints a thread's stdout and stderr from that thread: Emscripten proxies every write to the
+page's thread, WebGPU's, and waits, so each line held its thread for up to a frame (Banjo-Tooie's upstream logs ~100
+lines a second: its title screen's sound was 12,900-13,400 frames short of ~2.1 million before, 235-1,325 with it);
 `frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give); a page's link
 that fails on any wasm-ld warning (`--fatal-warnings`: a call whose signature doesn't match the function's links as a
 trap) and takes a game's own `-sINITIAL_MEMORY`, stack sizes and thread pool over `frontend/`'s;
