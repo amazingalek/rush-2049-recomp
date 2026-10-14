@@ -187,6 +187,10 @@ rt64 950188f           where pipelines build in the background (Chrome) the preb
                        its first draw, section 0 on half the threads and the rest on one, in the list's order, a
                        round's section and strays moved to the front; the game waits only for what a frame wants
                        (4 of a section), not the whole section; Firefox as before
+plume be0524c          a delete through plume_device_thread waits until every command list that had recorded something
+rt64 6790eaa           by then is executed, begun again or deleted: a list replays only when it's executed, and this
+                       game's hi-res font, reloading its texture pack mid-frame, destroyed a texture a list had bound
+                       before that list's submit (Chrome dropped the command buffer: "Destroyed texture used in a submit")
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -794,7 +798,12 @@ Load ROM, title, menus, a race on the keyboard, audio playing (RMS 0.1-0.2), a r
 and without the two headers through `coi_serviceworker.js`. Played from Pages (built from 2ec2ebd) on 2026-10-14, RTX
 2070, a busy host: the shaders took 4.1 s in headless Chrome 155 and 13.7 s in Firefox 158, then a race at 58-60
 frames a second in both, with no sound short; Chrome logged one WebGPU error in the menus ("Destroyed texture
-[384x136 RGBA8Unorm] used in a submit"), Firefox none. What to know:
+[384x136 RGBA8Unorm] used in a submit"), Firefox none. That was the hi-res font: each new glyph remakes its atlas's 4x
+replacement and reloads the pack, and the old texture was destroyed while a list that had bound it waited to be
+executed. With plume be0524c, a fresh profile walked through the menus (30-36 remakes) and into a race: in headless
+Chrome 155 none in 5 walks, where every walk before had one or two; in Firefox 158 it still comes about one walk in
+three, with or without it, several font textures at once in a list recorded after they were destroyed (RT64 binding a
+texture set that holds them, not the device thread). What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
