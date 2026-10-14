@@ -353,19 +353,24 @@ It lives in seven repos under amazingalek, all public:
   on top, so the tree is the forks' with the game's changes, natively too.
 
 N64Recomp-browser's README has a table of the games (Games): each one's repo and page, how it plays in Chrome and in
-Firefox on a laptop's integrated graphics (Intel UHD), and the date it was last played there; a desktop GPU plays
-them all, so it has no column. Under the table are two lines and no more. Keeping it current is the agent's job, not
-the reader's, so whoever changes how a page plays (a fork, a page published again, a shader list) does all of this in
-the same work:
+Firefox on a laptop's integrated graphics (Intel UHD) or a stand-in for one, and the date it was last played; a
+desktop GPU plays them all, so it has no column. Under the table are two lines and no more. Keeping it current is the
+agent's job, not the reader's, so whoever changes how a page plays (a fork, a page published again, a shader list)
+does all of this in the same work:
 
 - Plays the page from Pages in both Chrome and Firefox before the change lands: launcher, Load ROM, the wait for the
   shaders, menus, a level or race, sound, the frame rate, WebGPU errors in the console. Firefox runs in a window over
   WebDriver BiDi (Step 2 says how).
 - Writes what was played, in which browser, on what GPU and when, in that game's repo, beside its other
   measurements (a fork's README or BUILDING.md; this game's Step 3), never in N64Recomp-browser's README.
-- Writes a table cell only from a run on integrated graphics (a laptop report, or a hand test there). A desktop GPU's
-  result never goes in one. A cell keeps its last result, and the date says when; one whose result a fix was made
-  for reads "not yet on this version" until it is played there again, and one never played "not yet".
+- Writes a table cell from a run on integrated graphics (a laptop report, or a hand test there), or else from the
+  stand-in for one, marked "(stand-in)": the page from Pages on a desktop GPU with a 3840x2000 canvas, about 7 times
+  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (Step 2, Firefox). A desktop GPU at a
+  normal size plays every page, so it never fills a cell. The stand-in is gentler than a laptop: Banjo played smooth
+  on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear one, and a laptop result
+  stays until a newer laptop run replaces it. A cell keeps its last result, and the date says when; one whose result
+  a fix was made for reads "not yet on this version" until it is played again, and one never played "not yet".
+- Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
