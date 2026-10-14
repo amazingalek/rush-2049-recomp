@@ -29,6 +29,8 @@ if (EMSCRIPTEN)
     add_compile_options(-sUSE_SDL=2)
 endif()
 
+# The game stops its threads from other threads, as libultra lets it (on with Emscripten anyway).
+set(ULTRAMODERN_LIBULTRA_THREAD_STOP ON)
 add_subdirectory(${GAME_DIR}/lib/N64ModernRuntime ${CMAKE_BINARY_DIR}/N64ModernRuntime)
 # fmt 11.1 (N64Recomp's) leans on <cstdlib> arriving through other headers, which Emscripten's libc++ doesn't do.
 if (EMSCRIPTEN)
