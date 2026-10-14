@@ -273,11 +273,19 @@ that file as its notes, refusing without one. The notes are for someone download
 desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
 other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
 
-The web page (https://amazingalek.github.io/rush-2049-recomp/) is published the same way, after a change to the game
-or the web side has merged: `bash tools/publish_page.sh` from a checkout with `roms/` (`--dry-run` builds and stages
-it in `out/page` only, to serve and try first). It builds origin/main through `tools/remote_build.sh`, in a copy
-named `publish` (kept with its `build-web/`, so a republish rebuilds only what changed), and force-pushes the page as
-the only commit on the orphan branch `gh-pages`, which Pages serves.
+Publishing a page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what a page runs
+publishes that page right after the merge, as part of the same work and without being asked. That is anything the
+page is built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
+`lib/N64Recomp-browser` pin that changes code, the prebuilt shader list), not docs, tests, CI or a tool the build
+doesn't run. Then it plays the page from Pages in Chrome and Firefox (The web target). Each page's commit names the
+main it was built from (`git log -1 origin/gh-pages`), so a page behind main is easy to see; one found behind is
+published by whoever finds it.
+
+The web page (https://amazingalek.github.io/rush-2049-recomp/) is published like a release: `bash
+tools/publish_page.sh` from a checkout with `roms/` (`--dry-run` builds and stages it in `out/page` only, to serve and
+try first). It builds origin/main through `tools/remote_build.sh`, in a copy named `publish` (kept with its
+`build-web/`, so a republish rebuilds only what changed), and force-pushes the page as the only commit on the orphan
+branch `gh-pages`, which Pages serves.
 
 The game forks (The web target) have pages too, at `https://amazingalek.github.io/<fork>/`, linked from the top of
 each one's README, each built from main with its prebuilt shader list and checked from Pages in headless Chrome to the
@@ -285,10 +293,10 @@ game drawing. Each is built by its BUILDING.md steps (in the same Docker image, 
 since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
 fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
-merged doesn't have it; republish after. A fork's rt64 older than 7910126 needs a fresh build dir when it moves: an
-incremental build there keeps the WGSL made from an `.hlsli` that changed, and Conker's page built that way loaded and
-then failed every pipeline with "Binding doesn't exist" (moving onto 7910126 rebuilds every shader). The first visit
-reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
+merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A fork's rt64 older
+than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the WGSL made from an `.hlsli`
+that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding doesn't exist"
+(moving onto 7910126 rebuilds every shader). The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
 
 ## Developer flags
 
@@ -614,7 +622,7 @@ a fork from a separate clone of it:
 4. Here, move `lib/N64Recomp-browser` to that commit (and the submodules, if a fork merged upstream in and
    `patches.txt` names new upstream commits), reset each project whose patch changed and rerun the patch script (it
    stops on one and says how; rebase a game patch that stops applying in the same PR), build and run, and open the PR.
-   Once it has merged, tag N64Recomp-browser (`v0.<n+1>.0`).
+   Once it has merged, tag N64Recomp-browser (`v0.<n+1>.0`) and publish this game's page (Releases).
 
 **Step 1, done: the CPU side.** `headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
