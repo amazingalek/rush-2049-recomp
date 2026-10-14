@@ -84,7 +84,7 @@ sample level so its mix doesn't clip, and the Expansion Pak, which the game was 
 
 ## Getting it running
 
-You need your own copy of the game either way. A release on the repo's Releases page, once one is cut, is a zip of
+You need your own copy of the game either way. A release on the [Releases page](https://github.com/amazingalek/rush-2049-recomp/releases) is a zip of
 the game without the ROM: unzip it and run `Rush2049Recompiled.exe` from that folder (see **Run** below). Otherwise
 build it from source.
 
