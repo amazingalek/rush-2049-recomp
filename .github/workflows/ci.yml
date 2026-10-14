@@ -108,6 +108,7 @@ jobs:
           path: |
             .git/modules
             lib/N64ModernRuntime
+            lib/N64Recomp-browser
             lib/RecompFrontend
             lib/rt64
             build
@@ -194,6 +195,7 @@ jobs:
           path: |
             .git/modules
             lib/N64ModernRuntime
+            lib/N64Recomp-browser
             lib/RecompFrontend
             lib/rt64
             build
