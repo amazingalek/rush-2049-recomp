@@ -301,7 +301,10 @@ game drawing. Each is built by its BUILDING.md steps (in the same Docker image, 
 since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
 fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
-merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A fork's rt64 older
+merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change to the
+web support (a fork, a new N64Recomp-browser commit) reaches every game in the same work, never a later card: the
+agent moves this repo and every game fork onto it, rebuilds and republishes each page, plays each one in Chrome and
+Firefox, and updates the games table, before calling it done. A fork's rt64 older
 than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the WGSL made from an `.hlsli`
 that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding doesn't exist"
 (moving onto 7910126 rebuilds every shader). The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
@@ -456,13 +459,20 @@ runs each interleaved): Firefox's GPU process 0.47-0.52 cores, the GPU 40-46% bu
 a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgba8unorm`; Chrome 0.29-0.45, 34-43% and
 78-90 W, the same in either format.
 
+Every page again from Pages on b1c35d1 (plume 16e608a and 97f4e64), one page at a time, the same GPU, an idle host,
+Firefox 158 and Chrome 155 at 3840x2000, 25-60 s after the boot's wait: in Firefox Rush 2049 and GoldenEye 58-60
+presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too), Banjo 58-60 after
+10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
+after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
+presents above the display's rate and the memory climbing are gone.
+
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
-submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser 7b80155 (the canvas in the
-browser's preferred format, rt64 c6cf6c4 and 6734747); Banjo, Majora's
+submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser b1c35d1 (the canvas in the
+browser's preferred format, rt64 c6cf6c4 and 6734747, plume 16e608a and 97f4e64); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
