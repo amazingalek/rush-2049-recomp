@@ -198,9 +198,10 @@ rt64 918deb3           a reload of the replacement directories waits for the tex
 rt64 c6cf6c4           a per-draw texture's slot in a GPUTile field of its own (drawSlot), not in textureIndex's high
                        bits, so a specialized shader without mip LOD reads one texture, not a switch of 8: such a
                        prebuilt pixel shader is a third of the WGSL, and Firefox's waits shrink with it
-rt64 6734747           presents paced (e8e162e) only while one in ten or more is dropped over 2 s, 4 at least: a
+rt64 6734747, 0fda089  presents paced (e8e162e) only while one in ten or more is dropped over 2 s, 4 at least: a
                        pipeline built behind the game drops one every second or two, and 2 in a second held a slow
-                       game at one present a frame (GoldenEye's credits at 8-12 a second); the console says when
+                       game at one present a frame (GoldenEye's credits at 8-12 a second); the console says when it
+                       starts and ends
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
