@@ -351,11 +351,14 @@ N64Recomp-browser's README has a table of the games (Games): each one's repo and
 Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
 column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
 or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
-gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
+gets a row. Under the table each game has a line or two, what was checked and when; its measurements, and the fixes
+behind them, go in the game fork's own README or BUILDING.md, not there. No game is added until every one in it is
+smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Two are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo, Majora's Mask and Donkey Kong 64 are on their
-own upstream submodules, patched by N64Recomp-browser 2bc4018 (Banjo) and 3ef1502 (below); Banjo, Majora's
+every push to main with no ROM, is disabled. Conker is on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo,
+Majora's Mask and Donkey Kong 64 are on their own upstream submodules, patched by N64Recomp-browser 2bc4018 (Banjo)
+and 3ef1502, and GoldenEye on upstream's at the forks' bases, patched by e6a64ac (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -415,7 +418,11 @@ camera, so a script can take a photo. The ROM is the US 1.0, decompressed with t
 `tools/generate_decompressed_rom.py` for building.
 
 `amazingalek/GoldenEye64Recomp-web` is GoldenEye 007, from cblock85's GoldenEye64Recomp (itself from kholdfuzion's
-GoldenRecomp), moved onto RecompFrontend and these forks, compiled with `-mtail-call`. In headless Chrome: launcher,
+GoldenRecomp), moved onto RecompFrontend, compiled with `-mtail-call`. Its upstream pins kholdfuzion's runtime and
+its own RmlUi, no RecompFrontend, so it has no pins of its own to go back to: its `lib/rt64`, `lib/N64ModernRuntime`
+and `lib/RecompFrontend` are upstream's at the commits the forks are built on (`patches/patches.txt`, a row each in
+`pins.txt`), patched by `patches/apply.cmake` for the desktop build too, since its recompiled code needs the patched
+N64Recomp (9aabea3, ec0748e). The patched checkouts are the forks' trees file for file. In headless Chrome: launcher,
 Load ROM, the gun-barrel intro, the credits, mission select, Dam walked on the keyboard, sound, 60 retraces a second;
 natively the intro and attract demo. The code is recompiled from the "TLBFREE" ROM, which its BUILDING.md makes from
 the retail ROM with an xdelta; the program takes the retail ROM and converts it in memory in `on_init_callback`. What
