@@ -351,7 +351,9 @@ N64Recomp-browser's README has a table of the games (Games): each one's repo and
 Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
 column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
 or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
-gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
+gets a row. Under the table each game has a line or two, what was checked and when; its measurements, and the fixes
+behind them, go in the game fork's own README or BUILDING.md, not there. No game is added until every one in it is
+smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Three are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo and Majora's Mask are on their own upstream
