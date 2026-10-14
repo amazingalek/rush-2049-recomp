@@ -199,9 +199,9 @@ diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
 index e08b02c..5edfe0e 100644
 --- a/src/hle/rt64_present_queue.h
 +++ b/src/hle/rt64_present_queue.h
-@@ -4,6 +4,7 @@
+@@ -6,6 +6,7 @@
  
- #pragma once
+ #include <deque>
  
 +#include "common/rt64_gpu_timings.h"
  #include "common/rt64_profiling_timer.h"

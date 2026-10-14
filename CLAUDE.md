@@ -198,6 +198,10 @@ rt64 918deb3           a reload of the replacement directories waits for the tex
 rt64 c6cf6c4           a per-draw texture's slot in a GPUTile field of its own (drawSlot), not in textureIndex's high
                        bits, so a specialized shader without mip LOD reads one texture, not a switch of 8: such a
                        prebuilt pixel shader is a third of the WGSL, and Firefox's waits shrink with it
+rt64 6734747, 0fda089  presents paced (e8e162e) only while one in ten or more is dropped over 2 s, 4 at least: a
+                       pipeline built behind the game drops one every second or two, and 2 in a second held a slow
+                       game at one present a frame (GoldenEye's credits at 8-12 a second); the console says when it
+                       starts and ends
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -442,8 +446,13 @@ Kong 64 nothing at all, the Factory included, Conker nothing at the start and 3.
 section was built. The cost is frames while the list builds: Banjo, Majora's Mask and Conker drew 28-42 a second for
 5-10 s, Donkey Kong 64's DK Rap 18-31 for ~20 s (115 pipelines in its boot), and GoldenEye (202 pipelines, 20 MB of
 WGSL) 7-36 through its cast credits until all were built ~93 s in, ~28 s of its sound lost, where on e6a64ac it waits
-~4 s and draws 56-60 there (its first attract demo then waits 6 s and draws 12-29 for ~20 s). So GoldenEye stays on
-e6a64ac until the scheduling is fixed. Firefox waits for each section as before. A section's name is one word: rt64's shader
+~4 s and draws 56-60 there (its first attract demo then waits 6 s and draws 12-29 for ~20 s). That was rt64 e8e162e's
+even pacing, not the build threads: each pipeline built behind the game drops a present every second or two, and 2 in a
+second paced every game frame to one present, 8-12 a second in GoldenEye's credits (on an idle host the DK Rap played
+alike with its boot section on 6, 3, 2 or 1 threads, and waiting for it up front lost 90k-140k audio frames). With rt64
+6734747, cold on an idle host, GoldenEye drew 48-62 through its boot and credits (173k-223k audio frames short in 120 s
+against 525k-1.2M) and Donkey Kong 64 55-56 once its boot's ~3 s of black ended, none short. GoldenEye stays on e6a64ac until its page is rebuilt on it.
+Firefox waits for each section as before. A section's name is one word: rt64's shader
 specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
 chose the arm64 `dxc-linux` on a Linux host).
 
