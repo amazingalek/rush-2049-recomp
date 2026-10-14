@@ -503,7 +503,7 @@ Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
 the first second). Each has a prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what
-not). Banjo's, 186 shaders, has no sections and fits Chrome's cache. Majora's Mask's and Donkey Kong 64's are recorded
+not). Banjo's, 186 shaders, fits Chrome's cache and is in four sections, the band's intro its boot. Majora's Mask's and Donkey Kong 64's are recorded
 by code, a section an area, as GoldenEye's (`patches/shader_survey.c` warps to an entrance or a map,
 `tools/shader_plan.json`, `tools/record_shaders.sh`): Majora's Mask 938 descriptions, 730 pipelines, in 17 sections,
 the boot 39 (launcher to file select), then the attract demo, Clock Town, the intro and each region; Donkey Kong 64 475
@@ -806,8 +806,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   "Preparing graphics" indicator (rt64 950188f): cold in headless Chrome 155 (RTX 2070, a busy host) this game never
   waited, its 75 pipelines built 7 s after Start Game behind the logos and the title at 49-57 frames a second, where
   the page before waited 6.0 s at 0-19 behind a full-screen panel. Firefox builds nothing behind the game, so it waits
-  for this game's whole list (one section) before the first frame, 13.7 s (Firefox 158). A game with many levels has
-  a section a level (GoldenEye, Majora's Mask, Donkey Kong 64 and Conker, The web target). A shader the list misses is built behind the game, and the
+  for a list's boot before the first frame and for a section when the game gets there. This game's list is in three
+  (recorded by `tools/shader_plan.json`, its header says how): the boot (the Midway logo, the title, every menu), 21
+  of its 75 pipelines, race (the attract and 1P races) and modes (the other
+  modes, played by hand). A game with many levels has a section a level (GoldenEye, Majora's Mask, Donkey Kong 64 and
+  Conker, The web target). A shader the list misses is built behind the game, and the
   page remembers it (`localStorage`) and builds it with the rest on the next visit. Recording again: the page prints
   an `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
   over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
@@ -959,7 +962,12 @@ profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 n
 58-60 presents a second in both, no sound short after the wait, no WebGPU errors. On ed8764a (v0.36.0: the CPU hot
 paths, the flipped rect and the thread stop in the forks, rt64 58fc4e4's pacing), the same way: Chrome 155 headless
 waited not at all and Firefox 158 9.8 s, then 59 presents a second (median) in both through the title and attract races,
-sound short only in the first seconds after Start Game, no WebGPU errors. What to know:
+sound short only in the first seconds after Start Game, no WebGPU errors. With the list in sections (a local build on
+b1c35d1 against the page published from it, two cold runs each, interleaved; RTX 2070, a quiet host, 1256x645):
+Firefox 158 waited 1.9-2.0 s for the boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s
+for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game
+against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
+second (median) and no WebGPU errors either way. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
