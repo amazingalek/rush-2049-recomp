@@ -389,46 +389,52 @@ does all of this in the same work:
   measurements (a fork's README or BUILDING.md; this game's Step 3), never in N64Recomp-browser's README.
 - Writes a table cell from a run on integrated graphics (a laptop report, or a hand test there), or else from the
   stand-in for one, marked "(stand-in)": the page from Pages on a desktop GPU with a 3840x2000 canvas, about 7 times
-  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (`play_page.mjs --size 3840x2000`). A desktop GPU at a
-  normal size plays every page, so it never fills a cell. The stand-in is gentler than a laptop: Banjo played smooth
-  on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear one, and a laptop result
-  stays until a newer laptop run replaces it. A cell keeps its last result, and the date says when; one whose result
-  a fix was made for reads "not yet on this version" until it is played again, and one never played "not yet".
+  the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (`play_page.mjs --size 3840x2000 --play
+  25`). A desktop GPU at a normal size plays every page, so it never fills a cell. The stand-in is gentler than a
+  laptop: Banjo played smooth on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear
+  one, and a laptop result stays until a newer laptop run replaces it. A cell keeps its last result, and the date says
+  when; one whose result a fix was made for reads "not yet on this version" until it is played again, and one never
+  played "not yet".
 - Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
 
-The stand-in on 2026-10-14, every page from Pages, Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop
-alone at 23% busy and 13 W: the boot's shader wait, then presents a second, GPU busy, watts and the GPU process's
-cores over 25 s of the game playing by itself:
+The stand-in on 2026-10-14, every page from Pages built on N64Recomp-browser 7b80155 (the canvas in the browser's
+preferred format, rt64 e46bf19), Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop alone at about 20%
+busy: the boot's shader wait, then presents a second, GPU busy, watts and the GPU process's cores over 25 s of the
+game playing by itself (`play_page.mjs --size 3840x2000 --play 25`):
 
 ```
                  wait (s)     presents/s       GPU busy, W         GPU process
                Chrome  Fx   Chrome  Firefox   Chrome    Firefox    Chrome  Fx
-Rush 2049        3.2  11.4   58-59   49-60    34% 53   67% 99      0.20  0.97
-Banjo            3.1   6.3   59-60   60-61    28% 48   59% 93      0.13  0.84
-GoldenEye        3.1  10.1   58-60   20-100   29% 39   48% 70      0.17  0.71
-Majora's Mask    2.2   5.5   59-60   15-59    34% 47   42% 59      0.24  0.91
-Conker           2.5   7.3   30-60   33-61    31% 46   50% 89      0.20  0.77
-Donkey Kong 64   4.3  14.3   55-56   60-61    35% 26   52% 77      0.12  0.75
+Rush 2049          -  10.8   37-59   69-152   34% 63   37% 58      0.32  0.73
+Banjo            1.4   5.2   22-56   18-83    27% 54   31% 71      0.14  0.34
+GoldenEye          -   8.0   53-59   52-61    35% 46   33% 50      1.23  0.25
+Majora's Mask      -   3.2   54-56   20-61    35% 57   46% 87      1.23  0.32
+Conker             -   7.3   48-55   57-61    28% 51   57% 81      1.28  0.84
+Donkey Kong 64     -  13.7   52-56   58-62    39% 54   38% 89      0.23  0.38
 ```
 
-At 1280x800 Firefox kept up but for Donkey Kong 64, which sat at 30 presents a second for spells against Chrome's
-55-56 (rt64 e8e162e's even pacing), and its GPU process still took 2-3 times Chrome's CPU. Firefox presents a canvas
-through a texture shared with its compositor only when it is `bgra8unorm`
-(`wgpu_client_use_shared_texture_in_swapChain`), and the pages above were `rgba8unorm`, so every present was read
-back through the CPU. With the canvas in the browser's preferred format (rt64 e46bf19, `bgra8unorm`), Rush 2049's
-page at 3840x2000 (a local build, the same GPU, an idle host, attract race, two runs each interleaved): Firefox's GPU
-process 0.47-0.52 cores, the GPU 40-46% busy at 93-101 W and 59.3-60.2 presents a second, against 1.21-1.24, 78-82%,
-104 W and 53.7-58.9 in `rgba8unorm`; Chrome 0.29-0.45, 34-43% and 78-90 W, the same in either format. At 1280x800
-Firefox's GPU process still took 0.5 cores against Chrome's 0.3. A game's page has it once it is rebuilt on
-N64Recomp-browser v0.30.0.
+Chrome builds a page's whole list behind the game (rt64 950188f), so its GPU process takes ~1.2 cores while
+GoldenEye's, Majora's Mask's and Conker's build. In Firefox GoldenEye, Conker and Donkey Kong 64 hold 60, where on
+`rgba8unorm` pages they fell to 20-33 for spells, and Majora's Mask draws 20-29 for ~10 s after the boot's wait. Rush
+2049's and Banjo's pages present unevenly in Firefox, Rush 2049's above the display's rate (69-152 a second on 59 Hz)
+with rt64's pacing switching on and off, and the GPU's memory climbs: Banjo's from 1.9 to 6.5 GB in 25 s, Rush 2049's
+from ~2 to 6.9-7.6 GB within its shader wait, once to WebGPU's "Out of Memory" and invalid textures after it. Not yet
+explained. Banjo presents 31-136 a second in Firefox at 1256x645 too; the other four hold 60 there.
+
+What the canvas format changed: Firefox presents a canvas through a texture shared with its compositor only when it is
+`bgra8unorm` (`wgpu_client_use_shared_texture_in_swapChain`), and the pages were `rgba8unorm`, so every present was
+read back through the CPU. Rush 2049's page at 3840x2000 (a local build, the same GPU, an idle host, attract race, two
+runs each interleaved): Firefox's GPU process 0.47-0.52 cores, the GPU 40-46% busy at 93-101 W and 59.3-60.2 presents
+a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgba8unorm`; Chrome 0.29-0.45, 34-43% and
+78-90 W, the same in either format.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
-submodules, patched by N64Recomp-browser v0.28.0 (14cfef7), and GoldenEye on upstream's at the forks' bases, patched by
-e6a64ac (below), since on v0.28.0 its page crawled through the boot in Chrome (next paragraph); Banjo, Majora's
+submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser 7b80155 (the canvas in the
+browser's preferred format, rt64 c6cf6c4 and 6734747); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -454,8 +460,13 @@ even pacing, not the build threads: each pipeline built behind the game drops a 
 second paced every game frame to one present, 8-12 a second in GoldenEye's credits (on an idle host the DK Rap played
 alike with its boot section on 6, 3, 2 or 1 threads, and waiting for it up front lost 90k-140k audio frames). With rt64
 6734747, cold on an idle host, GoldenEye drew 48-62 through its boot and credits (173k-223k audio frames short in 120 s
-against 525k-1.2M) and Donkey Kong 64 55-56 once its boot's ~3 s of black ended, none short. GoldenEye stays on e6a64ac until its page is rebuilt on it.
-Firefox waits for each section as before. A section's name is one word: rt64's shader
+against 525k-1.2M) and Donkey Kong 64 55-56 once its boot's ~3 s of black ended, none short. On 7b80155, cold, local
+builds in headless Chrome 155 (RTX 2070, an idle host, 2026-10-14): Banjo waited 1.4 s for 12 shaders and drew 55 a
+second, Majora's Mask 0.3 s for Clock Town, Donkey Kong 64 and GoldenEye nothing, Factory and Dam included (GoldenEye
+48-60 through its boot, credits and Dam, all 202 built 72 s in), Conker 2.8 s for Windy, each with no WebGPU error.
+Firefox waits for each section as before; from Pages in Firefox 158 on 7b80155: Banjo 5.2 s, Majora's Mask's boot 2.8 s
+and Clock Town 7.8 s, Donkey Kong 64's boot 12.5 s and the Factory 2.3 s, GoldenEye's boot 8.1 s and Dam 13.4 s,
+Conker's boot 7.2 s and Windy 11.2 s, then about 60 presents a second. A section's name is one word: rt64's shader
 specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
 chose the arm64 `dxc-linux` on a Linux host).
 
@@ -558,7 +569,9 @@ then each chapter (It's War in two) and seven multiplayer modes against bots; no
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
 frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
-10.4 s and the bar drew with sound. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+10.4 s and the bar drew with sound. Further into Windy, after its checkpoint 33's cutscene, Firefox 158 loses the
+WebGPU device ("Out of Memory" creating a bind group, the GPU's memory flat), on v0.28.0's page as on 7b80155's; Chrome
+plays on. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
