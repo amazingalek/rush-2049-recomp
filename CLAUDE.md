@@ -569,7 +569,14 @@ the retail ROM with an xdelta; the program takes the retail ROM and converts it 
 porting it found: its own strtol, strncmp, acos and others clash with funcs.h's C library declarations, so they are
 `renamed` in both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
-after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
+after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Its sound ran dry in bursts (in Chrome while the
+shader list built cold, ~20% for ~40 s; in Firefox ~0.4 s at fixed moments of the boot) because its main loop's waits
+for the next tick (`patches/fps.c`) polled `osGetCount` with no OS call, so the scheduler and the audio thread, which
+preempt it on the console, waited behind it; the intro's wait lasts as long as the frame before, so one slow frame held
+the whole intro to that length, the main thread polling ~1.5 million counts a second. Each poll yields now (the fork's
+7f40089), and the bursts are gone in both browsers. A wait that polls memory or the clock without an OS call starves
+every other game thread on any recomp (`find_spins.py` finds this game's); a trace of the count calls a second found
+this one. Render to RAM stays at its default (on), not tried
 off, with its copy a list late on the page (rt64 73e9ca0): in Dam, headless Chrome 155, 3.8-5.2 ms a list against
 8.0-9.7 with the exact copy; through its whole shader plan its CPU never wrote to a framebuffer whose copy was pending.
 Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
