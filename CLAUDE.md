@@ -361,9 +361,9 @@ behind them, go in the game fork's own README or BUILDING.md, not there. No game
 smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Conker is on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo,
-Majora's Mask and Donkey Kong 64 are on their own upstream submodules, patched by N64Recomp-browser 2bc4018 (Banjo)
-and 3ef1502, and GoldenEye on upstream's at the forks' bases, patched by e6a64ac (below); Banjo, Majora's
+every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
+submodules, patched by N64Recomp-browser 2bc4018 (Banjo), 3ef1502 and e8e5fa9 (Conker), and GoldenEye on upstream's at
+the forks' bases, patched by e6a64ac (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -453,26 +453,30 @@ osMemSize at 0x80000300.
 
 `amazingalek/CBFD-Recompiled-web` is sciaschi's Conker's Bad Fur Day: Recompiled (MIT; its CONTRIBUTING.md welcomes
 AI-assisted work, but nothing has been offered to it). It keeps its tools as submodules in `tools/`, patched by
-`build.sh` from `recomp/*.patch`; on the fork they are the forks, with those patches rebased onto them, and
-`tools/N64Recomp-browser`. In headless Chrome: launcher, Add ROM, the intro, the bar, Conker walking outside it, sound.
+`build.sh` from `recomp/*.patch`; on the fork they stay upstream's, with those patches as upstream has them, and
+`build.sh` then applies N64Recomp-browser's `patches/` on top (`tools/N64Recomp-browser`), N64Recomp's without
+`src/analysis.cpp` (apply.cmake's file list): its jump table in another section is a change Conker's own patch makes
+its own way, and the two conflict. Where the web patches and a game's own touch the same lines, `build.sh` can't tell
+its patch is in, so it records what it left patched (`.git/patched-tools`) and patches from scratch when that
+changes. rt64-web 03b9dcc keeps rt64's web includes off the lines Conker's rt64 patch adds to. In headless Chrome: launcher, Add ROM, the intro, the bar, Conker walking outside it, sound.
 Its code runs TLB-mapped (`.game` at 0x15000000), and the host copies those pages to `rdram + vram + 0x80000000`,
 ~2.4 GB past RDRAM, inside the desktop's 4 GB reservation; on a page RDRAM is an allocation in the wasm heap, so
 `overlays.cpp` moves the heap's break past them (`sbrk`) and the page links with `-sALLOW_MEMORY_GROWTH=1
 -sMAXIMUM_MEMORY=4GB`. Its chains of tail calls ran the browser out of stack leaving the bar, which is what N64Recomp
 8038212 and `-mtail-call` are for. It plays through `audio_output.h` with an SDL audio stream resampling the game's
-rate to the page's. The ROM is the US one. Its native build (`build.sh`, `build.cmd`) works on the forks too: their
-runtime has no `argc`/`argv` in `recomp::Configuration` (upstream's `--game`), so `--seconds` and `--headless` call
-`recomp::start_game` on the first VI. Without a GPU, the window build runs under Xvfb with Mesa's software Vulkan
+rate to the page's. The ROM is the US one. `build.cmd` (Windows) doesn't apply the web patches, so the page is built after
+`build.sh`. Without a GPU, the window build runs under Xvfb with Mesa's software Vulkan
 (`--seconds 90`, `--rom` an absolute path since it moves to its own folder): the intro to the bar at 60 VIs a second.
 `--headless` in the window build stops at the first camera or rumble setting it reads, which only the frontend's
-General tab holds (upstream's code). Its `recomp/rt64.patch` applies to rt64-web unchanged, and it records its shader
+General tab holds (upstream's code). It records its shader
 list, `host/rt64_shaders.txt`, by code (`tools/record_shaders.sh`, `tools/shader_plan.json`; the survey is JavaScript,
 `tools/shader_survey.js`, since the fork has no patches library: it starts a chapter's checkpoint through the bar
 menus' fade-then-call): 499 descriptions, 403 pipelines, in 19 sections, the boot 75 (the intro and the bar's menus),
 then each chapter (It's War in two) and seven multiplayer modes against bots; no split screen. In headless Chrome 155
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
-frames a second and Windy 57 (Chrome 155: 59 and 59); before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
+10.4 s and the bar drew with sound. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
