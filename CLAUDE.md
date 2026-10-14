@@ -191,6 +191,9 @@ plume be0524c          a delete through plume_device_thread waits until every co
 rt64 6790eaa           by then is executed, begun again or deleted: a list replays only when it's executed, and this
                        game's hi-res font, reloading its texture pack mid-frame, destroyed a texture a list had bound
                        before that list's submit (Chrome dropped the command buffer: "Destroyed texture used in a submit")
+rt64 918deb3           a reload of the replacement directories waits for the texture upload thread's batch and holds off
+                       the next: a batch looked its replacements up, waited for the GPU and then put them in, so a reload
+                       meanwhile (the hi-res font's) left it installing ones the reload had queued for deletion
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -832,9 +835,12 @@ frames a second in both, with no sound short; Chrome logged one WebGPU error in 
 [384x136 RGBA8Unorm] used in a submit"), Firefox none. That was the hi-res font: each new glyph remakes its atlas's 4x
 replacement and reloads the pack, and the old texture was destroyed while a list that had bound it waited to be
 executed. With plume be0524c, a fresh profile walked through the menus (30-36 remakes) and into a race: in headless
-Chrome 155 none in 5 walks, where every walk before had one or two; in Firefox 158 it still comes about one walk in
-three, with or without it, several font textures at once in a list recorded after they were destroyed (RT64 binding a
-texture set that holds them, not the device thread). What to know:
+Chrome 155 none in 5 walks, where every walk before had one or two. Firefox 158 still had it about one walk in three:
+several font textures at once, in a list recorded after they were destroyed. That was RT64's texture upload thread
+installing replacements from before a reload (rt64 918deb3). Its GPU wait is longer in Firefox, which widens the window.
+With a 40 ms sleep added in that window (a test build), a walk in headless Chrome 155 logged 115 such textures, and none
+with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
+and no other WebGPU error. What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
