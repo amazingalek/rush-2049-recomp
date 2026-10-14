@@ -171,6 +171,14 @@ namespace {
 #endif
     }
 
+    std::string list_times_text(std::vector<double> times) {
+        if (times.empty()) return "n/a";
+        std::sort(times.begin(), times.end());
+        char text[48];
+        snprintf(text, sizeof(text), "%.2f (%.2f) ms", times[times.size() / 2], times[times.size() * 95 / 100]);
+        return text;
+    }
+
     // The wall time of each display list's send_dl since the last call, as "median (p95)" in ms: with RT64, the
     // list's parse, its texture hashing and the work it waits for.
     std::string take_list_times(std::vector<double>& all) {
@@ -181,14 +189,6 @@ namespace {
         }
         all.insert(all.end(), times.begin(), times.end());
         return list_times_text(times);
-    }
-
-    std::string list_times_text(std::vector<double> times) {
-        if (times.empty()) return "n/a";
-        std::sort(times.begin(), times.end());
-        char text[48];
-        snprintf(text, sizeof(text), "%.2f (%.2f) ms", times[times.size() / 2], times[times.size() * 95 / 100]);
-        return text;
     }
 
     void report(int seconds) {
