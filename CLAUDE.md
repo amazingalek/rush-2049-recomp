@@ -391,6 +391,10 @@ browser turns up is fixed in the shared support (a fork, N64Recomp-browser) unle
 game and both browsers get it, and what one game does better (a shader list in sections, the late copy) is tried on the
 others. Only what is the game's own stays in its fork.
 
+A game fork of an existing recomp is that recomp plus web support and nothing else, so its diff against upstream is
+exactly what the page needs: no new features (mouse aim, controls, enhancements) and no fix the page doesn't need.
+A request for one is answered that way, not filed against the fork.
+
 It lives in seven repos under amazingalek, all public:
 
 - The forks, on their `main` branch: the commit upstream pins, plus the web support one commit per change (table
