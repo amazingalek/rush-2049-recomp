@@ -407,7 +407,11 @@ of the runtime (`--game`/`--game-mode`, `recomp::Configuration`'s argc and argv,
 RecompFrontend (a mod store), patched by `apply.cmake`, RecompFrontend's with a three-way merge. The mod store finds
 curl (vcpkg on the desktop), which a page hasn't got: `web/curl` is a `FindCURL.cmake` put first on
 `CMAKE_MODULE_PATH` with Emscripten and a `curl/curl.h` whose every call fails, and the store stays off (no discovery
-URL, no Mods tab). Built that way the boot's 115 pipelines took 5.3 s cold in headless Chrome 155.
+URL, no Mods tab). Built that way the boot's 115 pipelines took 5.3 s cold in headless Chrome 155. While Chrome held
+the graphics thread for them, its sound went silent for good in 5 of 7 boots. The audio thread's request to start its
+task was lost to a stale retrace message, which the scheduler never sends again while one is unread. So its patched
+retrace handler (`patches/timing_fixes.c`) now starts a pending audio task itself, and 9 of 9 boots played on (its
+BUILDING.md says how). Firefox runs the game through the wait and never lost it.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
