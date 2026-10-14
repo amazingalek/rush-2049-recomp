@@ -350,8 +350,8 @@ or a change that moves how a game plays (a fork, a page, a shader list) updates 
 gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Four are on N64Recomp-browser v0.24.0 (2881f70) and its forks, Banjo on its own upstream submodules patched by
-N64Recomp-browser 2bc4018 (below); Banjo, Majora's
+every push to main with no ROM, is disabled. Three are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo and Majora's Mask are on their own upstream
+submodules, patched by N64Recomp-browser 2bc4018 and 3ef1502 (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -379,7 +379,10 @@ header. Its README says up front that it is AI-written and not the Banjo
 team's, its BUILDING.md how to build the page, and what porting it found is in N64Recomp-browser's README.
 
 `amazingalek/Zelda64Recomp-web` is Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it
-onto RecompFrontend). In headless Chrome: launcher, Load ROM, the attract demo, title, file select, the intro, Link
+onto RecompFrontend). Its `lib/rt64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at the commits
+that branch pins, which are the forks' bases, so `patches/apply.cmake` applies every patch with `git apply` alone and
+the game's own code is unchanged; the D-pad mod's `OfflineModRecomp --static` is the patched N64Recomp's. In headless
+Chrome: launcher, Load ROM, the attract demo, title, file select, the intro, Link
 walking, the pause menu; its 20 frames a second interpolated to the display's rate. Render to RAM stays on there (the
 Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build time and linked in (its
 icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md names (the page takes the
