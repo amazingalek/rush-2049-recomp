@@ -597,9 +597,9 @@ then each chapter (It's War in two) and seven multiplayer modes against bots; no
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
 frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
-10.4 s and the bar drew with sound. Further into Windy, after its checkpoint 33's cutscene, Firefox 158 loses the
-WebGPU device ("Out of Memory" creating a bind group, the GPU's memory flat), on v0.28.0's page as on 7b80155's; Chrome
-plays on. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+10.4 s and the bar drew with sound. Before plume 97f4e64, Firefox 158 lost the WebGPU device further into Windy,
+after its checkpoint 33's cutscene ("Out of Memory" creating a bind group, the GPU's memory flat); on b1c35d1's page it
+played the plan's whole Windy section at 60, at 1256x645 and 3840x2000, the live bind groups about 4,500. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
