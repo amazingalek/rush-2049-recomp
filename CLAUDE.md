@@ -352,13 +352,23 @@ It lives in seven repos under amazingalek, all public:
   recomp's are. `tools/apply_runtime_patches.sh` applies N64Recomp-browser's patches to them and `runtime-patches/`
   on top, so the tree is the forks' with the game's changes, natively too.
 
-N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays in
-Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
-column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
-or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
-gets a row. Under the table each game has a line or two, what was checked and when; its measurements, and the fixes
-behind them, go in the game fork's own README or BUILDING.md, not there. No game is added until every one in it is
-smooth in both browsers on integrated graphics too.
+N64Recomp-browser's README has a table of the games (Games): each one's repo and page, how it plays in Chrome and in
+Firefox on a laptop's integrated graphics (Intel UHD), and the date it was last played there; a desktop GPU plays
+them all, so it has no column. Under the table are two lines and no more. Keeping it current is the agent's job, not
+the reader's, so whoever changes how a page plays (a fork, a page published again, a shader list) does all of this in
+the same work:
+
+- Plays the page from Pages in both Chrome and Firefox before the change lands: launcher, Load ROM, the wait for the
+  shaders, menus, a level or race, sound, the frame rate, WebGPU errors in the console. Firefox runs in a window over
+  WebDriver BiDi (Step 2 says how).
+- Writes what was played, in which browser, on what GPU and when, in that game's repo, beside its other
+  measurements (a fork's README or BUILDING.md; this game's Step 3), never in N64Recomp-browser's README.
+- Writes a table cell only from a run on integrated graphics (a laptop report, or a hand test there). A desktop GPU's
+  result never goes in one. A cell keeps its last result, and the date says when; one whose result a fix was made
+  for reads "not yet on this version" until it is played there again, and one never played "not yet".
+
+A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
+browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
@@ -671,7 +681,9 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   second run froze for good leaving the title for the menus. Firefox under WebDriver BiDi in a window moved off the
   desktop never has focus, so its key actions reach nothing: dispatch `KeyboardEvent`s on `window` from
   `script.evaluate` instead. Its file dialog event gave an element that `input.setFiles` filled with no `change`: a
-  preload script replacing a file input's `click()` with a fetch of the ROM from the local server loads it.
+  preload script replacing a file input's `click()` with a fetch of the ROM from the local server loads it. A page on
+  Pages can't fetch from a local server in Firefox, so there the ROM goes to the page in pieces through
+  `script.evaluate` and the `click()` sets the input's `files` from a `DataTransfer` and dispatches `change` itself.
 - How full that cache is: the `index` in `DawnWebGPUCache` holds its bytes as the int64 at offset 48 and its entries
   as the int32 at 8. This game's 105 and the launcher's pipelines come to 5.6-6.0 MB of it, so check the figure when
   the list grows. A page whose shaders changed (a build with new ones over a warm profile) left the old entries beside
@@ -773,7 +785,10 @@ against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there)
 HOME kept in IndexedDB, so the ROM, settings and saves outlive the page. `N64Recomp-browser/frontend/CMakeLists.txt`'s
 header says what each part does; the README says how to build and serve it. Checked in headless Chrome 154: launcher,
 Load ROM, title, menus, a race on the keyboard, audio playing (RMS 0.1-0.2), a reload that boots from the stored ROM,
-and without the two headers through `coi_serviceworker.js`. What to know:
+and without the two headers through `coi_serviceworker.js`. Played from Pages (built from 2ec2ebd) on 2026-10-14, RTX
+2070, a busy host: the shaders took 4.1 s in headless Chrome 155 and 13.7 s in Firefox 158, then a race at 58-60
+frames a second in both, with no sound short; Chrome logged one WebGPU error in the menus ("Destroyed texture
+[384x136 RGBA8Unorm] used in a submit"), Firefox none. What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
