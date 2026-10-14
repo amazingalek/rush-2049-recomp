@@ -368,7 +368,11 @@ shaders the game uses before it starts (Step 2).
 ## The web target
 
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
-for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
+for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`. The other games' pages (the game forks below) are
+there to build out and test that support on more than one game, not as ports of their own: what one of them or one
+browser turns up is fixed in the shared support (a fork, N64Recomp-browser) unless it really is that game's, so every
+game and both browsers get it, and what one game does better (a shader list in sections, the late copy) is tried on the
+others. Only what is the game's own stays in its fork.
 
 It lives in seven repos under amazingalek, all public:
 
