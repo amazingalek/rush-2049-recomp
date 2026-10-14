@@ -12,8 +12,8 @@
 // A page has no command line, so it takes the options from its query (page_arguments.js). The audio sink drains at
 // the rate the game set, the way a sound card would, so the audio thread is paced as it is in the game. Nobody presses anything, so the game runs its title screen and attract races, which
 // draw 30 frames a second. --fps is the Game Frame Rate option (30 is Original, 60 the default). --mix is the MusyX
-// Mixing option (High Quality is the default). --render-to-ram is RT64's render to RAM, off as on the game's page (its
-// main.cpp says why); 1 copies every frame back into RDRAM, as the desktop build does.
+// Mixing option (High Quality is the default). --render-to-ram is the Copy Frames to RAM option (its config.cpp says
+// why), off by default; 1 copies every frame back into RDRAM, as its Original does.
 //
 // Every 5 seconds it prints retraces, display lists and audio buffers a second, and the CPU time the whole process
 // used in that time as a share of one core (not in a browser, which has no way to read it). At the end, the same over

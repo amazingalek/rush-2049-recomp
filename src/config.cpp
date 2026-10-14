@@ -1,5 +1,6 @@
 // Config tabs: the stock tabs, plus the controller accessory, Controller Pak size and rewind options on the General
-// tab, the game frame rate, hi-res font and split-screen aspect ratio on the Graphics tab, and MusyX mixing on the Sound tab.
+// tab, the game frame rate, hi-res font, split-screen aspect ratio and copying frames to RAM on the Graphics tab, and
+// MusyX mixing on the Sound tab.
 
 #include <algorithm>
 #include <atomic>
@@ -11,6 +12,7 @@
 #include "librecomp/config.hpp"
 #include "recompinput/input_mapping.h"
 #include "recompui/config.h"
+#include "recompui/renderer.h"
 #include "util/file.h"
 #include "ultramodern/ultramodern.hpp"
 
@@ -120,6 +122,16 @@ namespace {
     // Read on the game thread with every display list.
     std::atomic<MenuRatio> menu_ratio_setting{ MenuRatio::Expand };
 
+    enum class CopyFramesToRam {
+        Off,
+        Original,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> copy_frames_to_ram_options = {
+        {CopyFramesToRam::Off, "Off", "Off"},
+        {CopyFramesToRam::Original, "Original", "Original"},
+    };
+    const std::string copy_frames_to_ram_option = "copy_frames_to_ram";
 
     enum class MusyxMix {
         Original,
@@ -352,6 +364,39 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(menu_ratio_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             menu_ratio_setting = static_cast<MenuRatio>(std::get<uint32_t>(cur_value));
+        });
+
+    // RT64's render to RAM, which draws every frame a second time at the N64's resolution and copies it into RDRAM,
+    // where the console's RDP leaves it. Nothing in the game was seen reading a frame on the CPU: with page guards on
+    // the framebuffers and the Z-buffer through boot, the attract races, the menus, a race with pause, Rewind and
+    // Quit, two-player split screen and a Ghost Race to its results, the game's only touches were the ROM inflate's
+    // staging buffer in a framebuffer it isn't showing, and no screen samples a framebuffer as a texture. Without the
+    // copy a race list on an RTX 2070 at 960x720 took 3.9 ms instead of 5.0 and the GPU drew 41-49 W instead of
+    // 60-62, and in a browser a list waited ~6 ms less for the GPU process (13-14 ms a list with it, 5-6 without).
+    // Still, a game that never reads its frames can behave differently without them (a mod, or a path nobody
+    // guarded), so the copy is an option. The render context reads it when it is made, at startup after this
+    // loads, so a change takes effect on the next start. Its default is set here first: a first start has no
+    // graphics.json, and then loading calls no callback, which would leave RT64's own default (on).
+    recompui::renderer::set_render_to_ram(false);
+    graphics.add_enum_option(
+        copy_frames_to_ram_option,
+        "Copy Frames to RAM",
+        "Whether every frame is also copied back into the console's memory, as the N64 leaves it there for the game "
+        "to read. The copy is a second draw of each frame at 320x240, and in a browser it holds each frame back by "
+        "about 6 ms."
+        "<br/>"
+        "<b>Off:</b> no copy. The game isn't known to read its frames back. "
+        "<b>Original:</b> every frame is copied, as on the console. Try it if something looks or behaves wrong."
+        "<br/>"
+        "Takes effect the next time the game is started.",
+        copy_frames_to_ram_options,
+        CopyFramesToRam::Off
+    );
+    // Called on load too, before the render context is made.
+    graphics.add_option_change_callback(copy_frames_to_ram_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            recompui::renderer::set_render_to_ram(
+                static_cast<CopyFramesToRam>(std::get<uint32_t>(cur_value)) == CopyFramesToRam::Original);
         });
 
     recompui::config::create_controls_tab();
