@@ -111,8 +111,9 @@ RecompFrontend-0003    Emscripten: recompui's shaders as WGSL, the canvas as RT6
 RecompFrontend-0004    render to RAM an option of the render context (set_render_to_ram), on by default as in RT64
 RecompFrontend-0005    Emscripten: no Mods or Exit in the launcher, no Quit icon or Mods tab in Settings, dropped files
                        aren't mods, rumble through the Gamepad API (SDL2's port has none)
-rt64 cb78ecb           an rgba8unorm swap chain with Emscripten (ShaderLibrary::SwapChainFormat), not bgra8unorm
-RecompFrontend 14147f2 Emscripten: recompui draws into that rgba8unorm swap chain
+plume 1988176          the swap chain in the device's preferredSwapChainFormat, on WebGPU the browser's preferred
+rt64 e46bf19           canvas format (bgra8unorm on Windows): Firefox reads every frame of any other format back through
+RecompFrontend e6da1be the CPU; recompui's menus draw in it too
 rt64 f443403           src/contrib/hlslpp is hlslpp-web (568fbc2): its wasm SIMD backend's movehl, dot4, load3 of
                        int3 and shifts by a count per lane fixed (transpose, inverse and some mul shapes were wrong)
 N64Recomp 025cab9      funcs.h declares every function the recompiled C calls: the runtime's libultra replacements,
@@ -403,8 +404,12 @@ Donkey Kong 64   4.3  14.3   55-56   60-61    35% 26   52% 77      0.12  0.75
 At 1280x800 Firefox kept up but for Donkey Kong 64, which sat at 30 presents a second for spells against Chrome's
 55-56 (rt64 e8e162e's even pacing), and its GPU process still took 2-3 times Chrome's CPU. Firefox presents a canvas
 through a texture shared with its compositor only when it is `bgra8unorm`
-(`wgpu_client_use_shared_texture_in_swapChain`), so the pages' `rgba8unorm` frames are read back through the CPU
-each present: the likely cause, not yet tried.
+(`wgpu_client_use_shared_texture_in_swapChain`), and the pages above were `rgba8unorm`, so every present was read
+back through the CPU. With the canvas in the browser's preferred format (rt64 e46bf19, `bgra8unorm`), Rush 2049's
+page at 3840x2000 (a local build, the same GPU, an idle host, attract race, two runs each interleaved): Firefox's GPU
+process 0.47-0.52 cores and the GPU 40-46% busy at 93-101 W, against 1.21-1.24, 78-82% and 104 W in `rgba8unorm`;
+Chrome 0.29-0.45, 34-43% and 78-90 W, the same in either format. At 1280x800 Firefox's GPU process still took 0.5
+cores against Chrome's 0.3. A game's page has it once it is rebuilt on N64Recomp-browser v0.30.0.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
@@ -649,12 +654,16 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
 (Chrome's CPU Vulkan, `CHROME_FLAGS` in the checker), which has no dual-source blending, so there the 6
 `*DualSource` variants are only validated by naga. What to know before changing it:
 
-- Firefox (157, Windows 10) never frees the frames a `bgra8unorm` canvas presents, for any WebGPU page: one
-  canvas-sized texture a frame, ~13 MB at 1080p, until an 8 GB card is full and the page falls below a frame a
-  second. With `rgba8unorm` it holds flat and Chrome is the same either way, so the web swap chain is `rgba8unorm`
-  (rt64 cb78ecb). Firefox headless has no WebGPU adapter: drive a window of its own (`-no-remote -profile <dir>
-  --remote-debugging-port <n>`, moved off the desktop) over WebDriver BiDi, and read a process's video memory from
-  the `\GPU Process Memory(*)\Dedicated Usage` counter.
+- The web swap chain is the browser's preferred canvas format (plume 1988176, `preferredSwapChainFormat`),
+  `bgra8unorm` on Windows. Firefox (158, Windows) hands only a `bgra8unorm` canvas to its compositor as a shared
+  texture and reads any other format's frames back through the CPU (The web target has what it cost); Chrome costs
+  the same either way. Firefox opens that shared texture again every frame, and Windows 10's per-process
+  `\GPU Process Memory(*)\Dedicated Usage` counter counts every open (KB4490156): it climbs by a canvas a frame,
+  past a terabyte in 15 minutes, while the adapter's `\GPU Adapter Memory(*)\Dedicated Usage` and nvidia-smi hold
+  flat and the page plays on, 55-60 frames a second at 3840x2000 for those 15 minutes. So read video memory from
+  those two. Firefox 157 with a `bgra8unorm` canvas filled an 8 GB card and fell below a frame a second, which is why
+  the pages were `rgba8unorm` before. Firefox headless has no WebGPU adapter: drive a window of its own
+  (`-no-remote -profile <dir> --remote-debugging-port <n>`, moved off the desktop) over WebDriver BiDi.
 - Chrome builds a pipeline made with `createRenderPipeline` on its GPU process's main thread, which does nothing
   else meanwhile: no frame, no readback, no screenshot, and the page's main thread blocks once its queue to the GPU
   process fills. A specialized RasterPS (1.15 MB of WGSL) takes 1.4-2.1 s there, 6-11 s cold beside another build,
