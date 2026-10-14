@@ -26,7 +26,8 @@ Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com
 made by the Zelda 64: Recompiled team), Donkey Kong 64: Recompiled, in
 [Donkey-Kong-64-Recompiled-web](https://github.com/amazingalek/Donkey-Kong-64-Recompiled-web) (not made by its team),
 and Conker's Bad Fur Day: Recompiled, in [CBFD-Recompiled-web](https://github.com/amazingalek/CBFD-Recompiled-web) (not
-made by its authors).
+made by its authors). Those ports are there to build out and test the web support on more games than this one: what
+one of them turns up is fixed in the web support, so every game gets it, this one included.
 
 ## Modern enhancements
 

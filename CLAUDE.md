@@ -231,7 +231,9 @@ N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
 thread (a mod that fails to load) into a console error instead of an exception that stops the page;
-`frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give);
+`frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give); a page's link
+that fails on any wasm-ld warning (`--fatal-warnings`: a call whose signature doesn't match the function's links as a
+trap) and takes a game's own `-sINITIAL_MEMORY`, stack sizes and thread pool over `frontend/`'s;
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
 SDL's queue; the shell's notice in Firefox, shown always, recommending Chrome or Edge (Firefox's WebGPU adapter info is
 all empty strings, so a page there can't tell what it draws with; Chrome shows none), and its "Preparing graphics" indicator in a corner
@@ -383,7 +385,11 @@ shaders the game uses before it starts (Step 2).
 ## The web target
 
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
-for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
+for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`. The other games' pages (the game forks below) are
+there to build out and test that support on more than one game, not as ports of their own: what one of them or one
+browser turns up is fixed in the shared support (a fork, N64Recomp-browser) unless it really is that game's, so every
+game and both browsers get it, and what one game does better (a shader list in sections, the late copy) is tried on the
+others. Only what is the game's own stays in its fork.
 
 It lives in seven repos under amazingalek, all public:
 
@@ -555,7 +561,7 @@ task was lost to a stale retrace message, which the scheduler never sends again 
 retrace handler (`patches/timing_fixes.c`) now starts a pending audio task itself, and 9 of 9 boots played on (its
 BUILDING.md says how). Firefox runs the game through the wait and never lost it.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
-signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
+signature mismatch` shows, an error with `frontend/` (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
 says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
 right a list late, but the boot inflates the game's main overlay (`.global_asm`, 0x805FB300-0x80761050, code and data)
@@ -635,8 +641,8 @@ times over its shader plan, 30 of them while the copy landed, which before rt64 
 cb75c5c no chapter crashed.
 A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
-`-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
-`target_link_libraries(<target> PRIVATE -sINITIAL_MEMORY=...)` comes last.
+`target_link_options(<target> PRIVATE -sINITIAL_MEMORY=...)` overrides `frontend/`'s 1536MB, which
+`n64recomp_browser_frontend_page` puts first on the link line.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
