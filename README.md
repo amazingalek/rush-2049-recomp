@@ -137,15 +137,14 @@ gamepads the browser knows the layout of (it calls them standard, as it does Xbo
 bindings, with rumble where the browser supports it (Chrome and Edge). Press a button once the page is open: a
 browser only shows a page its gamepads after that.
 
-The game's first start is a one-time setup: it holds its first frame under **Preparing graphics** and a progress bar
-while the browser builds the shaders the game draws with, a fast one for each effect, so none is built while you
-play. In Chrome and Edge the setup takes about 5 seconds on a desktop with a graphics card and longer on a laptop's
-integrated graphics, and the browser
-keeps what it built, so after that the game starts straight away. The setup comes back after an update to the game,
-the browser or the graphics driver, or if the browser's cache is cleared, and for a while after one it can come back
-on every visit: the browser keeps only a few megabytes of these for all sites together, and the old ones can take
-that room. Firefox builds them more slowly, about 30 seconds. A shader the game draws that the page didn't know of
-is built while the game runs, and the page remembers it and builds it in the setup from then on.
+The first time the game starts, the browser builds the shaders the game draws with, a fast one for each effect. In
+Chrome and Edge it builds them behind the game while the logos and the title play, so at most the game pauses for a
+moment with **Preparing graphics** in a corner, and the browser keeps what it built for the next visit. It builds
+them again after an update to the game, the browser or the graphics driver, or if the browser's cache is cleared,
+and for a while after one on every visit: the browser keeps only a few megabytes of these for all sites together.
+Firefox can't build them behind the game without stuttering, so it holds the game's first frame with that indicator
+while it builds them, 15-30 seconds on every visit. A shader the game draws that the page didn't know of is built
+while the game runs, and the page remembers it and builds it with the others from then on.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
 recompiled code), then [emsdk](https://emscripten.org/docs/getting_started/downloads.html), naga

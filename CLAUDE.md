@@ -183,6 +183,10 @@ rt64 cb75c5c           render to RAM's late copy converted outside RDRAM and wri
                        it still holds what it held when the list ended: a hash check and then a copy and a byte swap
                        in place overwrote what the CPU wrote meanwhile (Conker writes to a framebuffer with a pending
                        copy in every chapter, 30 of 89 times while it landed); each write is reported, not the first
+rt64 950188f           where pipelines build in the background (Chrome) the prebuilt list is built behind the game from
+                       its first draw, section 0 on half the threads and the rest on one, in the list's order, a
+                       round's section and strays moved to the front; the game waits only for what a frame wants
+                       (4 of a section), not the whole section; Firefox as before
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -194,8 +198,8 @@ thread (a mod that fails to load) into a console error instead of an exception t
 `frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give);
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
 SDL's queue; the shell's notice in Firefox, shown always, recommending Chrome or Edge (Firefox's WebGPU adapter info is
-all empty strings, so a page there can't tell what it draws with; Chrome shows none), and its one-time setup panel ("Preparing graphics",
-a bar with the time left), which keeps the shaders a page learned in `localStorage`; `tools/record_shaders.mjs`, which
+all empty strings, so a page there can't tell what it draws with; Chrome shows none), and its "Preparing graphics" indicator in a corner
+(the percentage and the time left, over the frame the game holds while it waits for shaders), which keeps the shaders a page learned in `localStorage`; `tools/record_shaders.mjs`, which
 records a game's shader list by code (a plan of the game's own reaches each level); and SPIRV-Tools in its CI
 (spirv-opt; without it rt64 warns and the shaders come out about twice the size). The tail calls are `return_call`s
 with `-mtail-call`, which both web builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`.
@@ -640,15 +644,17 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3) it still crawled, and at Resolution Original it ran well. The canvas is CSS-sized,
   not device pixels (no `SDL_WINDOW_ALLOW_HIGHDPI`).
-- So the page builds every shader the game uses before the game starts (rt64 0034023): `src/rt64_shaders.txt`,
+- So the page builds every shader the game uses before the game draws with it (rt64 0034023): `src/rt64_shaders.txt`,
   recorded from the page opened with `?record-shaders` (its header says what was played), is specialized at build
-  time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), and the game holds its first frame under a "Preparing
-  graphics" bar until they are built, in every browser and on every adapter (rt64 bfe07cb). Without them the page is
-  unplayable, so **every web port records a list and builds it**, not as an afterthought (N64Recomp-browser's README,
-  what a recomp does itself). This game's list has no sections, so all 105 (75 pipelines) are built before the game
-  starts: they fit Chrome's cache (0.2 s on a later visit). A game whose list doesn't fit has a section a level, built
-  when the level first draws (GoldenEye,
-  Majora's Mask, Donkey Kong 64 and Conker, The web target). A shader the list misses is built behind the game, and the
+  time (`RT64_PREBUILT_SHADER_LIST`, rt64's CMakeLists.txt), in every browser and on every adapter (rt64 bfe07cb).
+  Without them the page is unplayable, so **every web port records a list and builds it**, not as an afterthought
+  (N64Recomp-browser's README, what a recomp does itself). In Chrome the whole list is built behind the game from its
+  first draw, and a frame that wants 4 or more unbuilt shaders of a section holds the game, for those, under a small
+  "Preparing graphics" indicator (rt64 950188f): cold in headless Chrome 155 (RTX 2070, a busy host) this game never
+  waited, its 75 pipelines built 7 s after Start Game behind the logos and the title at 49-57 frames a second, where
+  the page before waited 6.0 s at 0-19 behind a full-screen panel. Firefox builds nothing behind the game, so it waits
+  for this game's whole list (one section) before the first frame, 13.7 s (Firefox 158). A game with many levels has
+  a section a level (GoldenEye, Majora's Mask, Donkey Kong 64 and Conker, The web target). A shader the list misses is built behind the game, and the
   page remembers it (`localStorage`) and builds it with the rest on the next visit. Recording again: the page prints
   an `rt64 shader:` line for each description, in the order the game asks for them (it prebuilds none then; drive it
   over CDP as in Step 3, with `--players <n>` through `Module.arguments` for split screen); add the new ones to the
@@ -690,8 +696,8 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   the new, 10.7 MB on disk, and its visits stayed cold until Chrome trimmed it: cold on the three visits after, the
   third open for 5 minutes, in which it fell to 5.3 MB, then 0.7 and 0.4 s. A rebuild with the same WGSL still added
   59 entries and took 2.0 s once. Chrome killed before it has closed loses what it wrote: close it with
-  `Browser.close` and wait for the process to end. The page shows its panel ("one-time setup", the bar, the time left
-  by WGSL size) only after a second, so a warm visit shows nothing.
+  `Browser.close` and wait for the process to end. The page shows its indicator (the percentage and the time left by
+  WGSL size) only after a second, so a warm visit shows nothing.
 - WebGPU checks a storage texture's format and access against every binding a shader declares, and a render pass's
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
