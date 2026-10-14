@@ -18,8 +18,9 @@
 // Every 5 seconds it prints retraces, display lists and audio buffers a second, and the CPU time the whole process
 // used in that time as a share of one core (not in a browser, which has no way to read it). At the end, the same over
 // the whole run but its first interval (the boot), and the CPU time per display list: what a frame costs the CPU side,
-// against the 16.7 ms a frame has at 60 fps.
+// against the 16.7 ms a frame has at 60 fps. Each line also gives a display list's send_dl wall time, median (p95).
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cinttypes>
@@ -61,6 +62,8 @@ namespace {
     std::atomic<uint64_t> retraces{0};
     std::atomic<uint64_t> display_lists{0};
     std::atomic<uint64_t> audio_buffers{0};
+    std::mutex list_ms_mutex;
+    std::vector<double> list_ms;
     bool render_to_ram = false;
 
     // Counts what the runtime sends the renderer. With RT64 in the build (HEADLESS_RT64), it hands everything on to RT64,
@@ -78,7 +81,11 @@ namespace {
         void enable_instant_present() override { if (drawer) drawer->enable_instant_present(); }
         void send_dl(const OSTask* task) override {
             display_lists++;
+            auto start = std::chrono::steady_clock::now();
             if (drawer) drawer->send_dl(task);
+            double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            std::lock_guard lock(list_ms_mutex);
+            list_ms.push_back(ms);
         }
         void send_dummy_workload(uint32_t fb_address) override { if (drawer) drawer->send_dummy_workload(fb_address); }
         void update_screen() override {
@@ -164,7 +171,28 @@ namespace {
 #endif
     }
 
+    // The wall time of each display list's send_dl since the last call, as "median (p95)" in ms: with RT64, the
+    // list's parse, its texture hashing and the work it waits for.
+    std::string take_list_times(std::vector<double>& all) {
+        std::vector<double> times;
+        {
+            std::lock_guard lock(list_ms_mutex);
+            times.swap(list_ms);
+        }
+        all.insert(all.end(), times.begin(), times.end());
+        return list_times_text(times);
+    }
+
+    std::string list_times_text(std::vector<double> times) {
+        if (times.empty()) return "n/a";
+        std::sort(times.begin(), times.end());
+        char text[48];
+        snprintf(text, sizeof(text), "%.2f (%.2f) ms", times[times.size() / 2], times[times.size() * 95 / 100]);
+        return text;
+    }
+
     void report(int seconds) {
+        std::vector<double> run_list_ms, ignored;
         constexpr int interval = 5;
         auto last_time = std::chrono::steady_clock::now();
         double last_cpu = process_cpu_seconds();
@@ -182,8 +210,9 @@ namespace {
             if (cpu >= 0.0 && last_cpu >= 0.0) {
                 snprintf(cpu_text, sizeof(cpu_text), "%.0f%%", 100.0 * (cpu - last_cpu) / wall);
             }
-            printf("[headless] %3ds  retraces/s %5.1f  display lists/s %5.1f  audio buffers/s %5.1f  cpu %s\n", t,
-                   (f - last_retraces) / wall, (d - last_dls) / wall, (a - last_audio) / wall, cpu_text);
+            std::string list_text = take_list_times(t == interval ? ignored : run_list_ms);
+            printf("[headless] %3ds  retraces/s %5.1f  display lists/s %5.1f  audio buffers/s %5.1f  cpu %s  per list %s\n", t,
+                   (f - last_retraces) / wall, (d - last_dls) / wall, (a - last_audio) / wall, cpu_text, list_text.c_str());
             fflush(stdout);
             last_time = now;
             last_cpu = cpu;
@@ -204,8 +233,8 @@ namespace {
             snprintf(cpu_text, sizeof(cpu_text), "cpu %.0f%%, %.2f ms per display list", 100.0 * (last_cpu - start_cpu) / wall,
                      1000.0 * (last_cpu - start_cpu) / dls);
         }
-        printf("[headless] %.0fs after boot: retraces/s %.1f  display lists/s %.1f  %s\n", wall,
-               (last_retraces - start_retraces) / wall, dls / wall, cpu_text);
+        printf("[headless] %.0fs after boot: retraces/s %.1f  display lists/s %.1f  %s  per list %s\n", wall,
+               (last_retraces - start_retraces) / wall, dls / wall, cpu_text, list_times_text(run_list_ms).c_str());
         fflush(stdout);
         // Not std::exit: the game threads are still running, and destroying them at exit aborts. In a web worker
         // _Exit only ends the worker, so node is told to exit; a browser page just keeps running.
