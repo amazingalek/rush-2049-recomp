@@ -672,6 +672,28 @@ compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses
 `target_link_options(<target> PRIVATE -sINITIAL_MEMORY=...)` overrides `frontend/`'s 1536MB, which
 `n64recomp_browser_frontend_page` puts first on the link line.
 
+`amazingalek/wave-race-64-recomp-web` is danielgomesvieira2000's Wave Race 64: Recompiled (MIT, itself written with
+Claude; US Rev A only). Its `lib/RT64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at its commits,
+patched by `apply.cmake` project by name (its folder is `RT64`, `patches.txt` says `rt64`), and then by the port's own
+Python patch scripts, all from clean submodules by its `tools/web_patch.sh`. Its modern water renderer is a patch on
+RT64 that the web patch moves, so `tools/patch_rt64_water.py` applies a version for a web-patched RT64
+(`tools/patches/rt64-water-web.patch`): its 16 shaders included as WGSL blobs, and WaterSprayVS's
+`!all(isfinite(v))` written `!all(abs(v) <= FLT_MAX)`, since naga rejected `||` between a `vec4<bool>` and a bool.
+`wr64.toml` ignores `gspFast3DTextStart` and `aspMainTextStart`: the Docker image's binutils hand N64Recomp the
+microcode's splat labels as functions. Fast3D draws as it does natively, with no rt64-web change. Render to RAM is
+off on the page: the CPU's one read of a frame, `sys_main.c`'s copy of the last frame in display modes 1 and 2, is
+never reached (nothing sets `D_800DAB1C` to either; the pause dims the live scene). Its list, 139 descriptions and
+100 pipelines in 13 sections, the boot 63 (launcher to course select), is recorded by code (`tools/record_shaders.sh`,
+`tools/shader_plan.json`): the menus passed with page_driver's `pressUntil` on `gGameState` (0x800DAB24), a course
+picked by its place in the course select cursor (0x800DA9D0), and each of the nine raced 50 s with the gas held
+(page_driver's `down`/`up`) while `tools/autopilot.js` steers for the next buoy on its side, from the camera and the
+buoy table in RDRAM, the countdown that retires a rider off the course held up; then Championship and Stunt Mode,
+no 2P. From Pages (main b4bcb9d, N64Recomp-browser 421f902), cold, menus and a Sunset Bay race, RTX 2070: Chrome 155
+headless waited 1.8 s (14 of the boot) and drew 59.6, all 100 built 3-4 s later; Firefox 158 waited 3.5 s for the
+boot's 50 and 0.5 s for the course's 13 and drew 59.6; at 3840x2000 59.6 and 59.4, no WebGPU errors, sound short only
+in the waits. Render to RAM on and off measured alike there (a 20 fps game: it costs a list's wall time, not frames
+or CPU). Its BUILDING.md has the web page's section.
+
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
 `CMakeLists.txt` that make the game a page with `N64Recomp-browser/frontend/`. The link options in
