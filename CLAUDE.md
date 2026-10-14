@@ -406,8 +406,8 @@ browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
-submodules, patched by N64Recomp-browser 2bc4018 (Banjo), 3ef1502 and e8e5fa9 (Conker), and GoldenEye on upstream's at
-the forks' bases, patched by e6a64ac (below); Banjo, Majora's
+submodules, patched by N64Recomp-browser v0.28.0 (14cfef7), and GoldenEye on upstream's at the forks' bases, patched by
+e6a64ac (below), since on v0.28.0 its page crawled through the boot in Chrome (next paragraph); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -421,7 +421,15 @@ two a frame, too few to start a section. Cold and then warm in headless Chrome 1
 Majora's Mask's boot 2.4 and 0.1 s (16.4 and 10.9 s as one list), Clock Town 1.6 s either way; Donkey Kong 64's 5.0 and
 0.4 s (9.6 and 5.2 as one list), Frantic Factory 0.9-1.0 s. Firefox 157 keeps no built pipelines between visits, so
 every visit waits as long: Majora's Mask's boot 4.5-4.7 s and Clock Town 14-16 s, Donkey Kong 64's 15-17 s (26 s as one
-list) and the Factory 3.6 s. Then each draws with no WebGPU errors. A section's name is one word: rt64's shader
+list) and the Factory 3.6 s. Then each draws with no WebGPU errors. Those Chrome numbers are from before rt64 950188f,
+which builds the whole list behind the game; on v0.28.0, cold in headless Chrome 155 (RTX 2070, a busy host, 2026-10-14):
+Banjo waited 1.8-2.6 s at the start instead of 3.5, Majora's Mask nothing at the start and 0.5 s for Clock Town, Donkey
+Kong 64 nothing at all, the Factory included, Conker nothing at the start and 3.5 s for Windy, reached before its boot
+section was built. The cost is frames while the list builds: Banjo, Majora's Mask and Conker drew 28-42 a second for
+5-10 s, Donkey Kong 64's DK Rap 18-31 for ~20 s (115 pipelines in its boot), and GoldenEye (202 pipelines, 20 MB of
+WGSL) 7-36 through its cast credits until all were built ~93 s in, ~28 s of its sound lost, where on e6a64ac it waits
+~4 s and draws 56-60 there (its first attract demo then waits 6 s and draws 12-29 for ~20 s). So GoldenEye stays on
+e6a64ac until the scheduling is fixed. Firefox waits for each section as before. A section's name is one word: rt64's shader
 specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
 chose the arm64 `dxc-linux` on a Linux host).
 
