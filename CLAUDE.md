@@ -338,7 +338,10 @@ It lives in seven repos under amazingalek, all public:
 - `N64Recomp-browser`, the submodule `lib/N64Recomp-browser`: `forks.txt` (the fork commits that work together; a tag
   is a release), `frontend/` (a RecompFrontend recomp as a page), `renderer/` (RT64 without recompui, for the headless
   page), `tests/` (the plume device thread test, `hlslpp_wasm_test.cpp`, `wgsl_check.mjs`, and `build/`, every
-  library of a page built with Emscripten from the forks), and the CI that runs those four. Its README is the guide
+  library of a page built with Emscripten from the forks), `patches/` (each fork as one patch on the upstream commit
+  it is on, made by `tools/export_patches.sh`, and `apply.cmake`, which patches a recomp's own submodule checkouts
+  with them, so a recomp needn't move its submodules to the forks; CI checks that they match the forks and apply to
+  the commits recomps pin, `patches/pins.txt`), and the CI that runs all of it. Its README is the guide
   for another recomp. Source at a tag, not a package: the game's own patches go on top of the source, and everything
   links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
 - Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
@@ -351,7 +354,8 @@ or a change that moves how a game plays (a fork, a page, a shader list) updates 
 gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. All five are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo, Majora's
+every push to main with no ROM, is disabled. Four are on N64Recomp-browser v0.24.0 (2881f70) and its forks, Banjo on its own upstream submodules patched by
+N64Recomp-browser 2bc4018 (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -369,9 +373,13 @@ list) and the Factory 3.6 s. Then each draws with no WebGPU errors. A section's 
 specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
 chose the arm64 `dxc-linux` on a Linux host).
 
-`amazingalek/BanjoRecomp-web` is Banjo-Kazooie: Recompiled on the same forks, the second recomp the web support was
-tried on: the page boots, draws and plays in Chrome. It has no externs header, and `recomp::start` takes upstream's
-`recomp::Configuration` (`requeue_pi` kept on). Its README says up front that it is AI-written and not the Banjo
+`amazingalek/BanjoRecomp-web` is Banjo-Kazooie: Recompiled, the second recomp the web support was tried on: the page
+boots, draws and plays in Chrome. Its `lib/rt64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream Banjo's,
+at its commits, and N64Recomp-browser's `patches/apply.cmake` patches their checkouts (a step before N64Recomp is
+built from them, and again when CMake configures): the web support without the forks as submodules. Built that way
+the page boots to the intro in headless Chrome, its 111 prebuilt pipelines built in 4.8 s cold. Its runtime is older
+than the forks', so `recomp::start` takes upstream Banjo's arguments, not a `recomp::Configuration`. It has no externs
+header. Its README says up front that it is AI-written and not the Banjo
 team's, its BUILDING.md how to build the page, and what porting it found is in N64Recomp-browser's README.
 
 `amazingalek/Zelda64Recomp-web` is Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it
@@ -475,8 +483,10 @@ separate clone of it:
    A change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
    N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
    are SHAs, so a fork's `main` may sit ahead of what `forks.txt` names.
-3. Bump `forks.txt` in a clone of N64Recomp-browser (and anything of its own the change needs), push to its `main`,
-   and wait for its CI: `gh run list -R amazingalek/N64Recomp-browser`.
+3. Bump `forks.txt` in a clone of N64Recomp-browser (and anything of its own the change needs), run its
+   `tools/export_patches.sh` and commit `patches/` with it (CI checks that the patches match the forks and still
+   apply to every recomp's commits in `patches/pins.txt`), push to its `main`, and wait for its CI:
+   `gh run list -R amazingalek/N64Recomp-browser`.
 4. Here, move the submodules and `lib/N64Recomp-browser` to those commits, rerun the patch script (rebase a game
    patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag
    N64Recomp-browser (`v0.<n+1>.0`).
@@ -646,8 +656,9 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   usage against every bound set, so a texture can't be sampled by a set and drawn into by the same pass.
 - RT64's render to RAM (on by default) draws each frame a second time at the N64's resolution and reads it back
   into RDRAM. In Chrome that readback makes the list wait 5-6 ms for the GPU process whatever its size, so this
-  game turns it off, on the desktop too, since nothing in it reads a frame (`set_render_to_ram` in `main.cpp`,
-  RecompFrontend-0004; `create_rt64_renderer`'s argument; `?render-to-ram=1` on the headless page turns it back on).
+  game turns it off by default, on the desktop too, since nothing in it was seen reading a frame (the Copy Frames to
+  RAM option in `config.cpp`, Original turns it on; RecompFrontend-0004; `create_rt64_renderer`'s argument;
+  `?render-to-ram=1` on the headless page).
   Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
   instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task

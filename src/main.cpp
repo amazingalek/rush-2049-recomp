@@ -630,15 +630,6 @@ int main(int argc, char** argv) {
     NFD_Init();
 #endif
 
-    // No copy of each frame back into RDRAM (RT64's render to RAM, on by default there), which draws every frame a
-    // second time at the N64's resolution. Nothing in the game reads a frame on the CPU: with page guards on the
-    // framebuffers and the Z-buffer through boot, the attract races, the menus, a race with pause, Rewind and Quit,
-    // two-player split screen and a Ghost Race to its results, the game's only touches were the ROM inflate's staging
-    // buffer in a framebuffer it isn't showing, and no screen samples a framebuffer as a texture. Without the copy a
-    // race list on an RTX 2070 at 960x720 took 3.9 ms instead of 5.0 and the GPU drew 41-49 W instead of 60-62, and
-    // in a browser a list waited ~6 ms less for the GPU process (13-14 ms a list with it, 5-6 without).
-    recompui::renderer::set_render_to_ram(false);
-
     recompui::programconfig::set_program_name(rush2049::program_name);
     recompui::programconfig::set_program_id(rush2049::program_id);
 
