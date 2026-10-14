@@ -35,28 +35,30 @@ jobs:
           python-version: "3.11"
       - name: No ROM data tracked, TOML parses, Python compiles
         run: python -I tools/ci/check_repo.py
-      # The forks and N64Recomp-browser, the web support (CLAUDE.md, "The web target"): its forks.txt names the fork commits
-      # that work together, and its CI built and checked them, so the submodules here pin those.
-      - name: Submodules pin the fork commits N64Recomp-browser names
+      # The web support (CLAUDE.md, "The web target"): N64Recomp-browser's patches/ holds each of its forks as a patch on
+      # the upstream commit the fork is on, which its patches/patches.txt names and its CI checked, so the submodules
+      # here, and plume, hlslpp and N64Recomp inside them, pin those commits.
+      - name: Submodules pin the upstream commits N64Recomp-browser's patches are made on
         run: |
-          git submodule update --init --depth 1 lib/N64Recomp-browser
-          grep -v '^#' lib/N64Recomp-browser/forks.txt | while read -r name url commit; do
+          git submodule update --init --depth 1 lib/N64Recomp-browser lib/rt64 lib/N64ModernRuntime lib/RecompFrontend
+          git -C lib/rt64 submodule update --init --depth 1 src/contrib/plume src/contrib/hlslpp
+          git -C lib/N64ModernRuntime submodule update --init --depth 1 N64Recomp
+          grep -v '^#' lib/N64Recomp-browser/patches/patches.txt | while read -r name path fork base; do
             [ -n "$name" ] || continue
-            pinned="$(git ls-tree HEAD "lib/$name" | awk '{print $3}')"
-            echo "$name: N64Recomp-browser $commit, here $pinned"
-            [ "$pinned" = "$commit" ] || { echo "lib/$name isn't at the commit N64Recomp-browser's forks.txt names" >&2; exit 1; }
-            [ "$(git config -f .gitmodules "submodule.lib/$name.url")" = "$url" ]
+            # git ls-tree takes the path from the folder it runs in: lib for rt64, lib/rt64/src/contrib for plume
+            pinned="$(git -C "$(dirname "lib/$path")" ls-tree HEAD "$(basename "$path")" | awk '{print $3}')"
+            echo "$name: N64Recomp-browser $base, here $pinned"
+            [ "$pinned" = "$base" ] || { echo "lib/$path isn't at the commit N64Recomp-browser's patches.txt names" >&2; exit 1; }
           done
-      - name: Runtime patches apply to the pinned N64ModernRuntime and RecompFrontend
+      - name: N64Recomp-browser's patches and the runtime patches apply to the pinned submodules
         run: |
-          git submodule update --init --depth 1 lib/N64ModernRuntime lib/RecompFrontend
           bash tools/apply_runtime_patches.sh
           bash tools/apply_runtime_patches.sh | grep "already applied"
           rf=lib/RecompFrontend
           git -C $rf add -A && fresh="$(git -C $rf write-tree)"
           # a checkout holding a later patch without an earlier one: the later one comes off and goes back on after it
           git -C $rf reset -q --hard && git -C $rf clean -fdq
-          git -C $rf apply "$PWD"/runtime-patches/RecompFrontend-0002-*.patch
+          git -C $rf apply "$PWD"/lib/N64Recomp-browser/patches/RecompFrontend.patch "$PWD"/runtime-patches/RecompFrontend-0002-*.patch
           bash tools/apply_runtime_patches.sh | grep "^applied: RecompFrontend-0001"
           git -C $rf add -A && test "$(git -C $rf write-tree)" = "$fresh"
       - name: Audio resampler tests
@@ -106,6 +108,7 @@ jobs:
           path: |
             .git/modules
             lib/N64ModernRuntime
+            lib/N64Recomp-browser
             lib/RecompFrontend
             lib/rt64
             build
@@ -192,6 +195,7 @@ jobs:
           path: |
             .git/modules
             lib/N64ModernRuntime
+            lib/N64Recomp-browser
             lib/RecompFrontend
             lib/rt64
             build

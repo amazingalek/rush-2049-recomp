@@ -44,7 +44,8 @@ explains code goes beside that code.
 - The game's changes to the submodules go in `runtime-patches/` and are applied by
   `tools/apply_runtime_patches.sh`; never commit them inside `lib/`. A new change is a new patch
   file per submodule, numbered after that submodule's highest; check that the set still applies to a clean checkout
-  of the submodule. A game-agnostic web change is a commit on a fork instead (The web target, Changing it).
+  of the submodule with N64Recomp-browser's patch in. A game-agnostic web change is a commit on a fork instead (The
+  web target, Changing it).
 - Never open a PR, issue or discussion upstream at rt64, plume, N64Recomp, N64ModernRuntime, RecompFrontend,
   BanjoRecomp, Zelda64Recomp or Donkey-Kong-64-Recompiled: their CONTRIBUTING.md asks for no LLM-written code
   (plume's, no AI-made contribution and no AI talking to its maintainers). The web forks stay forks.
@@ -74,9 +75,10 @@ explains code goes beside that code.
   with natives in `src/mod_exports.cpp`; `decompression_routine` rebuilds the recomp ROM so the runtime can
   recompile hooked functions.
 
-The submodules are amazingalek's forks (The web target): each one's `main` is the upstream commit plus the web
-support, one commit per change. The notes below name each change by the short label in this table, or by its fork and
-commit (the why is in the code they touch):
+The web support is amazingalek's forks (The web target): each one's `main` is the upstream commit plus the web
+support, one commit per change. The submodules here are those upstream commits, and the patch script applies each fork
+to them as one patch from N64Recomp-browser's `patches/`. The notes below name each change by the short label in this
+table, or by its fork and commit (the why is in the code they touch):
 
 ```
 N64ModernRuntime-0003  Emscripten: no live recompiler (mods off), RDRAM without a guard region, SDL window handle,
@@ -177,9 +179,14 @@ rt64 e8e162e           frames paced evenly on WebGPU while the GPU falls behind:
                        showed 10-20% of its frames never and the rest one to three times, in both browsers
 plume 01a7bac          the display's rate from the shortest quarter of a second's animation frame intervals: their
 rt64 f0e6217           median read 20-39 on a 60 Hz display under load, and each change restarts the interpolation
+rt64 cb75c5c           render to RAM's late copy converted outside RDRAM and written a word at a time, each only if
+                       it still holds what it held when the list ended: a hash check and then a copy and a byte swap
+                       in place overwrote what the CPU wrote meanwhile (Conker writes to a framebuffer with a pending
+                       copy in every chapter, 30 of 89 times while it landed); each write is reported, not the first
 ```
 
-`lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
+`lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
+them. Besides the forks it brings:
 N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm (empty elsewhere), and OfflineModRecomp
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
@@ -193,7 +200,7 @@ records a game's shader list by code (a plan of the game's own reaches each leve
 (spirv-opt; without it rt64 warns and the shaders come out about twice the size). The tail calls are `return_call`s
 with `-mtail-call`, which both web builds here compile with; the desktop build only gains an empty `RECOMP_TAIL_CALL`.
 
-`runtime-patches/`, this game's, on top of the forks:
+`runtime-patches/`, this game's, on top of N64Recomp-browser's patches:
 
 ```
 N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
@@ -340,18 +347,23 @@ It lives in seven repos under amazingalek, all public:
   the commits recomps pin, `patches/pins.txt`), and the CI that runs all of it. Its README is the guide
   for another recomp. Source at a tag, not a package: the game's own patches go on top of the source, and everything
   links into one wasm with the game's recompiled code, built by the game's emsdk with its flags.
-- Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are the forks at the commits `forks.txt` names
-  (CI's checks job compares them), with `runtime-patches/` on top.
+- Here, the `rt64`, `N64ModernRuntime` and `RecompFrontend` submodules are upstream's, at the commits
+  `patches/patches.txt` names (CI's checks job compares them, plume, hlslpp and N64Recomp inside them too), as any
+  recomp's are. `tools/apply_runtime_patches.sh` applies N64Recomp-browser's patches to them and `runtime-patches/`
+  on top, so the tree is the forks' with the game's changes, natively too.
 
 N64Recomp-browser's README has a table of the games (Games): each one's repo and page, and how it plays in
 Chrome and in Firefox on a laptop's integrated graphics (Intel UHD); a desktop GPU plays them all, so it has no
 column. Keeping both columns current for every game is the agent's job, not the reader's: a hand test, a laptop report,
 or a change that moves how a game plays (a fork, a page, a shader list) updates that row and its date, and a new game
-gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
+gets a row. Under the table each game has a line or two, what was checked and when; its measurements, and the fixes
+behind them, go in the game fork's own README or BUILDING.md, not there. No game is added until every one in it is
+smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Three are on N64Recomp-browser v0.24.0 (2881f70) and its forks, Banjo on its own upstream submodules patched by
-N64Recomp-browser 2bc4018 and Conker on its own patched by e8e5fa9 (below); Banjo, Majora's
+every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
+submodules, patched by N64Recomp-browser 2bc4018 (Banjo), 3ef1502 and e8e5fa9 (Conker), and GoldenEye on upstream's at
+the forks' bases, patched by e6a64ac (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -379,7 +391,10 @@ header. Its README says up front that it is AI-written and not the Banjo
 team's, its BUILDING.md how to build the page, and what porting it found is in N64Recomp-browser's README.
 
 `amazingalek/Zelda64Recomp-web` is Majora's Mask on upstream's `recomp-frontend` branch (draft PR 722, which moves it
-onto RecompFrontend). In headless Chrome: launcher, Load ROM, the attract demo, title, file select, the intro, Link
+onto RecompFrontend). Its `lib/rt64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at the commits
+that branch pins, which are the forks' bases, so `patches/apply.cmake` applies every patch with `git apply` alone and
+the game's own code is unchanged; the D-pad mod's `OfflineModRecomp --static` is the patched N64Recomp's. In headless
+Chrome: launcher, Load ROM, the attract demo, title, file select, the intro, Link
 walking, the pause menu; its 20 frames a second interpolated to the display's rate. Render to RAM stays on there (the
 Pictograph Box reads its photo on the CPU), the built-in D-pad mod is recompiled to C at build time and linked in (its
 icon draws by the HUD in play), and building it needs the decompressed ROM its BUILDING.md names (the page takes the
@@ -387,20 +402,32 @@ plain one).
 
 `amazingalek/Donkey-Kong-64-Recompiled-web` is Rainchus's Donkey Kong 64: Recompiled. In headless Chrome: launcher,
 Load ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his house, the pause menu, sound. Its
-upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
-and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and argv): the page leaves all of those out.
+`lib/rt64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at its commits: rt64 and Killklli's forks
+of the runtime (`--game`/`--game-mode`, `recomp::Configuration`'s argc and argv, which the page passes) and
+RecompFrontend (a mod store), patched by `apply.cmake`, RecompFrontend's with a three-way merge. The mod store finds
+curl (vcpkg on the desktop), which a page hasn't got: `web/curl` is a `FindCURL.cmake` put first on
+`CMAKE_MODULE_PATH` with Emscripten and a `curl/curl.h` whose every call fails, and the store stays off (no discovery
+URL, no Mods tab). Built that way the boot's 115 pipelines took 5.3 s cold in headless Chrome 155.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
 says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
-right a list late, but the boot reuses the memory of framebuffers whose copy is still pending, a late copy landed on
-what the game wrote there, and 2 of about 26 boots crashed in the audio microcode (none of about 12 exact; a list in
-DK Isles 6-7 ms exact, about 2 late, headless Chrome 155, RTX 2070). `patches/shader_survey.c`'s `film` gives the
+right a list late, but the boot inflates the game's main overlay (`.global_asm`, 0x805FB300-0x80761050, code and data)
+over its two boot framebuffers (0x80700000 and 0x80725800, 320x241), and a late copy landing there corrupts it. Boots
+in headless Chrome 155 crashed a second or two after the inflate began (a call through a function table out of bounds,
+or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with cb75c5c's, which keeps every
+word the CPU changed, so the words that matter are ones written with the value they held, and none in 24 with the copy
+taken late but never written to RDRAM (a test build) or in about 12 exact. A list in DK Isles takes 6-7 ms exact,
+about 2 late (RTX 2070). `patches/shader_survey.c`'s `film` gives the
 camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
 
 `amazingalek/GoldenEye64Recomp-web` is GoldenEye 007, from cblock85's GoldenEye64Recomp (itself from kholdfuzion's
-GoldenRecomp), moved onto RecompFrontend and these forks, compiled with `-mtail-call`. In headless Chrome: launcher,
+GoldenRecomp), moved onto RecompFrontend, compiled with `-mtail-call`. Its upstream pins kholdfuzion's runtime and
+its own RmlUi, no RecompFrontend, so it has no pins of its own to go back to: its `lib/rt64`, `lib/N64ModernRuntime`
+and `lib/RecompFrontend` are upstream's at the commits the forks are built on (`patches/patches.txt`, a row each in
+`pins.txt`), patched by `patches/apply.cmake` for the desktop build too, since its recompiled code needs the patched
+N64Recomp (9aabea3, ec0748e). The patched checkouts are the forks' trees file for file. In headless Chrome: launcher,
 Load ROM, the gun-barrel intro, the credits, mission select, Dam walked on the keyboard, sound, 60 retraces a second;
 natively the intro and attract demo. The code is recompiled from the "TLBFREE" ROM, which its BUILDING.md makes from
 the retail ROM with an xdelta; the program takes the retail ROM and converts it in memory in `on_init_callback`. What
@@ -409,7 +436,8 @@ porting it found: its own strtol, strncmp, acos and others clash with funcs.h's 
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
 after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
 off, with its copy a list late on the page (rt64 73e9ca0): in Dam, headless Chrome 155, 3.8-5.2 ms a list against
-8.0-9.7 with the exact copy. Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
+8.0-9.7 with the exact copy; through its whole shader plan its CPU never wrote to a framebuffer whose copy was pending.
+Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
 depth), too many to build at the start or for Chrome's cache. Its list, 465, is recorded by a script
 (`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage): the boot as it plays
 by itself until `g_StageNum` leaves the title (90) for the first attract demo (the logos, the cast credits, the gun
@@ -447,12 +475,16 @@ menus' fade-then-call): 499 descriptions, 403 pipelines, in 19 sections, the boo
 then each chapter (It's War in two) and seven multiplayer modes against bots; no split screen. In headless Chrome 155
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
-frames a second and Windy 57 (Chrome 155: 59 and 59); before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
+10.4 s and the bar drew with sound. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
 a frame into RDRAM a list late (rt64 73e9ca0): in Windy, headless Chrome 155 on a busy host, 10.7-11.8 ms a list
 against 14.8-16.4 with the exact copy, the camera stepping aside from walls the same way (its README has the table).
+Its CPU writes to framebuffers whose copy is pending (0x3B7600, 0x3D6300, 0xE9D80 and others) in every chapter, 89
+times over its shader plan, 30 of them while the copy landed, which before rt64 cb75c5c the copy overwrote; with
+cb75c5c no chapter crashed.
 A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
 `-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
@@ -464,12 +496,12 @@ Nothing in these repos names this game, includes from this repo or needs its ROM
 `headless/CMakeLists.txt` predate `frontend/` and overlap it. What the web side needs from a game it gets through the
 runtime's own interfaces, as every recomp does.
 
-**Changing it.** The submodule here holds the game's patches as uncommitted changes, so commit to a fork from a
-separate clone of it:
+**Changing it.** The submodules here hold the web support and the game's patches as uncommitted changes, so commit to
+a fork from a separate clone of it:
 
 1. `git clone https://github.com/amazingalek/<fork>` (its `main`), make the change behind `__EMSCRIPTEN__`/`__wasm__`
    (or an option on by default with Emscripten), and commit it with a message that says what and why. Try it in the
-   game first by applying the same diff to `lib/<fork>` (plume is `lib/rt64/src/contrib/plume`).
+   game first by applying the same diff to the project in `lib/` (plume is `lib/rt64/src/contrib/plume`).
 2. Push it to `main` as a fast-forward, never a force-push: this repo and N64Recomp-browser's tags pin those commits.
    A change to plume-web, hlslpp-web or N64Recomp-web also moves the submodule pointer in rt64-web or
    N64ModernRuntime-web: commit and push that too. A commit that changes no code (a README) moves no pin: the pins
@@ -478,9 +510,10 @@ separate clone of it:
    `tools/export_patches.sh` and commit `patches/` with it (CI checks that the patches match the forks and still
    apply to every recomp's commits in `patches/pins.txt`), push to its `main`, and wait for its CI:
    `gh run list -R amazingalek/N64Recomp-browser`.
-4. Here, move the submodules and `lib/N64Recomp-browser` to those commits, rerun the patch script (rebase a game
-   patch that stops applying in the same PR), build and run, and open the PR. Once it has merged, tag
-   N64Recomp-browser (`v0.<n+1>.0`).
+4. Here, move `lib/N64Recomp-browser` to that commit (and the submodules, if a fork merged upstream in and
+   `patches.txt` names new upstream commits), reset each project whose patch changed and rerun the patch script (it
+   stops on one and says how; rebase a game patch that stops applying in the same PR), build and run, and open the PR.
+   Once it has merged, tag N64Recomp-browser (`v0.<n+1>.0`).
 
 **Step 1, done: the CPU side.** `headless/` (its `main.cpp` header says how) builds the recompiled code,
 N64ModernRuntime and the MusyX audio with no renderer, window, menus or input, natively and with Emscripten, and
@@ -654,8 +687,10 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
   instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
   queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
-  reuses a framebuffer's memory once the RDP is done: the copy lands while the game runs, after its hash check, and
-  Donkey Kong 64's boot crashed on it (The web target).
+  puts something in a framebuffer's memory once the RDP is done: the copy lands while the game runs, and though it
+  keeps every word the CPU changed (rt64 cb75c5c), a word written with the value it held looks untouched and gets the
+  frame; Donkey Kong 64's boot crashed on it (The web target). The console reports each write it kept, so a page
+  run through a game's levels with the late copy says whether its CPU touches a framebuffer with one pending.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
   for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.
