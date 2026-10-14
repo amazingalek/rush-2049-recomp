@@ -347,8 +347,7 @@ or a change that moves how a game plays (a fork, a page, a shader list) updates 
 gets a row. No game is added until every one in it is smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. GoldenEye, Conker and Donkey Kong 64 are on N64Recomp-browser v0.23.0
-(0a4ba9d) and its forks, Banjo on v0.21.0 (e879a25), Majora's Mask on v0.20.0 (6ce41d6); Banjo, Majora's
+every push to main with no ROM, is disabled. All five are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
