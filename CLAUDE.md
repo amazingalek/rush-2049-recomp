@@ -504,7 +504,7 @@ Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
 the first second). Each has a prebuilt shader list, `src/rt64_shaders.txt` (its header says what was played and what
-not). Banjo's, 186 shaders, has no sections and fits Chrome's cache. Majora's Mask's and Donkey Kong 64's are recorded
+not). Banjo's, 186 shaders, fits Chrome's cache and is in four sections, the band's intro its boot. Majora's Mask's and Donkey Kong 64's are recorded
 by code, a section an area, as GoldenEye's (`patches/shader_survey.c` warps to an entrance or a map,
 `tools/shader_plan.json`, `tools/record_shaders.sh`): Majora's Mask 938 descriptions, 730 pipelines, in 17 sections,
 the boot 39 (launcher to file select), then the attract demo, Clock Town, the intro and each region; Donkey Kong 64 475
