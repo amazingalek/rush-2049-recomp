@@ -194,6 +194,9 @@ rt64 6790eaa           by then is executed, begun again or deleted: a list repla
 rt64 918deb3           a reload of the replacement directories waits for the texture upload thread's batch and holds off
                        the next: a batch looked its replacements up, waited for the GPU and then put them in, so a reload
                        meanwhile (the hi-res font's) left it installing ones the reload had queued for deletion
+rt64 c6cf6c4           a per-draw texture's slot in a GPUTile field of its own (drawSlot), not in textureIndex's high
+                       bits, so a specialized shader without mip LOD reads one texture, not a switch of 8: such a
+                       prebuilt pixel shader is a third of the WGSL, and Firefox's waits shrink with it
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -670,7 +673,15 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   other work: a specialized RasterPS took 2-8 s there (12 at worst), with the page queuing 60 frames a second and
   Firefox painting a handful in between, so menus and races sat below a frame a second for minutes, until every
   shader they use had been built. So in Firefox RT64 builds none during play, and what isn't prebuilt (below) draws
-  with the ubershader (plume 9c69058, rt64 fcc6fe4, a user agent check).
+  with the ubershader (plume 9c69058, rt64 fcc6fe4, a user agent check). Firefox 158 does all of a page's WebGPU on
+  one thread of its GPU process (`CanvasRenderer`), so its prebuilt waits are each pipeline's build one after
+  another: sampled through Rush 2049's boot wait (D3D12, RTX 2070), DXC ~36% of that thread, NVIDIA's shader compiler
+  ~26%, heap and copies ~20%, the D3D12 driver ~8%, naga and wgpu ~7%. A pipeline takes ~100 ms there and Rush 2049's
+  three largest, pixel shaders with mip LOD (224 KB of WGSL), 1.2-2.4 s each. The WGSL's size is the page's lever:
+  rt64 c6cf6c4 took Majora's Mask's Clock Town from 15.1-18.2 s to 9.3-10.4, its boot from 3.3-3.9 to 2.3-2.7,
+  Conker's boot from 7.1-8.3 to 6.0-6.9 and Rush 2049's from 13.6-14.6 to 11.9-12.6 (Firefox 158, the same pipelines
+  built by a test page, Rush 2049's by its page; a host 13-66% busy). What's left in its LOD shaders is a texture
+  read per tap behind a switch of 8 slots, since the tile there is picked per pixel.
 - Firefox (157) never holds a WebGPU page back: it takes 60 frames a second whatever the GPU finishes, and Chrome
   throttles the page itself. On the laptop under Where a frame goes, at 4K and 200% scaling, a present costs
   Firefox's GPU process and DWM about twice what it costs Chrome (up to 6 times in DWM), ~70% of the Intel chip at 60
@@ -850,7 +861,9 @@ several font textures at once, in a list recorded after they were destroyed. Tha
 installing replacements from before a reload (rt64 918deb3). Its GPU wait is longer in Firefox, which widens the window.
 With a 40 ms sleep added in that window (a test build), a walk in headless Chrome 155 logged 115 such textures, and none
 with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
-and no other WebGPU error. What to know:
+and no other WebGPU error. With rt64 c6cf6c4, built locally against the same commit without it, three runs each in
+Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
+in Firefox and in Chrome, with no WebGPU errors. What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
@@ -939,6 +952,10 @@ No other N64 recomp running in a browser was found to learn from.
   reached the compositor 0.6 ms later with either value, so nothing queues there. Fullscreen wasn't measured. What
   did queue was the game's own scheduler (`frame_rate.cpp`, the Input Lag option).
 - SDL 2's resamplers for the output: `SDL_ConvertAudio` pads buffers, `SDL_AudioStream` drops fractional frames.
+- Building Firefox's pipelines in parallel from the page: every device and worker's WebGPU goes to the same thread of
+  its GPU process, so Rush 2049's 75 took 15.5-16.7 s from three devices at once against 13.3-14.6 from one (Firefox
+  158). Nor does anything keep them between launches: the same 75 built five times in fresh profiles took as long
+  each time, so the driver's own shader cache doesn't reach Firefox's GPU process either.
 - Shorter web builds by other means: ccache behind emcc (`EM_COMPILER_WRAPPER`) still starts emcc's Python for every
   hit, so it goes in front; configure checks compiled without linking measured nothing against the host's noise;
   building `RecompiledFuncs/` at -O2 would touch 3.5% of the compile time. Precompiled headers are off for the page
