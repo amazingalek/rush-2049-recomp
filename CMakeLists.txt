@@ -62,6 +62,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 set(RT64_STATIC TRUE)
 set(RT64_SDL_WINDOW_VULKAN TRUE)
+# Two fixes in the web forks that are off on the desktop unless a game asks (both on with Emscripten): the hi-res
+# title's strips, drawn bottom-up, sampled on the texel the RDP picks (src/hires_font.cpp), and the game stopping its
+# threads from other threads, as libultra lets it.
+set(RT64_FLIPPED_RECT_HIGH_RES ON)
+set(ULTRAMODERN_LIBULTRA_THREAD_STOP ON)
 add_compile_definitions(
     HLSL_CPU
     __PRFCHWINTRIN_H
