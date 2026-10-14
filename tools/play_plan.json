@@ -1,0 +1,9 @@
+{
+  "header": ["The page's plan for N64Recomp-browser's tools/play_page.mjs: the launcher, Load ROM on a new profile,",
+             "Start Game, then 60 s of the title, the logos and the attract race, which play by themselves."],
+  "page": "",
+  "load": [["until", "Device Name", 60000], ["wait", 6000]],
+  "setup": [["rom", 628, 364], ["wait", 4000]],
+  "start": [["click", 628, 364]],
+  "play": [["wait", 60000]]
+}
