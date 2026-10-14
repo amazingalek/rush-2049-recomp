@@ -220,6 +220,9 @@ rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a r
 N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
 0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
                        the queue's head, on every build (upstream's never returned)
+rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
+                       at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
+                       page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
