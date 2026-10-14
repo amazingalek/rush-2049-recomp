@@ -257,11 +257,13 @@ the screen: `PrintWindow(hwnd, hdc, 3)` on the window of the process you started
 
 ## Releases
 
-Cut on a machine with the ROM, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp`, merge,
-then from a clean checkout of `origin/main` with a full setup: `bash tools/release.sh` (`--dry-run` builds and zips
-only). It builds Release in `build-release/`, zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt`
-and `COPYING` into `out/`, and publishes GitHub release `v<version>` with notes from the merged PRs. The zip holds
-no ROM.
+Cut on a machine with the ROM, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp` and write
+`releases/v<version>.md` in the same PR, merge, then from a clean checkout of `origin/main` with a full setup:
+`bash tools/release.sh` (`--dry-run` builds and zips only). It builds Release in `build-release/`, zips the exe, its
+DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, and publishes GitHub release `v<version>` with
+that file as its notes, refusing without one. The notes are for someone downloading the zip: what changed in the
+desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
+other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/) is published the same way, after a change to the game
 or the web side has merged: `bash tools/publish_page.sh` from a checkout with `roms/` (`--dry-run` builds and stages

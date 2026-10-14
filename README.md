@@ -259,13 +259,14 @@ cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush20
 - `src/`, `include/`: runtime glue and enhancements. `tests/`: tests of the pure code, which CI runs.
 - `us.toml`, `patches.toml`, `musyx.toml`: the N64Recomp and RSPRecomp configs, with every hook into the game.
 - `patches/`: the patches library mods build against; `mod_template/`: the example mod.
-- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are forks with the browser support added on
-  their `main` branch, and `N64Recomp-browser` is what turns a recomp into a page; see
+- `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are upstream's, with the browser support patched
+  in from `N64Recomp-browser`, which is what turns a recomp into a page; see
   [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). `runtime-patches/`: this game's fixes on top of them.
 - `headless/`: a build without the frontend: the browser test page, or with no graphics at all.
 - `assets/`: the menus' fonts, icons and stylesheet, and the hi-res title's patch, shipped beside the executable.
 - `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
+- `releases/`: each release's notes, as published on the Releases page.
 - `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
 
 ## Ground rules
