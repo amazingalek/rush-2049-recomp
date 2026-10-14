@@ -356,9 +356,9 @@ behind them, go in the game fork's own README or BUILDING.md, not there. No game
 smooth in both browsers on integrated graphics too.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
-every push to main with no ROM, is disabled. Two are on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo and Majora's Mask are on their own upstream
-submodules, patched by N64Recomp-browser 2bc4018 and 3ef1502, and GoldenEye on upstream's at the forks' bases, patched
-by e6a64ac (below); Banjo, Majora's
+every push to main with no ROM, is disabled. Conker is on N64Recomp-browser v0.24.0 (2881f70) and its forks; Banjo,
+Majora's Mask and Donkey Kong 64 are on their own upstream submodules, patched by N64Recomp-browser 2bc4018 (Banjo)
+and 3ef1502, and GoldenEye on upstream's at the forks' bases, patched by e6a64ac (below); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -397,8 +397,12 @@ plain one).
 
 `amazingalek/Donkey-Kong-64-Recompiled-web` is Rainchus's Donkey Kong 64: Recompiled. In headless Chrome: launcher,
 Load ROM, the DK Rap, a new game through the opening cutscenes, DK walking in his house, the pause menu, sound. Its
-upstream pins Killklli's forks of the runtime (a mod store URL) and RecompFrontend (the mod store, curl through vcpkg)
-and a runtime with `--game`/`--game-mode` (`recomp::Configuration`'s argc and argv): the page leaves all of those out.
+`lib/rt64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at its commits: rt64 and Killklli's forks
+of the runtime (`--game`/`--game-mode`, `recomp::Configuration`'s argc and argv, which the page passes) and
+RecompFrontend (a mod store), patched by `apply.cmake`, RecompFrontend's with a three-way merge. The mod store finds
+curl (vcpkg on the desktop), which a page hasn't got: `web/curl` is a `FindCURL.cmake` put first on
+`CMAKE_MODULE_PATH` with Emscripten and a `curl/curl.h` whose every call fails, and the store stays off (no discovery
+URL, no Mods tab). Built that way the boot's 115 pipelines took 5.3 s cold in headless Chrome 155.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
