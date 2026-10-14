@@ -210,6 +210,16 @@ plume 97f4e64          bind groups kept by their layout and what they bind (a se
                        4,000-14,000 a second in Conker's Windy (checkpoint 33), where Firefox lost the device ("Out of
                        Memory", wgpu's D3D12 descriptor heap) whenever they outran a collection; 99% repeated one
                        made in the last 2 s, and the scene makes 40-400 a second now
+rt64 53f8e55           CPU hot paths, on every build (the same hashes and matches): a TMEM hash in one XXH3 call, the
+                       palette indices it uses as byte flags, frame matching in sorted vectors, not multimaps and sets;
+                       on this game's headless page a list's send_dl took 4.76-4.81 ms median against 5.39-5.58
+                       without (title and attract races, Chrome 155 headless, RTX 2070, a busy host, two runs each
+                       interleaved), the whole browser's CPU the same within the noise (210-219 s in 100 s)
+rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a rect drawn backwards sampled on the texel
+                       the RDP picks, not a native pixel behind it
+N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
+0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
+                       the queue's head, on every build (upstream's never returned)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -230,17 +240,19 @@ with `-mtail-call`, which both web builds here compile with; the desktop build o
 `runtime-patches/`, this game's, on top of N64Recomp-browser's patches:
 
 ```
-N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
+N64ModernRuntime-0001  one AI event per buffer played
 N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 plume-0005             a query pool read of only the queries written (Vulkan calls a read with an unwritten one not ready)
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
-rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
-rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
 ```
+
+The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:
+`RT64_FLIPPED_RECT_HIGH_RES` (rt64 fe91344, the hi-res title's strips) and `ULTRAMODERN_LIBULTRA_THREAD_STOP`
+(N64ModernRuntime 0df8334: the game stops its threads from other threads).
 
 ## Building and running
 
