@@ -210,6 +210,19 @@ plume 97f4e64          bind groups kept by their layout and what they bind (a se
                        4,000-14,000 a second in Conker's Windy (checkpoint 33), where Firefox lost the device ("Out of
                        Memory", wgpu's D3D12 descriptor heap) whenever they outran a collection; 99% repeated one
                        made in the last 2 s, and the scene makes 40-400 a second now
+rt64 53f8e55           CPU hot paths, on every build (the same hashes and matches): a TMEM hash in one XXH3 call, the
+                       palette indices it uses as byte flags, frame matching in sorted vectors, not multimaps and sets;
+                       on this game's headless page a list's send_dl took 4.76-4.81 ms median against 5.39-5.58
+                       without (title and attract races, Chrome 155 headless, RTX 2070, a busy host, two runs each
+                       interleaved), the whole browser's CPU the same within the noise (210-219 s in 100 s)
+rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a rect drawn backwards sampled on the texel
+                       the RDP picks, not a native pixel behind it
+N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
+0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
+                       the queue's head, on every build (upstream's never returned)
+rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
+                       at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
+                       page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -218,7 +231,9 @@ N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
 thread (a mod that fails to load) into a console error instead of an exception that stops the page;
-`frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give);
+`frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give); a page's link
+that fails on any wasm-ld warning (`--fatal-warnings`: a call whose signature doesn't match the function's links as a
+trap) and takes a game's own `-sINITIAL_MEMORY`, stack sizes and thread pool over `frontend/`'s;
 `frontend/audio_output.h`, sound played on the browser's audio thread, which `main.cpp` uses on Emscripten in place of
 SDL's queue; the shell's notice in Firefox, shown always, recommending Chrome or Edge (Firefox's WebGPU adapter info is
 all empty strings, so a page there can't tell what it draws with; Chrome shows none), and its "Preparing graphics" indicator in a corner
@@ -230,17 +245,19 @@ with `-mtail-call`, which both web builds here compile with; the desktop build o
 `runtime-patches/`, this game's, on top of N64Recomp-browser's patches:
 
 ```
-N64ModernRuntime-0001  osStopThread/osStartThread on another thread; one AI event per buffer played
+N64ModernRuntime-0001  one AI event per buffer played
 N64ModernRuntime-0002  set_vi_rate for frame rates above 60; high-resolution VI timer on Windows
 RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 plume-0005             a query pool read of only the queries written (Vulkan calls a read with an unwritten one not ready)
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
-rt64-0002              CPU hot paths: texture hashing, frame matching containers
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
-rt64-0005              a high-res replacement on a rect drawn backwards is sampled on the texel the RDP picks
 ```
+
+The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:
+`RT64_FLIPPED_RECT_HIGH_RES` (rt64 fe91344, the hi-res title's strips) and `ULTRAMODERN_LIBULTRA_THREAD_STOP`
+(N64ModernRuntime 0df8334: the game stops its threads from other threads).
 
 ## Building and running
 
@@ -368,7 +385,11 @@ shaders the game uses before it starts (Step 2).
 ## The web target
 
 The goal (README) is the game in a browser, and web support that works for every N64 recomp, so runtime changes
-for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`.
+for it are game-agnostic and behind `__EMSCRIPTEN__`/`__wasm__`. The other games' pages (the game forks below) are
+there to build out and test that support on more than one game, not as ports of their own: what one of them or one
+browser turns up is fixed in the shared support (a fork, N64Recomp-browser) unless it really is that game's, so every
+game and both browsers get it, and what one game does better (a shader list in sections, the late copy) is tried on the
+others. Only what is the game's own stays in its fork.
 
 It lives in seven repos under amazingalek, all public:
 
@@ -461,10 +482,16 @@ a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgb
 
 Every page again from Pages on b1c35d1 (plume 16e608a and 97f4e64), one page at a time, the same GPU, an idle host,
 Firefox 158 and Chrome 155 at 3840x2000, 25-60 s after the boot's wait: in Firefox Rush 2049 and GoldenEye 58-60
-presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too), Banjo 58-60 after
+presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too, ~6% on 59dc8e8), Banjo 58-60 after
 10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
 after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
 presents above the display's rate and the memory climbing are gone.
+
+A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
+the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
+so the game made every buffer its minimum (GoldenEye64Recomp-web 59dc8e8, `get_frames_remaining`). A game's
+`get_frames_remaining` must match how its audio manager reads osAiGetLength. To see a page's sound as the game writes
+it, wrap `AudioWorkletNode` in a preload, take `processorOptions.ring` and sample its two counters every few ms.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
@@ -540,7 +567,7 @@ task was lost to a stale retrace message, which the scheduler never sends again 
 retrace handler (`patches/timing_fixes.c`) now starts a pending audio task itself, and 9 of 9 boots played on (its
 BUILDING.md says how). Firefox runs the game through the wait and never lost it.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
-signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
+signature mismatch` shows, an error with `frontend/` (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
 says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
 right a list late, but the boot inflates the game's main overlay (`.global_asm`, 0x805FB300-0x80761050, code and data)
@@ -620,8 +647,8 @@ times over its shader plan, 30 of them while the copy landed, which before rt64 
 cb75c5c no chapter crashed.
 A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
-`-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
-`target_link_libraries(<target> PRIVATE -sINITIAL_MEMORY=...)` comes last.
+`target_link_options(<target> PRIVATE -sINITIAL_MEMORY=...)` overrides `frontend/`'s 1536MB, which
+`n64recomp_browser_frontend_page` puts first on the link line.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
@@ -930,7 +957,10 @@ and no other WebGPU error. With rt64 c6cf6c4, built locally against the same com
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
 in Firefox and in Chrome, with no WebGPU errors. On N64Recomp-browser b1c35d1 (plume 97f4e64), a local build, a cold
 profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 not at all, then the attract race at
-58-60 presents a second in both, no sound short after the wait, no WebGPU errors. What to know:
+58-60 presents a second in both, no sound short after the wait, no WebGPU errors. On ed8764a (v0.36.0: the CPU hot
+paths, the flipped rect and the thread stop in the forks, rt64 58fc4e4's pacing), the same way: Chrome 155 headless
+waited not at all and Firefox 158 9.8 s, then 59 presents a second (median) in both through the title and attract races,
+sound short only in the first seconds after Start Game, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port

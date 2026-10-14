@@ -41,7 +41,7 @@
 // how). On the first task that draws the whole title, the strips make the original, which unlocks and unpacks the
 // patch, and the strips are cut into hires_title/pack/ in the app folder: once per launch, about 100 ms. The Midway
 // screen is drawn the same way but never covers the whole picture. Hi-res Title Screen (Graphics) turns it off, and
-// the strips are drawn bottom-up, which needs runtime-patches/rt64-0005. To make a patch for another picture, save it as hires_title/title.png in the app folder: it is used instead,
+// the strips are drawn bottom-up, which needs RT64_FLIPPED_RECT_HIGH_RES (CMakeLists.txt). To make a patch for another picture, save it as hires_title/title.png in the app folder: it is used instead,
 // and each run writes the title as the game draws it to hires_title/original.ppm for the tool.
 
 #include <algorithm>
@@ -767,7 +767,7 @@ bool cut_title_strip(const TitleStrip& strip) {
     }
 
     // Each texel gets the part of the picture it covers on screen. A flipped strip needs RT64 to start its high
-    // resolution UV on the texel each pixel shows (rt64-0005-flipped-rect-high-res.patch), or it lands a row off.
+    // resolution UV on the texel each pixel shows (RT64_FLIPPED_RECT_HIGH_RES), or it lands a row off.
     uint32_t out_w = strip.width * title_scale, out_h = strip.height * title_scale;
     std::vector<uint8_t> rgba((size_t)out_w * out_h * 4);
     for (uint32_t oy = 0; oy < out_h; oy++) {
