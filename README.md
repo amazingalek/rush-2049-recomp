@@ -143,8 +143,9 @@ Chrome and Edge it builds them behind the game while the logos and the title pla
 moment with **Preparing graphics** in a corner, and the browser keeps what it built for the next visit. It builds
 them again after an update to the game, the browser or the graphics driver, or if the browser's cache is cleared,
 and for a while after one on every visit: the browser keeps only a few megabytes of these for all sites together.
-Firefox can't build them behind the game without stuttering, so it holds the game's first frame with that indicator
-while it builds them, 15-30 seconds on every visit. A shader the game draws that the page didn't know of is built
+Firefox can't build them behind the game without stuttering, so it holds the game with that indicator while it builds
+them, on every visit: a few seconds before the logos for the title and menus, and several more when the first race
+starts. A shader the game draws that the page didn't know of is built
 while the game runs, and the page remembers it and builds it with the others from then on.
 
 **Building the page** needs everything the desktop build does up to and including `iterate.sh` (it generates the
