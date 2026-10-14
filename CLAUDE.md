@@ -372,6 +372,27 @@ does all of this in the same work:
   a fix was made for reads "not yet on this version" until it is played again, and one never played "not yet".
 - Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
 
+The stand-in on 2026-10-14, every page from Pages, Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop
+alone at 23% busy and 13 W: the boot's shader wait, then presents a second, GPU busy, watts and the GPU process's
+cores over 25 s of the game playing by itself:
+
+```
+                 wait (s)     presents/s       GPU busy, W         GPU process
+               Chrome  Fx   Chrome  Firefox   Chrome    Firefox    Chrome  Fx
+Rush 2049        3.2  11.4   58-59   49-60    34% 53   67% 99      0.20  0.97
+Banjo            3.1   6.3   59-60   60-61    28% 48   59% 93      0.13  0.84
+GoldenEye        3.1  10.1   58-60   20-100   29% 39   48% 70      0.17  0.71
+Majora's Mask    2.2   5.5   59-60   15-59    34% 47   42% 59      0.24  0.91
+Conker           2.5   7.3   30-60   33-61    31% 46   50% 89      0.20  0.77
+Donkey Kong 64   4.3  14.3   55-56   60-61    35% 26   52% 77      0.12  0.75
+```
+
+At 1280x800 Firefox kept up but for Donkey Kong 64, which sat at 30 presents a second for spells against Chrome's
+55-56 (rt64 e8e162e's even pacing), and its GPU process still took 2-3 times Chrome's CPU. Firefox presents a canvas
+through a texture shared with its compositor only when it is `bgra8unorm`
+(`wgpu_client_use_shared_texture_in_swapChain`), so the pages' `rgba8unorm` frames are read back through the CPU
+each present: the likely cause, not yet tried.
+
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
 
