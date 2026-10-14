@@ -16,3 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends xdelta3 make pk
 # spirv-opt (SPIRV-Tools), which rt64 runs on a game's prebuilt shaders (RT64_PREBUILT_SHADER_LIST) before naga: their
 # WGSL comes out about 45% smaller, and builds in about half the time in Chrome.
 RUN apt-get update && apt-get install -y --no-install-recommends spirv-tools && rm -rf /var/lib/apt/lists/*
+# The MIPS binutils, which a decompilation a game fork builds its ELF from assembles and links with (Pilotwings 64's
+# build_elf.sh), and rsync, which that script calls.
+RUN apt-get update && apt-get install -y --no-install-recommends binutils-mips-linux-gnu rsync && rm -rf /var/lib/apt/lists/*
