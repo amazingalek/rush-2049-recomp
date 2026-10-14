@@ -808,7 +808,8 @@ Chrome 155 none in 5 walks, where every walk before had one or two. Firefox 158 
 several font textures at once, in a list recorded after they were destroyed. That was RT64's texture upload thread
 installing replacements from before a reload (rt64 918deb3). Its GPU wait is longer in Firefox, which widens the window.
 With a 40 ms sleep added in that window (a test build), a walk in headless Chrome 155 logged 115 such textures, and none
-with 918deb3; FIREFOX_RESULT. What to know:
+with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
+and no other WebGPU error. What to know:
 
 - To drive the page, use CDP (`Input.dispatchMouseEvent`/`dispatchKeyEvent`, and `Page.setInterceptFileChooserDialog`
   with `DOM.setFileInputFiles` for Load ROM) with Chrome's `--user-data-dir` kept between runs, and serve on a fixed
