@@ -396,6 +396,12 @@ does all of this in the same work:
   when; one whose result a fix was made for reads "not yet on this version" until it is played again, and one never
   played "not yet".
 - Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
+- One page at a time on the machine, in any browser. With two Firefox windows each playing a page, one window's
+  animation frames came in bursts (a quarter of the intervals under 5 ms, up to 20 presents between two frames), which
+  plume's displayTiming reads as a display of hundreds of Hz, so RT64 interpolated to it: 80-150 presents a second on
+  a 59 Hz display, the pacing switching on and off. nvidia-smi's memory is the whole GPU's, so a page that fills video
+  memory beside it (Conker's in Firefox) shows as the other page's climb and its "Out of Memory". Rush 2049 and Banjo
+  played alone in Firefox 158 kept 57-62 presents a second at 1256x645 and 3840x2000, the memory flat.
 
 The stand-in on 2026-10-14, every page from Pages built on N64Recomp-browser 7b80155 (the canvas in the browser's
 preferred format, rt64 e46bf19), Chrome 155 and Firefox 158, RTX 2070, an idle host and the desktop alone at about 20%
