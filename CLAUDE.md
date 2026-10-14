@@ -465,8 +465,8 @@ a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgb
 
 Every page again from Pages on b1c35d1 (plume 16e608a and 97f4e64), one page at a time, the same GPU, an idle host,
 Firefox 158 and Chrome 155 at 3840x2000, 25-60 s after the boot's wait: in Firefox Rush 2049 and GoldenEye 58-60
-presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too), Banjo 58-60 after
-10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
+presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too, until its fork's
+59dc8e8 and 7f40089: from Pages on them, 0 frames short in either), Banjo 58-60 after 10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
 after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
 presents above the display's rate and the memory climbing are gone.
 
