@@ -205,6 +205,11 @@ rt64 6734747, 0fda089  presents paced (e8e162e) only while one in ten or more is
 plume 16e608a          the display's rate from the period that explains the most animation frames (each interval
 rt64 07d608e           tried, the callbacks merged into frames of at least 0.9 of it): Firefox's extra callbacks, 0.1-5
                        ms after a frame, a quarter of them and more, read as hundreds of Hz in the shortest quarter
+plume 97f4e64          bind groups kept by their layout and what they bind (a serial per handle), the 4096 last used:
+                       a browser frees one only when JavaScript collects it, and RT64's sets rewritten every frame made
+                       4,000-14,000 a second in Conker's Windy (checkpoint 33), where Firefox lost the device ("Out of
+                       Memory", wgpu's D3D12 descriptor heap) whenever they outran a collection; 99% repeated one
+                       made in the last 2 s, and the scene makes 40-400 a second now
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -592,9 +597,9 @@ then each chapter (It's War in two) and seven multiplayer modes against bots; no
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
 frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
-10.4 s and the bar drew with sound. Further into Windy, after its checkpoint 33's cutscene, Firefox 158 loses the
-WebGPU device ("Out of Memory" creating a bind group, the GPU's memory flat), on v0.28.0's page as on 7b80155's; Chrome
-plays on. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+10.4 s and the bar drew with sound. Before plume 97f4e64, Firefox 158 lost the WebGPU device further into Windy,
+after its checkpoint 33's cutscene ("Out of Memory" creating a bind group, the GPU's memory flat); on b1c35d1's page it
+played the plan's whole Windy section at 60, at 1256x645 and 3840x2000, the live bind groups about 4,500. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
@@ -913,7 +918,9 @@ With a 40 ms sleep added in that window (a test build), a walk in headless Chrom
 with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
 and no other WebGPU error. With rt64 c6cf6c4, built locally against the same commit without it, three runs each in
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
-in Firefox and in Chrome, with no WebGPU errors. What to know:
+in Firefox and in Chrome, with no WebGPU errors. On N64Recomp-browser b1c35d1 (plume 97f4e64), a local build, a cold
+profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 not at all, then the attract race at
+58-60 presents a second in both, no sound short after the wait, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
