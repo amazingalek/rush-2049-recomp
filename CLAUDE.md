@@ -918,7 +918,9 @@ With a 40 ms sleep added in that window (a test build), a walk in headless Chrom
 with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
 and no other WebGPU error. With rt64 c6cf6c4, built locally against the same commit without it, three runs each in
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
-in Firefox and in Chrome, with no WebGPU errors. What to know:
+in Firefox and in Chrome, with no WebGPU errors. On N64Recomp-browser b1c35d1 (plume 97f4e64), a local build, a cold
+profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 not at all, then the attract race at
+58-60 presents a second in both, no sound short after the wait, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
