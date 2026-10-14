@@ -223,6 +223,9 @@ N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another
 rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
                        at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
                        page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
+rt64 9ed449d           and counted again from a second after any prebuilt shader wait: a wait shorter than the 2 s left
+                       presents from before it in the count beside the burst after it (Banjo's 1.5 s in Chrome, then
+                       30 a second for 10 s)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
