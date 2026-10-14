@@ -333,6 +333,7 @@ that changed, and Conker's page built that way loaded and then failed every pipe
 
 ```
 --boot                       skip the launcher (needs the ROM already stored)
+--show-console               open a console for the log (the exe is a window program; a redirect gets it too)
 --stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
 --players <n>                ports 2..n copy port 1 (and --input), to drive split screen with one pad
 --input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
@@ -393,6 +394,10 @@ there to build out and test that support on more than one game, not as ports of 
 browser turns up is fixed in the shared support (a fork, N64Recomp-browser) unless it really is that game's, so every
 game and both browsers get it, and what one game does better (a shader list in sections, the late copy) is tried on the
 others. Only what is the game's own stays in its fork.
+
+A game fork of an existing recomp is that recomp plus web support and nothing else, so its diff against upstream is
+exactly what the page needs: no new features (mouse aim, controls, enhancements) and no fix the page doesn't need.
+A request for one is answered that way, not filed against the fork.
 
 It lives in seven repos under amazingalek, all public:
 
@@ -484,8 +489,9 @@ a second in `bgra8unorm`, against 1.21-1.24, 78-82%, 104 W and 53.7-58.9 in `rgb
 
 Every page again from Pages on b1c35d1 (plume 16e608a and 97f4e64), one page at a time, the same GPU, an idle host,
 Firefox 158 and Chrome 155 at 3840x2000, 25-60 s after the boot's wait: in Firefox Rush 2049 and GoldenEye 58-60
-presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too, ~6% on 59dc8e8), Banjo 58-60 after
-10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20 and 30 by rt64's pacing, which switches on just
+presents a second with the GPU's memory flat at ~2 GB (GoldenEye's sound ~8% short, in Chrome too, ~6% on 59dc8e8,
+none from Pages on 7f40089), Banjo 58-60 after 10 s at 20-30; Majora's Mask and Donkey Kong 64 held at their game's 20
+and 30 by rt64's pacing, which switches on just
 after the wait with the GPU ~48 W, not working hard (Banjo's 10 s are the same); Chrome 52-56 on every one. The
 presents above the display's rate and the memory climbing are gone.
 
@@ -594,7 +600,14 @@ the retail ROM with an xdelta; the program takes the retail ROM and converts it 
 porting it found: its own strtol, strncmp, acos and others clash with funcs.h's C library declarations, so they are
 `renamed` in both configs (N64Recomp-web ec0748e makes the patches' calls follow); its jump tables sit in another
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
-after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
+after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Its sound ran dry in bursts (in Chrome while the
+shader list built cold, ~20% for ~40 s; in Firefox ~0.4 s at fixed moments of the boot) because its main loop's waits
+for the next tick (`patches/fps.c`) polled `osGetCount` with no OS call, so the scheduler and the audio thread, which
+preempt it on the console, waited behind it; the intro's wait lasts as long as the frame before, so one slow frame held
+the whole intro to that length, the main thread polling ~1.5 million counts a second. Each poll yields now (the fork's
+7f40089), and the bursts are gone in both browsers. A wait that polls memory or the clock without an OS call starves
+every other game thread on any recomp (`find_spins.py` finds this game's); a trace of the count calls a second found
+this one. Render to RAM stays at its default (on), not tried
 off, with its copy a list late on the page (rt64 73e9ca0): in Dam, headless Chrome 155, 3.8-5.2 ms a list against
 8.0-9.7 with the exact copy; through its whole shader plan its CPU never wrote to a framebuffer whose copy was pending.
 Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
