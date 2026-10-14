@@ -301,7 +301,10 @@ game drawing. Each is built by its BUILDING.md steps (in the same Docker image, 
 since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
 fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
-merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A fork's rt64 older
+merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change to the
+web support (a fork, a new N64Recomp-browser commit) reaches every game in the same work, never a later card: the
+agent moves this repo and every game fork onto it, rebuilds and republishes each page, plays each one in Chrome and
+Firefox, and updates the games table, before calling it done. A fork's rt64 older
 than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the WGSL made from an `.hlsli`
 that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding doesn't exist"
 (moving onto 7910126 rebuilds every shader). The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
