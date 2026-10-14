@@ -407,9 +407,10 @@ through a texture shared with its compositor only when it is `bgra8unorm`
 (`wgpu_client_use_shared_texture_in_swapChain`), and the pages above were `rgba8unorm`, so every present was read
 back through the CPU. With the canvas in the browser's preferred format (rt64 e46bf19, `bgra8unorm`), Rush 2049's
 page at 3840x2000 (a local build, the same GPU, an idle host, attract race, two runs each interleaved): Firefox's GPU
-process 0.47-0.52 cores and the GPU 40-46% busy at 93-101 W, against 1.21-1.24, 78-82% and 104 W in `rgba8unorm`;
-Chrome 0.29-0.45, 34-43% and 78-90 W, the same in either format. At 1280x800 Firefox's GPU process still took 0.5
-cores against Chrome's 0.3. A game's page has it once it is rebuilt on N64Recomp-browser v0.30.0.
+process 0.47-0.52 cores, the GPU 40-46% busy at 93-101 W and 59.3-60.2 presents a second, against 1.21-1.24, 78-82%,
+104 W and 53.7-58.9 in `rgba8unorm`; Chrome 0.29-0.45, 34-43% and 78-90 W, the same in either format. At 1280x800
+Firefox's GPU process still took 0.5 cores against Chrome's 0.3. A game's page has it once it is rebuilt on
+N64Recomp-browser v0.30.0.
 
 A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
 browsers on integrated graphics.
