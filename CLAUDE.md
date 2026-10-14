@@ -688,7 +688,11 @@ never reached (nothing sets `D_800DAB1C` to either; the pause dims the live scen
 picked by its place in the course select cursor (0x800DA9D0), and each of the nine raced 50 s with the gas held
 (page_driver's `down`/`up`) while `tools/autopilot.js` steers for the next buoy on its side, from the camera and the
 buoy table in RDRAM, the countdown that retires a rider off the course held up; then Championship and Stunt Mode,
-no 2P. @@WRPLAYED@@ Its BUILDING.md has the web page's section.
+no 2P. From Pages (main b4bcb9d, N64Recomp-browser 421f902), cold, menus and a Sunset Bay race, RTX 2070: Chrome 155
+headless waited 1.8 s (14 of the boot) and drew 59.6, all 100 built 3-4 s later; Firefox 158 waited 3.5 s for the
+boot's 50 and 0.5 s for the course's 13 and drew 59.6; at 3840x2000 59.6 and 59.4, no WebGPU errors, sound short only
+in the waits. Render to RAM on and off measured alike there (a 20 fps game: it costs a list's wall time, not frames
+or CPU). Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
