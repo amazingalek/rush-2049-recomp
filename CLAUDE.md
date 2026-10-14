@@ -177,6 +177,10 @@ rt64 e8e162e           frames paced evenly on WebGPU while the GPU falls behind:
                        showed 10-20% of its frames never and the rest one to three times, in both browsers
 plume 01a7bac          the display's rate from the shortest quarter of a second's animation frame intervals: their
 rt64 f0e6217           median read 20-39 on a 60 Hz display under load, and each change restarts the interpolation
+rt64 cb75c5c           render to RAM's late copy converted outside RDRAM and written a word at a time, each only if
+                       it still holds what it held when the list ended: a hash check and then a copy and a byte swap
+                       in place overwrote what the CPU wrote meanwhile (Conker writes to a framebuffer with a pending
+                       copy in every chapter, 30 of 89 times while it landed); each write is reported, not the first
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits. Besides the forks it brings:
@@ -396,9 +400,13 @@ Its hooks and patches called C functions whose signatures didn't match the call,
 signature mismatch` warning shows (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
 says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
-right a list late, but the boot reuses the memory of framebuffers whose copy is still pending, a late copy landed on
-what the game wrote there, and 2 of about 26 boots crashed in the audio microcode (none of about 12 exact; a list in
-DK Isles 6-7 ms exact, about 2 late, headless Chrome 155, RTX 2070). `patches/shader_survey.c`'s `film` gives the
+right a list late, but the boot inflates the game's main overlay (`.global_asm`, 0x805FB300-0x80761050, code and data)
+over its two boot framebuffers (0x80700000 and 0x80725800, 320x241), and a late copy landing there corrupts it. Boots
+in headless Chrome 155 crashed a second or two after the inflate began (a call through a function table out of bounds,
+or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with cb75c5c's, which keeps every
+word the CPU changed, so the words that matter are ones written with the value they held, and none in 24 with the copy
+taken late but never written to RDRAM (a test build) or in about 12 exact. A list in DK Isles takes 6-7 ms exact,
+about 2 late (RTX 2070). `patches/shader_survey.c`'s `film` gives the
 camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
 
@@ -412,7 +420,8 @@ porting it found: its own strtol, strncmp, acos and others clash with funcs.h's 
 section (9aabea3); and its patches called `yield_self_1ms`, whose signature isn't a native's, which trapped the page
 after ~20 s until a `recomp_yield_self_1ms` wrapper took its place. Render to RAM stays at its default (on), not tried
 off, with its copy a list late on the page (rt64 73e9ca0): in Dam, headless Chrome 155, 3.8-5.2 ms a list against
-8.0-9.7 with the exact copy. Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
+8.0-9.7 with the exact copy; through its whole shader plan its CPU never wrote to a framebuffer whose copy was pending.
+Unlike Rush 2049 every level adds dozens of shaders (26 combiners, but many render modes: palette textures, fog,
 depth), too many to build at the start or for Chrome's cache. Its list, 465, is recorded by a script
 (`tools/record_shaders.sh`, `patches/shader_survey.c`, which shows any menu and starts any stage): the boot as it plays
 by itself until `g_StageNum` leaves the title (90) for the first attract demo (the logos, the cast credits, the gun
@@ -453,6 +462,9 @@ camera reads a row of the depth buffer to step aside from walls and the lens fla
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
 a frame into RDRAM a list late (rt64 73e9ca0): in Windy, headless Chrome 155 on a busy host, 10.7-11.8 ms a list
 against 14.8-16.4 with the exact copy, the camera stepping aside from walls the same way (its README has the table).
+Its CPU writes to framebuffers whose copy is pending (0x3B7600, 0x3D6300, 0xE9D80 and others) in every chapter, 89
+times over its shader plan, 30 of them while the copy landed, which before rt64 cb75c5c the copy overwrote; with
+cb75c5c no chapter crashed.
 A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2` stops at the first
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
 `-sINITIAL_MEMORY` loses to `frontend/`'s 1536MB, because an interface library's link options come after the target's;
@@ -654,8 +666,10 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
   instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
   queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
-  reuses a framebuffer's memory once the RDP is done: the copy lands while the game runs, after its hash check, and
-  Donkey Kong 64's boot crashed on it (The web target).
+  puts something in a framebuffer's memory once the RDP is done: the copy lands while the game runs, and though it
+  keeps every word the CPU changed (rt64 cb75c5c), a word written with the value it held looks untouched and gets the
+  frame; Donkey Kong 64's boot crashed on it (The web target). The console reports each write it kept, so a page
+  run through a game's levels with the late copy says whether its CPU touches a framebuffer with one pending.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
   for the main thread costs 50-120 µs from a pthread in a race, a queued one ~0.4 µs, and a 100 µs sleep there ~1.9 ms.
