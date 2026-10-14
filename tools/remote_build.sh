@@ -13,7 +13,8 @@
 #
 # Usage: BUILD_HOST=<host> tools/remote_build.sh [-C <checkout>] [-n <name>] <command>
 #   sync [<commit>]   send <commit> (default HEAD, with the uncommitted changes to tracked files; untracked files are
-#                     not sent) to the copy, check it out there with its submodules, apply runtime-patches/, and copy
+#                     not sent) to the copy, check it out there with its submodules, patch them
+#                     (tools/apply_runtime_patches.sh: N64Recomp-browser's patches/, then runtime-patches/), and copy
 #                     roms/*.z64 when they differ. A commit on origin is fetched there, not sent.
 #   run "<command>"   run a bash command in the image, in the copy's root, the copy's own HOME (the rest of the
 #                     host's home isn't mounted)
@@ -100,7 +101,8 @@ for sub in \$moved; do
 done
 for i in 1 2; do git submodule sync -q --recursive; git submodule update -q --init --recursive; done
 if [ -f tools/apply_runtime_patches.sh ]; then
-    # A patch main has since edited makes the script stop before it touches anything: then all of them start over.
+    # A patch main has since edited (N64Recomp-browser's, when it moved) makes the script stop before it touches
+    # anything: then all of them start over.
     bash tools/apply_runtime_patches.sh > /dev/null 2>&1 || {
         git submodule foreach --recursive -q 'git reset -q --hard && git clean -fdq'
         bash tools/apply_runtime_patches.sh > /dev/null; }
