@@ -427,8 +427,8 @@ browsers on integrated graphics.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
-submodules, patched by N64Recomp-browser v0.28.0 (14cfef7), and GoldenEye on upstream's at the forks' bases, patched by
-e6a64ac (below), since on v0.28.0 its page crawled through the boot in Chrome (next paragraph); Banjo, Majora's
+submodules and GoldenEye on upstream's at the forks' bases, all patched by N64Recomp-browser 7b80155 (the canvas in the
+browser's preferred format, rt64 c6cf6c4 and 6734747); Banjo, Majora's
 Mask and Donkey Kong 64 include its `frontend/build_speed.cmake`: their BUILDING.md says to keep `build-web`
 inside the checkout and put ccache on `PATH`. Their `main.cpp` plays sound through `audio_output.h` on Emscripten, as
 this game's does (headless Chrome: the DK Rap, Banjo's intro and Majora's Mask's attract demo play, nothing short after
@@ -454,8 +454,13 @@ even pacing, not the build threads: each pipeline built behind the game drops a 
 second paced every game frame to one present, 8-12 a second in GoldenEye's credits (on an idle host the DK Rap played
 alike with its boot section on 6, 3, 2 or 1 threads, and waiting for it up front lost 90k-140k audio frames). With rt64
 6734747, cold on an idle host, GoldenEye drew 48-62 through its boot and credits (173k-223k audio frames short in 120 s
-against 525k-1.2M) and Donkey Kong 64 55-56 once its boot's ~3 s of black ended, none short. GoldenEye stays on e6a64ac until its page is rebuilt on it.
-Firefox waits for each section as before. A section's name is one word: rt64's shader
+against 525k-1.2M) and Donkey Kong 64 55-56 once its boot's ~3 s of black ended, none short. On 7b80155, cold, local
+builds in headless Chrome 155 (RTX 2070, an idle host, 2026-10-14): Banjo waited 1.4 s for 12 shaders and drew 55 a
+second, Majora's Mask 0.3 s for Clock Town, Donkey Kong 64 and GoldenEye nothing, Factory and Dam included (GoldenEye
+48-60 through its boot, credits and Dam, all 202 built 72 s in), Conker 2.8 s for Windy, each with no WebGPU error.
+Firefox waits for each section as before; from Pages in Firefox 158 on 7b80155: Banjo 5.2 s, Majora's Mask's boot 2.8 s
+and Clock Town 7.8 s, Donkey Kong 64's boot 12.5 s and the Factory 2.3 s, GoldenEye's boot 8.1 s and Dam 13.4 s,
+Conker's boot 7.2 s and Windy 11.2 s, then about 60 presents a second. A section's name is one word: rt64's shader
 specializer reads no further. Their CMakeLists.txt pick rt64's dxc by the host's processor, not the target's (wasm32
 chose the arm64 `dxc-linux` on a Linux host).
 
@@ -558,7 +563,9 @@ then each chapter (It's War in two) and seven multiplayer modes against bots; no
 (RTX 2070) the boot took 3.0 s cold and 0.2 s warm (7.8 and 3.2 s as one list), Windy 3.5 and 2.5 s, and the game draws
 with no WebGPU errors. In Firefox 157 the boot took 12.4 s and Windy 14.7 s, then the bar drew 55
 frames a second and Windy 57 (Chrome 155: 59 and 59), on the forks; on upstream's tools with `patches/` the boot took
-10.4 s and the bar drew with sound. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
+10.4 s and the bar drew with sound. Further into Windy, after its checkpoint 33's cutscene, Firefox 158 loses the
+WebGPU device ("Out of Memory" creating a bind group, the GPU's memory flat), on v0.28.0's page as on 7b80155's; Chrome
+plays on. Before plume 94a4795 Firefox refused `setBindGroup`'s dynamic
 offsets as a view of the heap past 2 GB and the page never started, and before rt64 d070e5c it drew 9-13. Render to RAM stays on: the
 camera reads a row of the depth buffer to step aside from walls and the lens flares read it to hide behind them
 (without it, only the game's far fill). On the page it made a list take 20-27 ms against 7-11 off, so the page copies
