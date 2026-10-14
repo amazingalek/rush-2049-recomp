@@ -202,6 +202,9 @@ rt64 6734747, 0fda089  presents paced (e8e162e) only while one in ten or more is
                        pipeline built behind the game drops one every second or two, and 2 in a second held a slow
                        game at one present a frame (GoldenEye's credits at 8-12 a second); the console says when it
                        starts and ends
+plume 16e608a          the display's rate from the period that explains the most animation frames (each interval
+rt64 07d608e           tried, the callbacks merged into frames of at least 0.9 of it): Firefox's extra callbacks, 0.1-5
+                       ms after a frame, a quarter of them and more, read as hundreds of Hz in the shortest quarter
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -406,8 +409,12 @@ does all of this in the same work:
 - Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
 - One page at a time on the machine, in any browser. With two Firefox windows each playing a page, one window's
   animation frames came in bursts (a quarter of the intervals under 5 ms, up to 20 presents between two frames), which
-  plume's displayTiming reads as a display of hundreds of Hz, so RT64 interpolated to it: 80-150 presents a second on
-  a 59 Hz display, the pacing switching on and off. nvidia-smi's memory is the whole GPU's, so a page that fills video
+  plume's displayTiming read as a display of hundreds of Hz before plume 16e608a, so RT64 interpolated to it: 80-150
+  presents a second on a 59 Hz display, the pacing switching on and off. Bursts didn't come again on a quiet host (one
+  window or two, 1256x645 or 3840x2000), so to test that path, a preload replaces `requestAnimationFrame` with one that
+  delivers some callbacks 0.1-5 ms after the last frame: with 30% of them early (83-91 a second), Rush 2049's page on
+  the old rule presented 101-139 a second in Firefox 158, the pacing switching on and off, and on 16e608a 59-60, as
+  without them (Chrome 155 headless: 56-60). nvidia-smi's memory is the whole GPU's, so a page that fills video
   memory beside it (Conker's in Firefox) shows as the other page's climb and its "Out of Memory". Rush 2049 and Banjo
   played alone in Firefox 158 kept 57-62 presents a second at 1256x645 and 3840x2000, the memory flat.
 
@@ -432,8 +439,10 @@ GoldenEye's, Majora's Mask's and Conker's build. In Firefox GoldenEye, Conker an
 `rgba8unorm` pages they fell to 20-33 for spells, and Majora's Mask draws 20-29 for ~10 s after the boot's wait. Rush
 2049's and Banjo's pages present unevenly in Firefox, Rush 2049's above the display's rate (69-152 a second on 59 Hz)
 with rt64's pacing switching on and off, and the GPU's memory climbs: Banjo's from 1.9 to 6.5 GB in 25 s, Rush 2049's
-from ~2 to 6.9-7.6 GB within its shader wait, once to WebGPU's "Out of Memory" and invalid textures after it. Not yet
-explained. Banjo presents 31-136 a second in Firefox at 1256x645 too; the other four hold 60 there.
+from ~2 to 6.9-7.6 GB within its shader wait, once to WebGPU's "Out of Memory" and invalid textures after it. Those two
+ran beside another Firefox page, whose bursts of animation frames the display's rate read as hundreds of Hz (the bullet
+on one page at a time; plume 16e608a reads through them); alone they kept 57-62. Beside one, Banjo presented 31-136
+a second at 1256x645 too; the other four held 60 there.
 
 What the canvas format changed: Firefox presents a canvas through a texture shared with its compositor only when it is
 `bgra8unorm` (`wgpu_client_use_shared_texture_in_swapChain`), and the pages were `rgba8unorm`, so every present was
