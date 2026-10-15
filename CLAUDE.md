@@ -780,7 +780,9 @@ palette load past the end of memory, a texture 8404 texels wide) in two runs of 
 timeouts out. From Pages (main 550269d, N64Recomp-browser 33d43a9), cold, RTX 2070: Firefox 158 waited 19-29 s for
 the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter test's, then drew 59-60 with no sound
 short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
-and drew 57 beside another page; no WebGPU errors. Its BUILDING.md has the web page's section.
+and drew 57 beside another page; no WebGPU errors. On 7277a2e (main 4448311), from Pages, cold, RTX 2070: Chrome 155
+headless waited 4.1 s for 9 and drew 58.2, Firefox 158 18.2 s for the boot and drew 57.8, sound short only in the
+waits, no WebGPU errors. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
@@ -1110,7 +1112,9 @@ in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing 
 (Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
 2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
 boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
-and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. What to know:
+and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. From Pages on
+7277a2e (main 9be63a2, rt64 8bea892), RTX 2070, 1256x645, cold: Chrome 155 headless waited 0.5 s for 4 and drew 58.6,
+Firefox 158 2.1 and 7.4 s and drew 59.5, sound short only in the waits, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
