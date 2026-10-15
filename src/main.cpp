@@ -647,6 +647,12 @@ int main(int argc, char** argv) {
     recompui::programconfig::set_program_name(rush2049::program_name);
     recompui::programconfig::set_program_id(rush2049::program_id);
 
+#ifndef __EMSCRIPTEN__
+    // Started from Explorer the log would go nowhere, so it goes to rush2049.log beside the settings and saves.
+    rush2049::start_log_file(recompui::file::get_app_folder_path(),
+        (std::string{ rush2049::program_name } + " " + version_string).c_str());
+#endif
+
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     if (!reset_audio(48000)) {
         return EXIT_FAILURE;
@@ -714,7 +720,10 @@ int main(int argc, char** argv) {
     };
 
     ultramodern::error_handling::callbacks_t error_handling_callbacks{
-        .message_box = recompui::message_box,
+        .message_box = [](const char* msg) {
+            fprintf(stderr, "[error] %s\n", msg);
+            recompui::message_box(msg);
+        },
     };
 
     recomp::start({

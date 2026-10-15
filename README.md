@@ -124,7 +124,12 @@ to `us.toml` or `syms/`, run it again before `ninja`. To change the symbols, edi
 
 **Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
-otherwise pick it with Load ROM. It opens no console window; to see its log, run it with `--show-console`.
+otherwise pick it with Load ROM. It opens no console window and writes its log to `rush2049.log` in the folder its
+settings are in (above: beside the exe with a `portable.txt`), keeping the run before as `rush2049.old.log`; to watch
+the log as it plays, run it with `--show-console` instead.
+
+**If it crashes**, the log ends with where it crashed: open an [issue](https://github.com/amazingalek/rush-2049-recomp/issues)
+with `rush2049.log` attached (or `rush2049.old.log`, if you have started the game again since) and what you were doing.
 
 ## In a browser
 

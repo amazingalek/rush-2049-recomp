@@ -1,8 +1,11 @@
-// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail).
+// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), and
+// writes stdout and stderr to a log file when they have nowhere else to go (start_log_file), so a player has the
+// trace to send in.
 //
 // Recompiled functions are named after their N64 address (func_800A11E4, ovl1_func_8038A634, ...), or by
 // syms/names.toml for the few we have worked out (draw_tex_rect, ...), so a trace
-// of host frames points straight at the game code that crashed.
+// of host frames points straight at the game code that crashed. The symbols are in the .pdb beside the exe, which
+// the release zip carries; without it a frame is printed as the module and the offset into it.
 
 #include "crash_handler.h"
 #include "debug_probe.h"
@@ -13,6 +16,7 @@
 #include <Windows.h>
 #include <DbgHelp.h>
 #include <TlHelp32.h>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -50,7 +54,12 @@ bool sym_initialized = false;
 void init_symbols() {
     if (!sym_initialized) {
         SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES);
-        SymInitialize(GetCurrentProcess(), nullptr, TRUE);
+        // The exe's own folder first, where the release zip puts the .pdb, whatever the working directory.
+        wchar_t exe[MAX_PATH];
+        DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring path{ exe, n };
+        path = path.substr(0, path.find_last_of(L"\\/") + 1) + L";.";
+        SymInitializeW(GetCurrentProcess(), n > 0 && n < MAX_PATH ? path.c_str() : nullptr, TRUE);
         sym_initialized = true;
     }
 }
@@ -102,9 +111,19 @@ void print_trace(CONTEXT* context, HANDLE thread = GetCurrentThread(), bool only
             fprintf(stderr, "  #%02d %016llX %s+0x%llX (%s:%lu)\n", depth, (unsigned long long)pc, name,
                     (unsigned long long)displacement, line.FileName, line.LineNumber);
         }
-        else {
+        else if (name[0] != '?') {
             fprintf(stderr, "  #%02d %016llX %s+0x%llX\n", depth, (unsigned long long)pc, name,
                     (unsigned long long)displacement);
+        }
+        else {
+            DWORD64 base = SymGetModuleBase64(process, pc);
+            char module[MAX_PATH] = "?";
+            if (base != 0) {
+                GetModuleFileNameA(reinterpret_cast<HMODULE>(base), module, MAX_PATH);
+            }
+            const char* file = std::max(strrchr(module, '\\'), strrchr(module, '/'));
+            fprintf(stderr, "  #%02d %016llX %s+0x%llX\n", depth, (unsigned long long)pc, file ? file + 1 : module,
+                    (unsigned long long)(pc - base));
         }
     }
 }
@@ -117,10 +136,28 @@ LONG WINAPI crash_filter(EXCEPTION_POINTERS* info) {
         fprintf(stderr, " (%s 0x%016llX)", rec->ExceptionInformation[0] == 1 ? "write" : "read",
                 (unsigned long long)rec->ExceptionInformation[1]);
     }
-    fprintf(stderr, " on thread %lu\n", GetCurrentThreadId());
+    fprintf(stderr, " on thread %lu", GetCurrentThreadId());
+    {
+        std::lock_guard threads_lock{ game_threads_mutex };
+        auto it = game_threads.find(GetCurrentThreadId());
+        if (it != game_threads.end()) {
+            fprintf(stderr, " (game thread %d)", it->second->id);
+        }
+    }
+    fprintf(stderr, "\n");
     print_trace(info->ContextRecord);
     fflush(stderr);
     return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// abort() (std::terminate's too) ends the process without an exception, so the filter above never sees it.
+void abort_signal(int) {
+    std::lock_guard lock{ crash_mutex };
+    fprintf(stderr, "\n[crash] abort on thread %lu\n", GetCurrentThreadId());
+    CONTEXT context{};
+    RtlCaptureContext(&context);
+    print_trace(&context);
+    fflush(stderr);
 }
 
 void dump_all_stacks() {
@@ -176,6 +213,7 @@ std::string rush2049::game_thread_name(const OSThread* t) {
 
 void rush2049::install_crash_handler() {
     SetUnhandledExceptionFilter(crash_filter);
+    signal(SIGABRT, abort_signal);
 }
 
 void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
@@ -473,7 +511,72 @@ void rush2049::start_stack_sampler(int, bool) {}
 void rush2049::start_profiler(int, int) {}
 void rush2049::start_byte_watch(uint32_t) {}
 
+#endif
+
+#if defined(_WIN32) || defined(__linux__)
+
+#include <cstdio>
+#include <ctime>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
+namespace {
+
+bool stderr_goes_nowhere() {
+#ifdef _WIN32
+    // A window program started without a redirect has no standard handles.
+    HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    return h == nullptr || h == INVALID_HANDLE_VALUE;
 #else
+    // A desktop launcher hands it /dev/null or the journal's socket; a terminal, a file or a pipe is somebody's.
+    struct stat st;
+    if (isatty(STDERR_FILENO)) {
+        return false;
+    }
+    return fstat(STDERR_FILENO, &st) != 0 || (!S_ISREG(st.st_mode) && !S_ISFIFO(st.st_mode));
+#endif
+}
+
+FILE* reopen(const std::filesystem::path& path, FILE* stream) {
+#ifdef _WIN32
+    return _wfreopen(path.c_str(), L"a", stream);
+#else
+    return freopen(path.c_str(), "a", stream);
+#endif
+}
+
+} // namespace
+
+void rush2049::start_log_file(const std::filesystem::path& dir, const char* first_line) {
+    if (!stderr_goes_nowhere()) {
+        return;
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    const std::filesystem::path log = dir / "rush2049.log";
+    std::filesystem::rename(log, dir / "rush2049.old.log", ec);
+    // Both streams append to the one file, unbuffered, so their lines land in order and a crash loses none.
+    if (reopen(log, stdout) == nullptr || reopen(log, stderr) == nullptr) {
+        return;
+    }
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
+    time_t now = time(nullptr);
+    char date[32];
+    strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    fprintf(stderr, "%s, started %s\n", first_line, date);
+}
+
+#else
+
+void rush2049::start_log_file(const std::filesystem::path&, const char*) {}
+
+#endif
+
+#if !defined(_WIN32) && !defined(__linux__)
 
 void rush2049::start_hw_watch(uint32_t) {}
 void rush2049::install_crash_handler() {}
