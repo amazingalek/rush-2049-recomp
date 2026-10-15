@@ -241,6 +241,7 @@ text = "    rush2049_rewind_frame_draw(rdram);"
 # Save Ghosts (src/controller_pak.cpp). At the end of a Ghost Race that recorded a ghost, func_800F64D4 offers the
 # SAVE GHOST prompt (func_800F1210 state 4, which writes the ghost to the pak) only when byte 0x801148E4 is set, and
 # otherwise keeps the ghost in RAM for the session. The game sets that byte only for a profile named "000F1CC5 EJK".
+# rush2049_ghost_save_check sets it with Save Ghosts on, for a player profile on a pak (Just Play has no file to save to).
 [[patches.hook]]
 func = "func_800F64D4"
 before_vram = 0x800F66F8

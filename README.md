@@ -50,6 +50,10 @@ option has an Original value that runs the game as it shipped.
   out when the audio output falls behind.
 - **Rewind**: hold Rewind (Backspace, or the left stick click) in a single-player race to run the race backwards,
   up to about a minute.
+- **Save Ghosts**: after a Ghost Race finished inside the time limit, the game's own SAVE GHOST prompt comes up and
+  writes the ghost to the Controller Pak, where it is offered in later Ghost Races on that track, after a restart too.
+  As shipped, the game kept a ghost only until you quit (as GHOST 1) and showed the prompt only for a developer's
+  profile name. Saving needs a player profile on the pak: Just Play has none, so it keeps the ghost for the session.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't
   run out of room. Rumble Pak is also supported (General tab, Controller Accessory).
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
@@ -80,6 +84,7 @@ closed. For the game exactly as it shipped, set every Original value:
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |
+| Save Ghosts | Save Ghosts | `general.json` `save_ghosts` | `"On"` | `"Original"` (no SAVE GHOST prompt) |
 
 Not options, because they don't change the game: the keyboard and gamepad layouts, playback at half the game's
 sample level so its mix doesn't clip, and the Expansion Pak, which the game was built for.
