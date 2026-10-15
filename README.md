@@ -11,9 +11,9 @@ drawing it. It is not an emulator and it contains no game data: you supply your 
 
 **Status: playable** on Windows. Menus, Single Race, Circuit, Ghost Race, Stunt and Battle run at full speed, all
 six race tracks race to the results screen, two- and four-player split screen renders, and Controller Pak saves
-survive a restart. There is a Linux build too, which boots and runs the title screen and attract races with a
-software Vulkan driver, but nobody has played it on a Linux GPU or a Steam Deck yet. Multiplayer has only been driven
-from one pad.
+survive a restart. There is a Linux build too, which boots and runs the title screen and first attract race with a
+software Vulkan driver (that driver then crashes on a bug of its own), but nobody has played it on a Linux GPU or a
+Steam Deck yet. Multiplayer has only been driven from one pad.
 
 **In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
