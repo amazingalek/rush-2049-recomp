@@ -237,6 +237,9 @@ rt64 f34b19c           took to come back, the time spent at the presents-in-flig
 rt64 8bea892           tile copies reused from one display list to the next, on every build: the HLE side never recorded
                        a copy's size, so it never reused one, and with render to RAM off the renderer kept a texture for
                        every copy it made (Banjo-Tooie's page 4 a frame, 2.7 GB in 200 s, its frame rate falling)
+rt64 7734fe4           native builds only: the SPIR-V of every shader that reads the texture sets built for per-draw
+                       textures too (<name>PerDraw, ~2 MB) and picked by perDrawTextures(), so a Vulkan device without
+                       descriptor indexing gets shaders that match its layout (Debian 12's lavapipe crashed at boot)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -324,19 +327,17 @@ crashes on one of its own `llvmpipe` threads as the second race begins, about 50
 first draw with one of RT64's specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val
 with every texture index NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes
 and zero in others; the validation layers report nothing, and with the ubershader alone it plays on. Debian 12's
-lavapipe (Mesa 22.3) crashes at boot, creating the ubershader's first pipeline. It has no descriptor indexing, so RT64
-binds textures per draw (rt64-0007, `perDrawTextures`), but the desktop build's shaders declare the 8192-texture array,
-which that layout doesn't hold, and lavapipe's lowering then sets a bit for each of the 8192 in a 128-bit set
-(`textures_used`) and overwrites the shader. Not a race: on one core it crashes the same. Built with
-`-DRT64_PER_DRAW_TEXTURES=ON` it boots there and draws the attract race. So the desktop game needs a Vulkan driver with
-descriptor indexing, as upstream RT64 does. No Linux GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
+lavapipe (Mesa 22.3) has no descriptor indexing, so RT64 binds textures per draw there (rt64-0007, `perDrawTextures`)
+with the shaders built for it (rt64 7734fe4): it boots and draws the attract race, 90 s in two runs of two. With the
+8192-texture array's shaders in that layout, lavapipe's lowering set a bit for each of the 8192 in a 128-bit set
+(`textures_used`) and overwrote the shader, crashing at boot. No Linux GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
 the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
 is the shape. The zip holds no ROM.
 
 Publishing a page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what a page runs
 publishes that page right after the merge, as part of the same work and without being asked. That is anything the
 page is built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
-`lib/N64Recomp-browser` pin that changes code, the prebuilt shader list), not docs, tests, CI or a tool the build
+`lib/N64Recomp-browser` pin that changes the page's code, the prebuilt shader list), not docs, tests, CI or a tool the build
 doesn't run. Then it plays the page from Pages in Chrome and Firefox (The web target). Each page's commit names the
 main it was built from (`git log -1 origin/gh-pages`), so a page behind main is easy to see; one found behind is
 published by whoever finds it.
@@ -353,10 +354,13 @@ game drawing. Each is built by its BUILDING.md steps (in the same Docker image, 
 since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
 fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
-merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change to the
-web support (a fork, a new N64Recomp-browser commit) reaches every game in the same work, never a later card: the
-agent moves this repo and every game fork onto it, rebuilds and republishes each page, plays each one in Chrome and
-Firefox, and updates the games table, before calling it done. A fork's rt64 older
+merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change reaches the
+builds whose code it changes. A change to what a page runs (a fork, a new N64Recomp-browser commit) reaches every game
+in the same work, never a later card: the agent moves this repo and every game fork onto it, rebuilds and republishes
+each page, plays each one in Chrome and Firefox, and updates the games table, before calling it done. A change that
+only the desktop build compiles (code outside the WGSL build, rt64 7734fe4) reaches this game's desktop build through
+its `lib/N64Recomp-browser` pin, checked by a run of the desktop game: no page is republished, and no game fork moves
+for it (a fork carries only what its page needs). A web-only change needs no desktop release. A fork's rt64 older
 than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the WGSL made from an `.hlsli`
 that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding doesn't exist"
 (moving onto 7910126 rebuilds every shader). The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
@@ -624,8 +628,8 @@ BUILDING.md says how). Firefox runs the game through the wait and never lost it.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` shows, an error with `frontend/` (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
-says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
-right a list late, but boots in headless Chrome 155 crashed a second or two after Start (a call through a function
+says more); its transition snapshots are copied on the GPU. Its copy lands a list late on the page (rt64 73e9ca0),
+and the photo comes out right that way. Before RecompFrontend-web 75fe596 it stayed exact: boots in headless Chrome 155 crashed a second or two after Start (a call through a function
 table out of bounds, or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with
 cb75c5c's, none in 24 with the copy taken late but never written to RDRAM (a test build) or in about 12 exact. Those
 copies were the runtime's dummy frames, not the game's: before a game starts, every VI draws one into 0x80700000 or
@@ -634,8 +638,11 @@ audio microcode at 0x80741310), and a late copy of the last one landed on it. Wh
 (Firefox on a laptop's Intel UHD) even the exact copies fell seconds behind the VIs that queued them and kept landing
 after Start, so the page never booted there ("Failed to execute task type: 2", "index out of bounds"); a preload that
 holds `onSubmittedWorkDone` back 100 ms reproduces it in Firefox on any GPU. RecompFrontend-web 75fe596 keeps the
-dummy frame out of RDRAM on a page; the late copy hasn't been tried on this game again since. A list in DK Isles takes 6-7 ms exact,
-about 2 late (RTX 2070). `patches/shader_survey.c`'s `film` gives the
+dummy frame out of RDRAM on a page, and with it none of 29 cold boots in headless Chrome 155 and 25 in Firefox 158
+crashed with the late copy. Most report one kept CPU write, at 0x00034000: the boot draws there and the overlay at
+0x80024000 zeroes its BSS over it, which drops that copy; that framebuffer's black is 0x00010001, so no zero is written
+over a zero. A list through the menus and DK Isles takes 7.8 ms exact, 3.7 late (median, RTX 2070).
+`patches/shader_survey.c`'s `film` gives the
 camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
 
@@ -1004,11 +1011,12 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   `?render-to-ram=1` on the headless page).
   Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
-  instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
+  instead, and the list stops waiting: Conker's, GoldenEye's and Donkey Kong 64's pages do. Majora's Mask can't: it flushes its task
   queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
   puts something in a framebuffer's memory once the RDP is done: the copy lands while the game runs, and though it
   keeps every word the CPU changed (rt64 cb75c5c), a word written with the value it held looks untouched and gets the
-  frame. (Donkey Kong 64's boot crash with it, once put down to this, was the runtime's dummy frames: The web target.) The console reports each write it kept, so a page
+  frame. (Donkey Kong 64's boot crash with it, once put down to this, was the runtime's dummy frames: The web target.)
+  The console reports each write it kept, so a page
   run through a game's levels with the late copy says whether its CPU touches a framebuffer with one pending.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
