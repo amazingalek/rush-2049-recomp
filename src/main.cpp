@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.1";
+const std::string version_string = "0.1.2";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -541,6 +541,20 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     timeBeginPeriod(1);
 #endif
+#if defined(__linux__) && !defined(__EMSCRIPTEN__)
+    // RecompFrontend finds assets/ (and portable.txt) in the working directory, which a desktop launcher or a shell
+    // elsewhere doesn't set to the release's folder: when assets/ isn't there, work from the program's own folder.
+    // A dev build run from the repo's root keeps the root, which is where assets/ is.
+    {
+        std::error_code ec;
+        if (!std::filesystem::is_directory("assets", ec)) {
+            std::filesystem::path exe_dir = std::filesystem::read_symlink("/proc/self/exe", ec).parent_path();
+            if (!ec && std::filesystem::is_directory(exe_dir / "assets", ec)) {
+                std::filesystem::current_path(exe_dir, ec);
+            }
+        }
+    }
+#endif
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--boot") == 0) {
@@ -633,6 +647,12 @@ int main(int argc, char** argv) {
     recompui::programconfig::set_program_name(rush2049::program_name);
     recompui::programconfig::set_program_id(rush2049::program_id);
 
+#ifndef __EMSCRIPTEN__
+    // Started from Explorer the log would go nowhere, so it goes to rush2049.log beside the settings and saves.
+    rush2049::start_log_file(recompui::file::get_app_folder_path(),
+        (std::string{ rush2049::program_name } + " " + version_string).c_str());
+#endif
+
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     if (!reset_audio(48000)) {
         return EXIT_FAILURE;
@@ -700,7 +720,10 @@ int main(int argc, char** argv) {
     };
 
     ultramodern::error_handling::callbacks_t error_handling_callbacks{
-        .message_box = recompui::message_box,
+        .message_box = [](const char* msg) {
+            fprintf(stderr, "[error] %s\n", msg);
+            recompui::message_box(msg);
+        },
     };
 
     recomp::start({

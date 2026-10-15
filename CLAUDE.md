@@ -218,8 +218,9 @@ rt64 53f8e55           CPU hot paths, on every build (the same hashes and matche
 rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a rect drawn backwards sampled on the texel
                        the RDP picks, not a native pixel behind it
 N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
-0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
-                       the queue's head, on every build (upstream's never returned)
+0df8334, f0e0884       in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
+                       the queue's head, on every build (upstream's never returned), and nothing for a null queue
+                       (osDestroyThread of a thread on none read one: Majora's Mask's page crashed leaving its pause menu)
 rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
                        at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
                        page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
@@ -228,6 +229,14 @@ rt64 9ed449d           and counted again from a second after any prebuilt shader
                        30 a second for 10 s)
 N64ModernRuntime       OSThread's context pointer past libultra's thprof (0x1C) on a 32-bit host: on wasm it sat there,
 53b5583                and Banjo-Tooie writes thprof creating its threads, so osStartThread read a wild pointer
+RecompFrontend 75fe596 the dummy workload (before a game starts, each VI's frame at 0x80700000) not copied to RDRAM on a
+                       page: Firefox's late GPU reports left them seconds behind, landing on Donkey Kong 64's code after Start
+plume 90ef8e5          ?present-stats prints a line every 5 s: presents a second, how long each one's onSubmittedWorkDone
+rt64 f34b19c           took to come back, the time spent at the presents-in-flight cap, the animation frames a second;
+                       ?presents-in-flight=<1-8> sets the cap (2): to read on a laptop's GPU what holds presents back
+rt64 8bea892           tile copies reused from one display list to the next, on every build: the HLE side never recorded
+                       a copy's size, so it never reused one, and with render to RAM off the renderer kept a texture for
+                       every copy it made (Banjo-Tooie's page 4 a frame, 2.7 GB in 200 s, its frame rate falling)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -300,9 +309,15 @@ the screen: `PrintWindow(hwnd, hdc, 3)` on the window of the process you started
 
 Cut on a machine with the ROM, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp` and write
 `releases/v<version>.md` in the same PR, merge, then from a clean checkout of `origin/main` with a full setup:
-`bash tools/release.sh` (`--dry-run` builds and zips only). It builds Release in `build-release/`, zips the exe, its
-DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, and publishes GitHub release `v<version>` with
-that file as its notes, refusing without one. The notes are for someone downloading the zip: what changed in the
+`BUILD_HOST=<host> bash tools/release.sh` (`--dry-run` builds and packs only). It builds Release in `build-release/`,
+zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, builds the same for Linux on
+the build host (`tools/remote_build.sh -d tools/docker/Dockerfile.linux`: Ubuntu 22.04 for glibc 2.35, SDL2 2.30.3 and
+libatomic carried beside the binary, a `.tar.gz`), and publishes GitHub release `v<version>` with both and that file
+as its notes, refusing without one. The Linux build is checked by running it in distribution containers on the build
+host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Debian
+12, Ubuntu 24.04 and Arch boot it, find the ROM and draw the title and attract race, and lavapipe (Mesa 22.3 to 26.2)
+then crashes on one of its own `llvmpipe` threads, in a fragment shader's texture descriptor read, about 50 s in as
+the second attract race loads. No Linux GPU has run it. The notes are for someone downloading it: what changed in the
 desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
 other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
 
@@ -338,7 +353,8 @@ that changed, and Conker's page built that way loaded and then failed every pipe
 
 ```
 --boot                       skip the launcher (needs the ROM already stored)
---show-console               open a console for the log (the exe is a window program; a redirect gets it too)
+--show-console               open a console for the log (the exe is a window program; a redirect gets it too, and
+                             with neither it goes to rush2049.log in the app folder, the crash trace with it)
 --stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
 --players <n>                ports 2..n copy port 1 (and --input), to drive split screen with one pad
 --input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
@@ -507,6 +523,13 @@ paced to 20-30 for 10 s straight after; the others no wait and 56-60. Firefox 15
 for Majora's Mask's, 16.1 s for Donkey Kong 64's, 8.6 s for GoldenEye's, 5.2 s for Conker's and 2.2 and 7.3 s for
 Rush 2049's two sections, then 57-60 every one. No sound short after the waits, no WebGPU errors.
 
+Every page again on d3b9031 (N64ModernRuntime f0e0884, RecompFrontend 75fe596, rt64 f34b19c), the six forks' gh-pages
+files served locally and Rush 2049 from a local build of the same commit, cold, 1256x645, RTX 2070, a host with every
+core busy with other work, 2026-10-15: Majora's Mask through its plan's whole clock-town section, pause menu
+included, 59 presents a second in Chrome 155 and Firefox 158, where before f0e0884 it stopped ~35 s in; Banjo, Donkey
+Kong 64, GoldenEye, Conker, Wave Race 64 and Rush 2049 through their boots and 25-60 s of play, 57-60 in Chrome and
+52-59 in Firefox (Conker's median holds its wait), Firefox's waits 3.2-18.9 s, no WebGPU errors or exceptions.
+
 A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
 the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
 so the game made every buffer its minimum (GoldenEye64Recomp-web 59dc8e8, `get_frames_remaining`). A game's
@@ -590,12 +613,16 @@ Its hooks and patches called C functions whose signatures didn't match the call,
 signature mismatch` shows, an error with `frontend/` (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
 says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
-right a list late, but the boot inflates the game's main overlay (`.global_asm`, 0x805FB300-0x80761050, code and data)
-over its two boot framebuffers (0x80700000 and 0x80725800, 320x241), and a late copy landing there corrupts it. Boots
-in headless Chrome 155 crashed a second or two after the inflate began (a call through a function table out of bounds,
-or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with cb75c5c's, which keeps every
-word the CPU changed, so the words that matter are ones written with the value they held, and none in 24 with the copy
-taken late but never written to RDRAM (a test build) or in about 12 exact. A list in DK Isles takes 6-7 ms exact,
+right a list late, but boots in headless Chrome 155 crashed a second or two after Start (a call through a function
+table out of bounds, or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with
+cb75c5c's, none in 24 with the copy taken late but never written to RDRAM (a test build) or in about 12 exact. Those
+copies were the runtime's dummy frames, not the game's: before a game starts, every VI draws one into 0x80700000 or
+0x80725800 (320x241), where the game's main overlay loads (`.global_asm`, 0x805FB300-0x80761050, code and data, its
+audio microcode at 0x80741310), and a late copy of the last one landed on it. Where the GPU reports finished work late
+(Firefox on a laptop's Intel UHD) even the exact copies fell seconds behind the VIs that queued them and kept landing
+after Start, so the page never booted there ("Failed to execute task type: 2", "index out of bounds"); a preload that
+holds `onSubmittedWorkDone` back 100 ms reproduces it in Firefox on any GPU. RecompFrontend-web 75fe596 keeps the
+dummy frame out of RDRAM on a page; the late copy hasn't been tried on this game again since. A list in DK Isles takes 6-7 ms exact,
 about 2 late (RTX 2070). `patches/shader_survey.c`'s `film` gives the
 camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
@@ -676,6 +703,28 @@ A fixed 3 GB heap measured no faster than the growth. `-sGROWABLE_ARRAYBUFFERS=2
 compute pass: emdawnwebgpu passes WebGPU views of the heap, which Chrome refuses over a growable buffer. A game's own
 `target_link_options(<target> PRIVATE -sINITIAL_MEMORY=...)` overrides `frontend/`'s 1536MB, which
 `n64recomp_browser_frontend_page` puts first on the link line.
+
+`amazingalek/wave-race-64-recomp-web` is danielgomesvieira2000's Wave Race 64: Recompiled (MIT, itself written with
+Claude; US Rev A only). Its `lib/RT64`, `lib/N64ModernRuntime` and `lib/RecompFrontend` are upstream's, at its commits,
+patched by `apply.cmake` project by name (its folder is `RT64`, `patches.txt` says `rt64`), and then by the port's own
+Python patch scripts, all from clean submodules by its `tools/web_patch.sh`. Its modern water renderer is a patch on
+RT64 that the web patch moves, so `tools/patch_rt64_water.py` applies a version for a web-patched RT64
+(`tools/patches/rt64-water-web.patch`): its 16 shaders included as WGSL blobs, and WaterSprayVS's
+`!all(isfinite(v))` written `!all(abs(v) <= FLT_MAX)`, since naga rejected `||` between a `vec4<bool>` and a bool.
+`wr64.toml` ignores `gspFast3DTextStart` and `aspMainTextStart`: the Docker image's binutils hand N64Recomp the
+microcode's splat labels as functions. Fast3D draws as it does natively, with no rt64-web change. Render to RAM is
+off on the page: the CPU's one read of a frame, `sys_main.c`'s copy of the last frame in display modes 1 and 2, is
+never reached (nothing sets `D_800DAB1C` to either; the pause dims the live scene). Its list, 139 descriptions and
+100 pipelines in 13 sections, the boot 63 (launcher to course select), is recorded by code (`tools/record_shaders.sh`,
+`tools/shader_plan.json`): the menus passed with page_driver's `pressUntil` on `gGameState` (0x800DAB24), a course
+picked by its place in the course select cursor (0x800DA9D0), and each of the nine raced 50 s with the gas held
+(page_driver's `down`/`up`) while `tools/autopilot.js` steers for the next buoy on its side, from the camera and the
+buoy table in RDRAM, the countdown that retires a rider off the course held up; then Championship and Stunt Mode,
+no 2P. From Pages (main b4bcb9d, N64Recomp-browser 421f902), cold, menus and a Sunset Bay race, RTX 2070: Chrome 155
+headless waited 1.8 s (14 of the boot) and drew 59.6, all 100 built 3-4 s later; Firefox 158 waited 3.5 s for the
+boot's 50 and 0.5 s for the course's 13 and drew 59.6; at 3840x2000 59.6 and 59.4, no WebGPU errors, sound short only
+in the waits. Render to RAM on and off measured alike there (a 20 fps game: it costs a list's wall time, not frames
+or CPU). Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
@@ -820,7 +869,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   attract race went from 59 accepted with the queue a second further behind every 10 s to 46 at ~32 ms, Chrome's
   from 54 at 150-190 ms to 53 at ~27 ms; one in flight gave 34-39 (Firefox calls back late), three 47-48 at ~50 ms.
   Without the extra pass both keep 59-60. The resolution stays as the player set it, so a GPU that can't draw it at
-  60 shows fewer frames, not later ones.
+  60 shows fewer frames, not later ones. How late: with `?present-stats` (plume 90ef8e5), this game's attract race
+  on the RTX 2070 at 1256x645 had each present's onSubmittedWorkDone back 11-16 ms after it (median, 14-18 at p90)
+  in Firefox 158 and 3 ms in Chrome 155 headless, both at 60 a second. The cap leaves two presents ~33 ms, so a
+  callback that comes back later than that costs presents while the GPU idles: the suspect for Firefox's 20-30 on a
+  laptop's Intel graphics (Banjo, Conker), where Chrome drew 40-48. `?presents-in-flight=3` tries a wider cap.
 - On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3) it still crawled, and at Resolution Original it ran well. The canvas is CSS-sized,
@@ -892,7 +945,7 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
   puts something in a framebuffer's memory once the RDP is done: the copy lands while the game runs, and though it
   keeps every word the CPU changed (rt64 cb75c5c), a word written with the value it held looks untouched and gets the
-  frame; Donkey Kong 64's boot crashed on it (The web target). The console reports each write it kept, so a page
+  frame. (Donkey Kong 64's boot crash with it, once put down to this, was the runtime's dummy frames: The web target.) The console reports each write it kept, so a page
   run through a game's levels with the late copy says whether its CPU touches a framebuffer with one pending.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
@@ -997,7 +1050,11 @@ for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built
 against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
 second (median) and no WebGPU errors either way. At 3840x2000, cold: from Pages on ed8764a Firefox 158 waited 2.4 s
 and 8.5 s and then drew 59-60 with the GPU's memory flat; a local build on 2efc795 (rt64 9ed449d) waited 2.2 and 7.3 s
-in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. What to know:
+in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. On a laptop's Intel UHD
+(Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
+2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
+boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
+and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
