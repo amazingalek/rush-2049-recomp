@@ -11,8 +11,9 @@ drawing it. It is not an emulator and it contains no game data: you supply your 
 
 **Status: playable** on Windows. Menus, Single Race, Circuit, Ghost Race, Stunt and Battle run at full speed, all
 six race tracks race to the results screen, two- and four-player split screen renders, and Controller Pak saves
-survive a restart. Linux builds in CI but nobody has played on it yet, and multiplayer has only been driven from
-one pad.
+survive a restart. There is a Linux build too, which boots and runs the title screen and attract races with a
+software Vulkan driver, but nobody has played it on a Linux GPU or a Steam Deck yet. Multiplayer has only been driven
+from one pad.
 
 **In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
@@ -85,8 +86,11 @@ sample level so its mix doesn't clip, and the Expansion Pak, which the game was 
 
 ## Getting it running
 
-You need your own copy of the game either way. A release on the [Releases page](https://github.com/amazingalek/rush-2049-recomp/releases) is a zip of
-the game without the ROM: unzip it and run `Rush2049Recompiled.exe` from that folder (see **Run** below). Otherwise
+You need your own copy of the game either way. A release on the [Releases
+page](https://github.com/amazingalek/rush-2049-recomp/releases) is the game without the ROM, for Windows (a zip: unzip
+it and run `Rush2049Recompiled.exe` from that folder, see **Run** below) and for Linux on x86-64 (a `.tar.gz`: extract
+it and run `Rush2049Recompiled` in that folder). The Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or
+later), a Vulkan driver, and GTK 3 and FreeType, which desktop distributions have; it brings its own SDL2. Otherwise
 build it from source.
 
 **The ROM.** *San Francisco Rush 2049 (U)*, the US release, as a `.z64` with SHA-1
@@ -94,10 +98,10 @@ build it from source.
 revisions are not supported.
 
 **The toolchain** (Windows): LLVM's clang-cl 15 or newer with the MSVC build tools and the Windows SDK, CMake 3.x
-(CMake 4 rejects some of the submodules), Ninja, GNU make, Python 3.11, and for the mod-support library a clang
-built with the MIPS target (MSYS2's is; llvm.org's Windows builds are not) plus `ld.lld`. Make a Python venv at
-`.venv` with `spimdisasm`, `rabbitizer` and `numpy`. On Linux (Ubuntu 24.04, what CI builds; nobody has played on
-it yet): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and pass
+(CMake 4 rejects some of the submodules), Ninja, GNU make, Python 3.11, and for the mod-support library a clang built
+with the MIPS target (MSYS2's is; llvm.org's Windows builds are not) plus `ld.lld`. Make a Python venv at `.venv` with
+`spimdisasm`, `rabbitizer` and `numpy`. On Linux (Ubuntu 24.04, what CI builds; releases are built on 22.04,
+`tools/docker/Dockerfile.linux`): `clang lld libsdl2-dev libgtk-3-dev libfreetype-dev`, CMake 3.31 and Ninja, and pass
 `-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++` to `tools/recompile.sh` and to the configure.
 
 **Build**, from the repo root in a bash shell:
@@ -120,7 +124,12 @@ to `us.toml` or `syms/`, run it again before `ninja`. To change the symbols, edi
 
 **Run** `build/Rush2049Recompiled.exe` from the repo's root. The launcher finds the ROM by itself if it sits
 in a usual place (the working directory, `roms/`, Downloads, Desktop, Documents and one level of subfolders),
-otherwise pick it with Load ROM. It opens no console window; to see its log, run it with `--show-console`.
+otherwise pick it with Load ROM. It opens no console window and writes its log to `rush2049.log` in the folder its
+settings are in (above: beside the exe with a `portable.txt`), keeping the run before as `rush2049.old.log`; to watch
+the log as it plays, run it with `--show-console` instead.
+
+**If it crashes**, the log ends with where it crashed: open an [issue](https://github.com/amazingalek/rush-2049-recomp/issues)
+with `rush2049.log` attached (or `rush2049.old.log`, if you have started the game again since) and what you were doing.
 
 ## In a browser
 
