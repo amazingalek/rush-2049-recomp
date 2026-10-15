@@ -739,7 +739,14 @@ ways, so that is not the page's). A game whose CPU copies into a framebuffer RT6
 needs it. Its waits on the clock already let other threads in (its `patches/clocks.c`). Its list, 414 descriptions, is
 recorded by `tools/shader_survey.js` (no patches library needed: the menus' own cursor picks the test, the vehicle
 and class are written at the pilot select), a load a test, merged into a section per island and vehicle
-(`tools/merge_shader_sections.py`), the boot 94 (the title and the menus).
+(`tools/merge_shader_sections.py`): 414 descriptions, 298 pipelines in 28 sections, the boot 80 (the title and the
+menus). Its scheduler took a frame busy for 50 retraces for a hung RCP and sent itself the RDP's done message, so
+during Firefox's boot wait it built frames into display lists RT64 hadn't read, and the page stopped on the mix (a
+palette load past the end of memory, a texture 8404 texels wide) in two runs of three; `patches/sched.c` takes the
+timeouts out. From Pages (main 550269d, N64Recomp-browser 33d43a9), cold, RTX 2070: Firefox 158 waited 19-29 s for
+the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter test's, then drew 59-60 with no sound
+short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
+and drew 57 beside another page; no WebGPU errors. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
