@@ -270,6 +270,9 @@ plume-0005             a query pool read of only the queries written (Vulkan cal
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
+rt64-0005              every slot of the texture set holds a live texture: the blank tile texture in a new set's slots
+                       and an evicted texture's, which eviction marks changed (a tile whose texture missed the cache
+                       read slot 0, never written or left on a deleted texture)
 ```
 
 The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:
@@ -314,12 +317,16 @@ zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `
 the build host (`tools/remote_build.sh -d tools/docker/Dockerfile.linux`: Ubuntu 22.04 for glibc 2.35, SDL2 2.30.3 and
 libatomic carried beside the binary, a `.tar.gz`), and publishes GitHub release `v<version>` with both and that file
 as its notes, refusing without one. The Linux build is checked by running it in distribution containers on the build
-host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Debian
-12, Ubuntu 24.04 and Arch boot it, find the ROM and draw the title and attract race, and lavapipe (Mesa 22.3 to 26.2)
-then crashes on one of its own `llvmpipe` threads, in a fragment shader's texture descriptor read, about 50 s in as
-the second attract race loads. No Linux GPU has run it. The notes are for someone downloading it: what changed in the
-desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
-other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
+host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Ubuntu
+24.04 and Arch boot it, find the ROM and draw the title and the first attract race, and then lavapipe (Mesa 25, 26.2)
+crashes on one of its own `llvmpipe` threads as the second race begins, about 50 s in. That is lavapipe's: it is the
+first draw with one of RT64's specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val
+with every texture index NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes
+and zero in others; the validation layers report nothing, and with the ubershader alone it plays on. Debian 12's
+lavapipe (Mesa 22.3) crashed at boot in 4 runs of 4, creating the ubershader's pipelines on RT64's threads. No Linux
+GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
+the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
+is the shape. The zip holds no ROM.
 
 Publishing a page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what a page runs
 publishes that page right after the merge, as part of the same work and without being asked. That is anything the
