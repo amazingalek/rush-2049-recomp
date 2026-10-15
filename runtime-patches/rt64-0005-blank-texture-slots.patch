@@ -1,0 +1,72 @@
+--- a/src/render/rt64_framebuffer_renderer.h
++++ b/src/render/rt64_framebuffer_renderer.h
+@@ -198,6 +198,7 @@
+         void submitRasterScene(RenderWorker *worker, const Framebuffer &framebuffer, RenderFramebufferStorage *fbStorage, const RasterScene &rasterScene, bool &depthState);
+         void addFramebuffer(const DrawParams &p);
+         void updateIndexTextures(std::vector<BufferUploader::Upload> &shaderUploads);
++        void prepareDummyTileTexture(RenderWorker *worker);
+         void updateDrawTextureSets(RenderWorker *worker, const std::vector<interop::GPUTile> &gpuTiles, const std::vector<interop::RDPTile> &rdpTiles);
+         void endFramebuffers(RenderWorker *worker, const DrawBuffers *drawBuffers, const OutputBuffers *outputBuffers, const std::vector<interop::GPUTile> &gpuTiles, const std::vector<interop::RDPTile> &rdpTiles, bool rtEnabled);
+         void recordSetup(RenderWorker *worker, std::vector<BufferUploader *> bufferUploaders, RSPProcessor *rspProcessor, VertexProcessor *vertexProcessor, const OutputBuffers *outputBuffers, bool rtEnabled);
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -387,6 +387,17 @@
+             return;
+         }
+ 
++        // Every slot of the set holds a texture, the blank tile texture where no other goes: each slot of a new set,
++        // and a slot whose texture was evicted. A tile reads the slot createGPUTiles gave it, slot 0 for a texture
++        // not in the cache, whether or not a texture is there, and a partially bound slot never written is undefined
++        // to read: lavapipe's is a null descriptor, which crashed when a load grew the cache and made a new set.
++        prepareDummyTileTexture(worker);
++        if (createSet) {
++            for (uint32_t i = 0; i < descTextureSet->textureCacheSize; i++) {
++                descTextureSet->setTexture(i, dummyTileTexture.get(), RenderTextureLayout::SHADER_READ);
++            }
++        }
++
+         // Make sure the versions vector matches the texture cache size.
+         descriptorTextureVersions.resize(textureCacheSize, 0);
+ 
+@@ -400,6 +411,7 @@
+ 
+                 descriptorTextureVersions[i] = textureCacheVersions[i];
+                 if (textureCacheTextures[i] == nullptr) {
++                    descTextureSet->setTexture(i, dummyTileTexture.get(), RenderTextureLayout::SHADER_READ);
+                     continue;
+                 }
+ 
+@@ -1898,13 +1910,9 @@
+         }
+     }
+ 
+-    // Without descriptor indexing: gives every draw a set with the textures of its tiles, a slot per tile, shared by
+-    // the draws that use the same textures and samplers. A slot's sampler is the linear one for the address modes
+-    // RasterPS samples that tile with: the draw's nativeSampler0 for slot 0 and nativeSampler1 for the others (with LOD
+-    // and the same modes on every tile, both are tile 0's), or with dynamic tiles each tile's own. Sets are kept from one workload to the next and only the slots whose
+-    // texture changed are written, since WebGPU makes a new bind group for a set that changed. A slot with no texture
+-    // (no tile, a TMEM tile, or a tile past the draw's) gets a blank one, so every set has the same layout.
+-    void FramebufferRenderer::updateDrawTextureSets(RenderWorker *worker, const std::vector<interop::GPUTile> &gpuTiles, const std::vector<interop::RDPTile> &rdpTiles) {
++    // The blank texture a slot with no other texture gets, made and moved to SHADER_READ in the worker's command list
++    // the first time.
++    void FramebufferRenderer::prepareDummyTileTexture(RenderWorker *worker) {
+         if (dummyTileTexture == nullptr) {
+             dummyTileTexture = worker->device->createTexture(RenderTextureDesc::Texture2D(1, 1, 1, RenderFormat::R8G8B8A8_UNORM));
+             dummyTileTexture->setName("Framebuffer Renderer Tile Dummy");
+@@ -1914,6 +1922,16 @@
+             worker->commandList->barriers(RenderBarrierStage::GRAPHICS, RenderTextureBarrier(dummyTileTexture.get(), RenderTextureLayout::SHADER_READ));
+             dummyTileTextureTransitioned = true;
+         }
++    }
++
++    // Without descriptor indexing: gives every draw a set with the textures of its tiles, a slot per tile, shared by
++    // the draws that use the same textures and samplers. A slot's sampler is the linear one for the address modes
++    // RasterPS samples that tile with: the draw's nativeSampler0 for slot 0 and nativeSampler1 for the others (with LOD
++    // and the same modes on every tile, both are tile 0's), or with dynamic tiles each tile's own. Sets are kept from one workload to the next and only the slots whose
++    // texture changed are written, since WebGPU makes a new bind group for a set that changed. A slot with no texture
++    // (no tile, a TMEM tile, or a tile past the draw's) gets a blank one, so every set has the same layout.
++    void FramebufferRenderer::updateDrawTextureSets(RenderWorker *worker, const std::vector<interop::GPUTile> &gpuTiles, const std::vector<interop::RDPTile> &rdpTiles) {
++        prepareDummyTileTexture(worker);
+ 
+         if (descTMEMSet == nullptr) {
+             descTMEMSet = std::make_unique<FramebufferRendererDescriptorTMEMSet>(worker->device);
