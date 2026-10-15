@@ -270,6 +270,7 @@ plume-0005             a query pool read of only the queries written (Vulkan cal
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
+rt64-0006              a fill rect's clear clamped to its target (a rect ending on the scissor's edge is a pixel wider)
 ```
 
 The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:

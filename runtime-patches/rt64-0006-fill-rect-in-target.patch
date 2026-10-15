@@ -1,0 +1,28 @@
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -624,8 +624,22 @@
+             case InstanceDrawCall::Type::FillRect: {
+                 const auto &clearRect = drawCall.clearRect;
+                 RenderTarget *chosenTarget = (fbStorage->colorTarget != nullptr) ? fbStorage->colorTarget : fbStorage->depthTarget;
+-                bool rectCoversWholeTarget = (clearRect.rect.left == 0) && (clearRect.rect.top == 0) && (uint32_t(clearRect.rect.right) == chosenTarget->width) && (uint32_t(clearRect.rect.bottom) == chosenTarget->height);
+-                const RenderRect *clearRects = rectCoversWholeTarget ? nullptr : &clearRect.rect;
++
++                // Rush 2049 patch: a fill rect's lower right corner is inclusive, so one a game ends on the scissor's
++                // edge (0 to 320 for a 320-wide image) comes out a pixel wider than the target, which the RDP clips
++                // to the scissor. A clear outside the render pass is undefined in Vulkan
++                // (VUID-vkCmdClearAttachments-pRects-00016), so the rect is clamped to the target.
++                RenderRect fillRect = clearRect.rect;
++                fillRect.left = std::max(fillRect.left, 0);
++                fillRect.top = std::max(fillRect.top, 0);
++                fillRect.right = std::min(fillRect.right, int32_t(chosenTarget->width));
++                fillRect.bottom = std::min(fillRect.bottom, int32_t(chosenTarget->height));
++                if ((fillRect.right <= fillRect.left) || (fillRect.bottom <= fillRect.top)) {
++                    break;
++                }
++
++                bool rectCoversWholeTarget = (fillRect.left == 0) && (fillRect.top == 0) && (uint32_t(fillRect.right) == chosenTarget->width) && (uint32_t(fillRect.bottom) == chosenTarget->height);
++                const RenderRect *clearRects = rectCoversWholeTarget ? nullptr : &fillRect;
+                 uint32_t clearRectCount = rectCoversWholeTarget ? 0 : 1;
+                 if (fbStorage->colorTarget != nullptr) {
+                     worker->commandList->clearColor(0, clearRect.color, clearRects, clearRectCount);
