@@ -32,6 +32,8 @@ namespace {
 
 constexpr uint32_t game_state_addr = 0x801174B4;  // the frame loop's state bits; 0x00400000 in a race
 constexpr uint32_t race_clock_addr = 0x801543CC;  // float, written by the tick
+constexpr uint32_t sound_count_addr = 0x80110254; // the sound manager's count of sounds started (not saved)
+constexpr uint32_t sound_shift_addr = 0x801460F8; // a sound's ID is that count shifted left by this, or a slot
 constexpr uint32_t saved_lo = 0x8010FD80;         // the end of the main code segment
 constexpr uint32_t saved_hi = 0x80800000;
 constexpr size_t history_cap = 128 * 1024 * 1024;
@@ -88,8 +90,12 @@ bool tick_running = false;     // thread 5 is inside a tick
 std::vector<Range> saved;      // what is saved, as offsets into RDRAM
 std::vector<uint8_t> shadow;   // the saved memory as of the last frame saved, indexed like RDRAM
 bool have_shadow = false;
-// Per frame, newest last: { offset, length, old contents } for each piece that changed.
-std::deque<std::vector<uint8_t>> history;
+uint32_t shadow_sounds = 0;    // the sound count as of the shadow
+struct Frame {
+    std::vector<uint8_t> changes;  // { offset, length, old contents } for each piece that changed
+    uint32_t sounds;               // the sound count as of those old contents
+};
+std::deque<Frame> history;     // newest last
 size_t history_bytes = 0;
 uint32_t frames_back = 0;     // frames stepped back since Rewind was pressed
 
@@ -140,9 +146,10 @@ void save_frame(uint8_t* rdram) {
     });
     record.shrink_to_fit();
     history_bytes += record.size();
-    history.push_back(std::move(record));
+    history.push_back({ std::move(record), shadow_sounds });
+    shadow_sounds = read_word(rdram, sound_count_addr);
     while (history_bytes > history_cap) {
-        history_bytes -= history.front().size();
+        history_bytes -= history.front().changes.size();
         history.pop_front();
     }
 }
@@ -152,7 +159,7 @@ void step_back(uint8_t* rdram) {
     if (history.empty()) {
         return;  // as far back as it goes: stay there
     }
-    const std::vector<uint8_t>& record = history.back();
+    const std::vector<uint8_t>& record = history.back().changes;
     for (size_t at = 0; at < record.size();) {
         uint32_t p, n;
         memcpy(&p, record.data() + at, 4);
@@ -162,46 +169,36 @@ void step_back(uint8_t* rdram) {
         at += 8 + n;
     }
     history_bytes -= record.size();
+    shadow_sounds = history.back().sounds;
     history.pop_back();
     frames_back++;
 }
 
 // The sound manager stays live, and the race knows its sounds only by the ID the manager handed out. A sound started
-// in the stretch that was rewound is one the race no longer knows of; most end by themselves (one-shots, and loops
-// whose owner handle dies), but a looping sound without an owner would play on for the rest of the race, and the race
-// starts another when it gets there again. So when Rewind is let go, each such sound whose ID is nowhere in the race's
-// memory is made one that times out, and the sound thread frees it at its next update. Only flags change, no links,
-// so it doesn't matter where the sound thread was stopped.
+// in the stretch that was rewound, or by a tick while Rewind was held, is one the race no longer knows of. One-shots
+// end by themselves, but a loop plays or waits for a voice for the rest of the race, owner or not, and the race starts
+// another when it gets there again: with Rewind used a lot they filled the manager's 80 sounds, and the next sound the
+// race started (func_80092278 takes one off the free list unchecked) crashed. The manager's count of sounds started
+// isn't saved, and each frame saved keeps its value, so when Rewind is let go every loop started since the frame it
+// went back to is made one that times out, and the sound thread frees it at its next update. Only flags change, no
+// links, so it doesn't matter where the sound thread was stopped.
 int release_orphaned_sounds(uint8_t* rdram) {
     constexpr uint32_t lists[] = { 0x80144028, 0x80144C58 };  // playing, and waiting for a voice
-    std::vector<uint32_t> nodes, ids;
+    const uint32_t shift = read_word(rdram, sound_shift_addr) & 31;
+    const uint32_t now = read_word(rdram, sound_count_addr);
+    int released = 0;
     for (uint32_t head : lists) {
         for (uint32_t node = read_word(rdram, head), n = 0; node != 0 && n < 256; node = read_word(rdram, node), n++) {
-            bool loops = rdram[(node + 0x19 - 0x80000000u) ^ 3] != 0;
-            if (loops && read_word(rdram, node + 0x3C) == 0) {  // no owner
-                nodes.push_back(node);
-                ids.push_back(read_word(rdram, node + 0xC));
+            const uint32_t started = read_word(rdram, node + 0xC) >> shift;
+            // The count goes back to 1 when it runs out, which takes days of play.
+            const bool after = now >= shadow_sounds ? started >= shadow_sounds && started <= now
+                                                    : started >= shadow_sounds || started <= now;
+            if (after && rdram[(node + 0x19 - 0x80000000u) ^ 3] != 0) {
+                rdram[(node + 0x19 - 0x80000000u) ^ 3] = 0;
+                const float expired = -100.0f;  // past the -10 at which the sound thread frees a sound that timed out
+                memcpy(rdram + (node + 0x20 - 0x80000000u), &expired, 4);
+                released++;
             }
-        }
-    }
-    std::vector<bool> known(ids.size(), false);
-    for (Range r : saved) {
-        for (uint32_t p = r.lo; p < r.hi; p += 4) {
-            uint32_t w = *(const uint32_t*)(rdram + p);
-            for (size_t i = 0; i < ids.size(); i++) {
-                if (w == ids[i]) {
-                    known[i] = true;
-                }
-            }
-        }
-    }
-    int released = 0;
-    for (size_t i = 0; i < nodes.size(); i++) {
-        if (!known[i]) {
-            rdram[(nodes[i] + 0x19 - 0x80000000u) ^ 3] = 0;
-            const float expired = -100.0f;  // past the -10 at which the sound thread frees a sound that timed out
-            memcpy(rdram + (nodes[i] + 0x20 - 0x80000000u), &expired, 4);
-            released++;
         }
     }
     return released;
@@ -255,6 +252,7 @@ extern "C" void rush2049_rewind_frame_draw(uint8_t* rdram) {
         for (Range r : saved) {
             memcpy(shadow.data() + r.lo, rdram + r.lo, r.hi - r.lo);
         }
+        shadow_sounds = read_word(rdram, sound_count_addr);
         have_shadow = true;
         return;
     }
