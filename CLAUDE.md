@@ -240,6 +240,10 @@ rt64 8bea892           tile copies reused from one display list to the next, on 
 rt64 7734fe4           native builds only: the SPIR-V of every shader that reads the texture sets built for per-draw
                        textures too (<name>PerDraw, ~2 MB) and picked by perDrawTextures(), so a Vulkan device without
                        descriptor indexing gets shaders that match its layout (Debian 12's lavapipe crashed at boot)
+rt64 b052049           on WebGPU a pixel shader that picks its slot per pixel (mip LOD) finds every tap's texel first
+                       and loads them in one switch over the draw's slots, not a switch a tap: GoldenEye's largest
+                       224 → 185 KB of WGSL, its list 19.0 → 16.3 MB, Firefox's waits for its boot and Dam a fifth
+                       and nearly a third shorter
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -511,7 +515,10 @@ Donkey Kong 64     -  12.6   52-56   57-61    26% 47   27% 48      0.20  0.37
 ```
 
 Chrome builds a page's whole list behind the game (rt64 950188f), so its GPU process takes ~1.2 cores while
-GoldenEye's and Majora's Mask's build, and GoldenEye draws 45-55 until all 202 are built (65 s). Firefox holds about 60
+GoldenEye's and Majora's Mask's build, and GoldenEye draws 45-55 until all 202 are built (65 s). Not all of that is
+the builds: from Pages in Chrome 155 with a window (`--headed`) on 2026-10-15 it drew 52-58 while they built, 59-60
+in the title and credits once all were built (88 s), and then 48-55 in the attract demo's levels with nothing left
+to build and the GPU 75-78% busy, so at that size a level's own drawing is the rest. Firefox holds about 60
 after every wait. Before rt64 58fc4e4 it didn't: rt64's pacing judged drops on the first few dozen presents after a
 wait longer than its 2 s window, or after each try of the number above, and held Donkey Kong 64 at its 30 for 70 s
 after the boot's wait and Majora's Mask at its 20 nearly throughout (on from the launcher, at about the display's rate).
@@ -926,8 +933,12 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   three largest, pixel shaders with mip LOD (224 KB of WGSL), 1.2-2.4 s each. The WGSL's size is the page's lever:
   rt64 c6cf6c4 took Majora's Mask's Clock Town from 15.1-18.2 s to 9.3-10.4, its boot from 3.3-3.9 to 2.3-2.7,
   Conker's boot from 7.1-8.3 to 6.0-6.9 and Rush 2049's from 13.6-14.6 to 11.9-12.6 (Firefox 158, the same pipelines
-  built by a test page, Rush 2049's by its page; a host 13-66% busy). What's left in its LOD shaders is a texture
-  read per tap behind a switch of 8 slots, since the tile there is picked per pixel.
+  built by a test page, Rush 2049's by its page; a host 13-66% busy). In its LOD shaders the tile is picked per
+  pixel, so a level's four taps are loaded in one switch of 8 slots (rt64 b052049), not one a tap: GoldenEye's
+  largest RasterPS built in ~60% of the time in a test page (Firefox 158 and Chrome 155), and from its page Firefox
+  waited 8.7-9.4 s for the boot and 14.0-21.7 s for Dam against 10.4-11.6 and 17.7-23.3 (three runs each,
+  interleaved, beside another card's desktop game). Rush 2049's waits barely moved (2.3 and 6.7 s): few of its
+  shaders have mip LOD. Merging the two mip levels' switches too would take ~5-8% more off the largest.
 - Firefox (157) never holds a WebGPU page back: it takes 60 frames a second whatever the GPU finishes, and Chrome
   throttles the page itself. On the laptop under Where a frame goes, at 4K and 200% scaling, a present costs
   Firefox's GPU process and DWM about twice what it costs Chrome (up to 6 times in DWM), ~70% of the Intel chip at 60
