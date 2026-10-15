@@ -17,7 +17,7 @@
 +        // Every slot of the set holds a live texture, the blank tile texture where no other goes: each slot of a new
 +        // set, and a slot whose texture was evicted (and is deleted after this workload). A tile reads the slot
 +        // createGPUTiles gave it, slot 0 for a texture not in the cache whether or not a texture is there, and a
-+        // slot never written or left on a deleted texture is undefined to read: on lavapipe it crashed the draw.
++        // slot never written or left on a deleted texture is undefined to read, whatever a driver does with it.
 +        prepareDummyTileTexture(worker);
 +        if (createSet) {
 +            for (uint32_t i = 0; i < descTextureSet->textureCacheSize; i++) {
