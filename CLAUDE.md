@@ -1020,7 +1020,11 @@ for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built
 against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
 second (median) and no WebGPU errors either way. At 3840x2000, cold: from Pages on ed8764a Firefox 158 waited 2.4 s
 and 8.5 s and then drew 59-60 with the GPU's memory flat; a local build on 2efc795 (rt64 9ed449d) waited 2.2 and 7.3 s
-in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. What to know:
+in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. On a laptop's Intel UHD
+(Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
+2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
+boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
+and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
