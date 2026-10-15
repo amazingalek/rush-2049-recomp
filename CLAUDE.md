@@ -442,7 +442,12 @@ in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing 
 boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
 and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. From Pages on
 7277a2e (main 9be63a2, rt64 8bea892), RTX 2070, 1256x645, cold: Chrome 155 headless waited 0.5 s for 4 and drew 58.6,
-Firefox 158 2.1 and 7.4 s and drew 59.5, sound short only in the waits, no WebGPU errors.
+Firefox 158 2.1 and 7.4 s and drew 59.5, sound short only in the waits, no WebGPU errors. On v0.46.0 (cb6b259: plume's
+presents in flight, fewer WebGPU calls a draw, readback and swap chain answers off the device thread), main 15c6dce
+built by the retest, RTX 2070, a host 14-27% busy, a fresh profile each: at 1256x645 Chrome 155 headless waited not at
+all and drew 58.0, Firefox 158 waited 2.4 and 6.2 s and drew 59.2; at 3840x2000 (25 s played) Chrome 59.0, Firefox
+56.0 and 57.6 with race's wait inside the 25 s, 58.6-59.5 between the waits; sound short only in the waits, no WebGPU
+errors.
 
 - With the whole list as one section, Firefox 157 (RTX 2070, a busy host) waited 27.9-30.2 s at the bar; then the
   attract races and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap
