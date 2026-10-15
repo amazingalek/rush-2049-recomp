@@ -295,9 +295,15 @@ the screen: `PrintWindow(hwnd, hdc, 3)` on the window of the process you started
 
 Cut on a machine with the ROM, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp` and write
 `releases/v<version>.md` in the same PR, merge, then from a clean checkout of `origin/main` with a full setup:
-`bash tools/release.sh` (`--dry-run` builds and zips only). It builds Release in `build-release/`, zips the exe, its
-DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, and publishes GitHub release `v<version>` with
-that file as its notes, refusing without one. The notes are for someone downloading the zip: what changed in the
+`BUILD_HOST=<host> bash tools/release.sh` (`--dry-run` builds and packs only). It builds Release in `build-release/`,
+zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, builds the same for Linux on
+the build host (`tools/remote_build.sh -d tools/docker/Dockerfile.linux`: Ubuntu 22.04 for glibc 2.35, SDL2 2.30.3 and
+libatomic carried beside the binary, a `.tar.gz`), and publishes GitHub release `v<version>` with both and that file
+as its notes, refusing without one. The Linux build is checked by running it in distribution containers on the build
+host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Debian
+12, Ubuntu 24.04 and Arch boot it, find the ROM and draw the title and attract race, and lavapipe (Mesa 22.3 to 26.2)
+then crashes on one of its own `llvmpipe` threads, in a fragment shader's texture descriptor read, about 50 s in as
+the second attract race loads. No Linux GPU has run it. The notes are for someone downloading it: what changed in the
 desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
 other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
 

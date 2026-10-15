@@ -11,8 +11,8 @@
 #   the tree and the tag.
 # The Linux build runs through tools/remote_build.sh (a copy named release-linux on $BUILD_HOST, which gets roms/ too)
 # in tools/docker/Dockerfile.linux, Ubuntu 22.04, so it needs glibc 2.35 or newer. It carries the libSDL2 it was built
-# with beside the binary (RUNPATH $ORIGIN), as the Windows zip carries SDL2.dll, and is a .tar.gz so the binary stays
-# executable.
+# with and libatomic (not on every system) beside the binary (RUNPATH $ORIGIN), as the Windows zip carries SDL2.dll, and
+# is a .tar.gz so the binary stays executable.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -70,7 +70,7 @@ rb run "set -e
         { grep -E ' error|FAILED|undefined' build-release/build.log | head -20; exit 1; }
     mkdir -p out/$linux
     cp build-release/Rush2049Recompiled recompcontrollerdb.txt COPYING out/$linux/
-    cp -L /usr/local/lib/libSDL2-2.0.so.0 out/$linux/
+    cp -L /usr/local/lib/libSDL2-2.0.so.0 /usr/lib/x86_64-linux-gnu/libatomic.so.1 out/$linux/
     patchelf --set-rpath '\$ORIGIN' out/$linux/Rush2049Recompiled
     cp -r assets out/$linux/
     tar -C out -czf out/$linux.tar.gz $linux"
