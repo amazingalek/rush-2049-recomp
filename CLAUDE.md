@@ -226,6 +226,9 @@ rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whol
 rt64 9ed449d           and counted again from a second after any prebuilt shader wait: a wait shorter than the 2 s left
                        presents from before it in the count beside the burst after it (Banjo's 1.5 s in Chrome, then
                        30 a second for 10 s)
+plume 90ef8e5          ?present-stats prints a line every 5 s: presents a second, how long each one's onSubmittedWorkDone
+rt64 f34b19c           took to come back, the time spent at the presents-in-flight cap, the animation frames a second;
+                       ?presents-in-flight=<1-8> sets the cap (2): to read on a laptop's GPU what holds presents back
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -847,7 +850,11 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   attract race went from 59 accepted with the queue a second further behind every 10 s to 46 at ~32 ms, Chrome's
   from 54 at 150-190 ms to 53 at ~27 ms; one in flight gave 34-39 (Firefox calls back late), three 47-48 at ~50 ms.
   Without the extra pass both keep 59-60. The resolution stays as the player set it, so a GPU that can't draw it at
-  60 shows fewer frames, not later ones.
+  60 shows fewer frames, not later ones. How late: with `?present-stats` (plume 90ef8e5), this game's attract race
+  on the RTX 2070 at 1256x645 had each present's onSubmittedWorkDone back 11-16 ms after it (median, 14-18 at p90)
+  in Firefox 158 and 3 ms in Chrome 155 headless, both at 60 a second. The cap leaves two presents ~33 ms, so a
+  callback that comes back later than that costs presents while the GPU idles: the suspect for Firefox's 20-30 on a
+  laptop's Intel graphics (Banjo, Conker), where Chrome drew 40-48. `?presents-in-flight=3` tries a wider cap.
 - On the laptop under Where a frame goes (Intel UHD on D3D12) the page crawled until its specialized pipelines were
   built, and its RTX A3000 played at once. That was the ubershader drawing meanwhile, not the builds: with the
   ubershader alone (plume f6d48d3) it still crawled, and at Resolution Original it ran well. The canvas is CSS-sized,
