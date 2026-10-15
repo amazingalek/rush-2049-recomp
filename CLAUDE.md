@@ -298,9 +298,15 @@ the screen: `PrintWindow(hwnd, hdc, 3)` on the window of the process you started
 
 Cut on a machine with the ROM, never in CI (no ROM, so no link). Bump `version_string` in `src/main.cpp` and write
 `releases/v<version>.md` in the same PR, merge, then from a clean checkout of `origin/main` with a full setup:
-`bash tools/release.sh` (`--dry-run` builds and zips only). It builds Release in `build-release/`, zips the exe, its
-DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, and publishes GitHub release `v<version>` with
-that file as its notes, refusing without one. The notes are for someone downloading the zip: what changed in the
+`BUILD_HOST=<host> bash tools/release.sh` (`--dry-run` builds and packs only). It builds Release in `build-release/`,
+zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `out/`, builds the same for Linux on
+the build host (`tools/remote_build.sh -d tools/docker/Dockerfile.linux`: Ubuntu 22.04 for glibc 2.35, SDL2 2.30.3 and
+libatomic carried beside the binary, a `.tar.gz`), and publishes GitHub release `v<version>` with both and that file
+as its notes, refusing without one. The Linux build is checked by running it in distribution containers on the build
+host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Debian
+12, Ubuntu 24.04 and Arch boot it, find the ROM and draw the title and attract race, and lavapipe (Mesa 22.3 to 26.2)
+then crashes on one of its own `llvmpipe` threads, in a fragment shader's texture descriptor read, about 50 s in as
+the second attract race loads. No Linux GPU has run it. The notes are for someone downloading it: what changed in the
 desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
 other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
 
@@ -1021,7 +1027,11 @@ for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built
 against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
 second (median) and no WebGPU errors either way. At 3840x2000, cold: from Pages on ed8764a Firefox 158 waited 2.4 s
 and 8.5 s and then drew 59-60 with the GPU's memory flat; a local build on 2efc795 (rt64 9ed449d) waited 2.2 and 7.3 s
-in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. What to know:
+in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. On a laptop's Intel UHD
+(Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
+2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
+boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
+and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
