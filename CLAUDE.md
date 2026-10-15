@@ -234,6 +234,9 @@ RecompFrontend 75fe596 the dummy workload (before a game starts, each VI's frame
 plume 90ef8e5          ?present-stats prints a line every 5 s: presents a second, how long each one's onSubmittedWorkDone
 rt64 f34b19c           took to come back, the time spent at the presents-in-flight cap, the animation frames a second;
                        ?presents-in-flight=<1-8> sets the cap (2): to read on a laptop's GPU what holds presents back
+rt64 8bea892           tile copies reused from one display list to the next, on every build: the HLE side never recorded
+                       a copy's size, so it never reused one, and with render to RAM off the renderer kept a texture for
+                       every copy it made (Banjo-Tooie's page 4 a frame, 2.7 GB in 200 s, its frame rate falling)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -729,6 +732,55 @@ headless waited 1.8 s (14 of the boot) and drew 59.6, all 100 built 3-4 s later;
 boot's 50 and 0.5 s for the course's 13 and drew 59.6; at 3840x2000 59.6 and 59.4, no WebGPU errors, sound short only
 in the waits. Render to RAM on and off measured alike there (a 20 fps game: it costs a list's wall time, not frames
 or CPU). Its BUILDING.md has the web page's section.
+
+`amazingalek/BanjoTooieRecompiled-web` is Vidanox's Banjo-Tooie: Recompiled (GPL-3.0, US). Its `lib/rt64`,
+`lib/N64ModernRuntime`, `lib/RecompFrontend` and `lib/N64Recomp` are upstream's, patched by its own `patches/`
+(`tools/setup_deps.py`) and then by `apply.cmake` project by project; `tools/build_web.sh` leaves out the two files
+where they meet (`thread_queue_remove`, which its runtime patch fixes too, and N64Recomp's jump table analysis, which
+its N64Recomp patch rewrites), and patches from scratch whenever the submodules aren't as it left them
+(`.git/web-patched`). Its committed `RecompiledFuncs/` is upstream N64Recomp's C, so the script recompiles the game with
+the web-patched N64Recomp into `build/RecompiledFuncs-web`. Its runtime calls `cop0_count_read`, which no header
+declared (a trap on wasm), and the game writes thprof creating its threads (N64ModernRuntime 53b5583). Upstream ships
+the Suplexmentary Comic NC font in `assets/`, and the page loads it. Render to RAM is off: on, 200 s of Jinjo Village
+and Terrydactyland drew 48.6 presents a second with ~10,000 sound frames short, off 59.0 and none. Off, it showed rt64
+8bea892's leak: 4 tile copies a frame, each a new texture, 2.7 GB in 200 s. Its list, `src/rt64_shaders.txt`, 255
+shaders and 160 pipelines in 11 sections (the boot, launcher to a new game's opening, then Isle o' Hags and one a
+world), is recorded by code: `tools/shader_survey.js` sends Banjo to a map through the request the game's own code
+leaves at 0x80127630 (the map it is on is the halfword at 0x80132DC2), and `tools/make_plans.py` writes the shader plan
+and `tools/play_plan.json`, the first map of every world. The word at 0x800459C8 counts 30 a second in every world,
+not frames drawn. The desktop build draws Terrydactyland at 12 game frames a second and Hailfire Peaks at 10 (the other
+worlds 30), and didn't crash entering Ordnance Storage or Mayahem Temple on Windows. From Pages (main c829a51,
+N64Recomp-browser 7277a2e), cold, RTX 2070, a busy host: Chrome 155 headless waited 2.0 s (18 of the boot), Firefox 158
+4.0 s for the boot's 59 and up to 1.6 s a world; Chrome drew 59 presents a second up to Jolly Roger's Lagoon, Firefox
+49-58 with its waits, and both 12-45 in Terrydactyland, Grunty Industries, Hailfire Peaks, Cloud Cuckooland and
+Cauldron Keep, the game's own rate, where rt64's pacing switches on (the game's frames uneven, the GPU 30-39% busy); at
+3840x2000 59.4 and 59.2; no WebGPU errors, sound short only in the boot's wait. Upstream prints diagnostics of its own
+(`[entry-probe]`, `[task1]`, ~100 lines a second), left as they are. Its BUILDING.md has the web page's section.
+
+`amazingalek/pilotwings-64-recomp-web` is danielgomesvieira2000's Pilotwings 64: Recompiled (MIT, itself written with
+Claude; US only). It builds its ELF from the Pilotwings 64 decompilation (`lib/Pilotwings64Decomp`, IDO 5.3 and the
+MIPS binutils, which the Docker image has for it) and recompiles that with the nested N64Recomp, which must be built
+from the patched checkout. Fast3D, which RT64 draws on WebGPU unchanged. Its `lib/RT64`, `lib/N64ModernRuntime` and
+`lib/RecompFrontend` are upstream's at its commits (rows of `pins.txt`), patched by its own `tools/patch_all.py` and
+then by `apply.cmake` a project at a time, by name, since its folder is `RT64`. It keeps its own SDL window and audio
+queue with its own resampler; on the page the queue is `audio_output.h`'s ring at the page's rate. Render to RAM is off
+on its page (its desktop build keeps RT64's default): the CPU reads a frame only in `uvCopyFrameBuf`, which copies
+one framebuffer into the other for the fade on leaving a screen and the photo album. Without render to RAM both
+buffers' RDRAM stays stale and equal, so the copy changes no byte, RT64's check of a framebuffer's RDRAM before each
+list (`checkRAM`) sees nothing, and RT64 keeps drawing over its own frame; the album draws each photo three times over
+both buffers anyway. The title's fade measured the same frame for frame either way (it alternates black frames both
+ways, so that is not the page's). A game whose CPU copies into a framebuffer RT64 has never drawn, or reads one, still
+needs it. Its waits on the clock already let other threads in (its `patches/clocks.c`). Its list, 414 descriptions, is
+recorded by `tools/shader_survey.js` (no patches library needed: the menus' own cursor picks the test, the vehicle
+and class are written at the pilot select), a load a test, merged into a section per island and vehicle
+(`tools/merge_shader_sections.py`): 414 descriptions, 298 pipelines in 28 sections, the boot 80 (the title and the
+menus). Its scheduler took a frame busy for 50 retraces for a hung RCP and sent itself the RDP's done message, so
+during Firefox's boot wait it built frames into display lists RT64 hadn't read, and the page stopped on the mix (a
+palette load past the end of memory, a texture 8404 texels wide) in two runs of three; `patches/sched.c` takes the
+timeouts out. From Pages (main 550269d, N64Recomp-browser 33d43a9), cold, RTX 2070: Firefox 158 waited 19-29 s for
+the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter test's, then drew 59-60 with no sound
+short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
+and drew 57 beside another page; no WebGPU errors. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
