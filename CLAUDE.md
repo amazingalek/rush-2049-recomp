@@ -229,6 +229,10 @@ rt64 9ed449d           and counted again from a second after any prebuilt shader
                        30 a second for 10 s)
 N64ModernRuntime       OSThread's context pointer past libultra's thprof (0x1C) on a 32-bit host: on wasm it sat there,
 53b5583                and Banjo-Tooie writes thprof creating its threads, so osStartThread read a wild pointer
+RecompFrontend 75fe596 the dummy workload (before a game starts, each VI's frame at 0x80700000) not copied to RDRAM on a
+                       page: Firefox's late GPU reports left them seconds behind, landing on Donkey Kong 64's code after Start
+plume 90ef8e5          ?present-stats, a line every 5 s about the presents (their onSubmittedWorkDone time, time at the
+rt64 f34b19c           in-flight cap, animation frames), and ?presents-in-flight=<1-8>; nothing changes without them
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
