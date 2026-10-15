@@ -14,10 +14,10 @@
              return;
          }
  
-+        // Every slot of the set holds a texture, the blank tile texture where no other goes: each slot of a new set,
-+        // and a slot whose texture was evicted. A tile reads the slot createGPUTiles gave it, slot 0 for a texture
-+        // not in the cache, whether or not a texture is there, and a partially bound slot never written is undefined
-+        // to read: lavapipe's is a null descriptor, which crashed when a load grew the cache and made a new set.
++        // Every slot of the set holds a live texture, the blank tile texture where no other goes: each slot of a new
++        // set, and a slot whose texture was evicted (and is deleted after this workload). A tile reads the slot
++        // createGPUTiles gave it, slot 0 for a texture not in the cache whether or not a texture is there, and a
++        // slot never written or left on a deleted texture is undefined to read: on lavapipe it crashed the draw.
 +        prepareDummyTileTexture(worker);
 +        if (createSet) {
 +            for (uint32_t i = 0; i < descTextureSet->textureCacheSize; i++) {
@@ -70,3 +70,27 @@
  
          if (descTMEMSet == nullptr) {
              descTMEMSet = std::make_unique<FramebufferRendererDescriptorTMEMSet>(worker->device);
+--- a/src/render/rt64_texture_cache.cpp
++++ b/src/render/rt64_texture_cache.cpp
+@@ -348,6 +348,7 @@
+                 textureScales[textureIndex] = { 1.0f, 1.0f };
+                 hashes[textureIndex] = 0;
+                 creationFrames[textureIndex] = 0;
++                versions[textureIndex]++;
+                 freeSpaces.push_back(textureIndex);
+                 listIterators[textureIndex] = accessList.end();
+                 hashMap.erase(textureHash);
+@@ -372,6 +373,13 @@
+             }
+         }
+ 
++        // The slots changed, so a renderer writes them again before its next draw: the textures are deleted once the
++        // workload that evicted them is done (TextureCache::decrementLock), and a descriptor left on one is a deleted
++        // texture's.
++        if (!evictedHashes.empty()) {
++            globalVersion++;
++        }
++
+         return !evictedHashes.empty();
+     }
+ 
