@@ -218,8 +218,11 @@ rt64 53f8e55           CPU hot paths, on every build (the same hashes and matche
 rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a rect drawn backwards sampled on the texel
                        the RDP picks, not a native pixel behind it
 N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
-0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
-                       the queue's head, on every build (upstream's never returned)
+0df8334, f0e0884       in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
+                       the queue's head, on every build (upstream's never returned), and nothing for a null queue: an
+                       osDestroyThread of a thread on none read one, and Majora's Mask's page crashed leaving its pause
+N64ModernRuntime       OSThread's context pointer past libultra's thprof on a 32-bit host (wasm): Banjo-Tooie writes
+2e6aa0a                thprof after osCreateThread, and osStartThread then read a wild pointer
 rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
                        at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
                        page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
@@ -233,7 +236,8 @@ them. Besides the forks it brings:
 N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm (empty elsewhere), and OfflineModRecomp
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
-thread (a mod that fails to load) into a console error instead of an exception that stops the page;
+thread (a mod that fails to load) into a console error instead of an exception that stops the page; `thread_stdio.js`,
+which prints a game thread's stdout and stderr from that thread, not waiting for the page's (WebGPU's) thread;
 `frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give); a page's link
 that fails on any wasm-ld warning (`--fatal-warnings`: a call whose signature doesn't match the function's links as a
 trap) and takes a game's own `-sINITIAL_MEMORY`, stack sizes and thread pool over `frontend/`'s;
