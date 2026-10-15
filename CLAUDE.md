@@ -750,6 +750,31 @@ Cauldron Keep, the game's own rate, where rt64's pacing switches on (the game's 
 3840x2000 59.4 and 59.2; no WebGPU errors, sound short only in the boot's wait. Upstream prints diagnostics of its own
 (`[entry-probe]`, `[task1]`, ~100 lines a second), left as they are. Its BUILDING.md has the web page's section.
 
+`amazingalek/pilotwings-64-recomp-web` is danielgomesvieira2000's Pilotwings 64: Recompiled (MIT, itself written with
+Claude; US only). It builds its ELF from the Pilotwings 64 decompilation (`lib/Pilotwings64Decomp`, IDO 5.3 and the
+MIPS binutils, which the Docker image has for it) and recompiles that with the nested N64Recomp, which must be built
+from the patched checkout. Fast3D, which RT64 draws on WebGPU unchanged. Its `lib/RT64`, `lib/N64ModernRuntime` and
+`lib/RecompFrontend` are upstream's at its commits (rows of `pins.txt`), patched by its own `tools/patch_all.py` and
+then by `apply.cmake` a project at a time, by name, since its folder is `RT64`. It keeps its own SDL window and audio
+queue with its own resampler; on the page the queue is `audio_output.h`'s ring at the page's rate. Render to RAM is off
+on its page (its desktop build keeps RT64's default): the CPU reads a frame only in `uvCopyFrameBuf`, which copies
+one framebuffer into the other for the fade on leaving a screen and the photo album. Without render to RAM both
+buffers' RDRAM stays stale and equal, so the copy changes no byte, RT64's check of a framebuffer's RDRAM before each
+list (`checkRAM`) sees nothing, and RT64 keeps drawing over its own frame; the album draws each photo three times over
+both buffers anyway. The title's fade measured the same frame for frame either way (it alternates black frames both
+ways, so that is not the page's). A game whose CPU copies into a framebuffer RT64 has never drawn, or reads one, still
+needs it. Its waits on the clock already let other threads in (its `patches/clocks.c`). Its list, 414 descriptions, is
+recorded by `tools/shader_survey.js` (no patches library needed: the menus' own cursor picks the test, the vehicle
+and class are written at the pilot select), a load a test, merged into a section per island and vehicle
+(`tools/merge_shader_sections.py`): 414 descriptions, 298 pipelines in 28 sections, the boot 80 (the title and the
+menus). Its scheduler took a frame busy for 50 retraces for a hung RCP and sent itself the RDP's done message, so
+during Firefox's boot wait it built frames into display lists RT64 hadn't read, and the page stopped on the mix (a
+palette load past the end of memory, a texture 8404 texels wide) in two runs of three; `patches/sched.c` takes the
+timeouts out. From Pages (main 550269d, N64Recomp-browser 33d43a9), cold, RTX 2070: Firefox 158 waited 19-29 s for
+the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter test's, then drew 59-60 with no sound
+short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
+and drew 57 beside another page; no WebGPU errors. Its BUILDING.md has the web page's section.
+
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
 `CMakeLists.txt` that make the game a page with `N64Recomp-browser/frontend/`. The link options in
