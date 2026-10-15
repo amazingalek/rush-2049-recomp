@@ -270,6 +270,9 @@ plume-0005             a query pool read of only the queries written (Vulkan cal
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
+rt64-0005              every slot of the texture set holds a live texture: the blank tile texture in a new set's slots
+                       and an evicted texture's, which eviction marks changed (a tile whose texture missed the cache
+                       read slot 0, never written or left on a deleted texture)
 rt64-0006              a fill rect's clear clamped to its target (a rect ending on the scissor's edge is a pixel wider)
 ```
 
@@ -315,12 +318,16 @@ zips the exe, its DLLs, `assets/`, `recompcontrollerdb.txt` and `COPYING` into `
 the build host (`tools/remote_build.sh -d tools/docker/Dockerfile.linux`: Ubuntu 22.04 for glibc 2.35, SDL2 2.30.3 and
 libatomic carried beside the binary, a `.tar.gz`), and publishes GitHub release `v<version>` with both and that file
 as its notes, refusing without one. The Linux build is checked by running it in distribution containers on the build
-host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Debian
-12, Ubuntu 24.04 and Arch boot it, find the ROM and draw the title and attract race, and lavapipe (Mesa 22.3 to 26.2)
-then crashes on one of its own `llvmpipe` threads, in a fragment shader's texture descriptor read, about 50 s in as
-the second attract race loads. No Linux GPU has run it. The notes are for someone downloading it: what changed in the
-desktop game since the last release, in the README's words, never the list of merged PRs (most are web support and
-other games' pages); `releases/v0.1.0.md` is the shape. The zip holds no ROM.
+host under Xvfb with Mesa's software Vulkan (lavapipe), from another directory, the ROM beside it, `--boot`: Ubuntu
+24.04 and Arch boot it, find the ROM and draw the title and the first attract race, and then lavapipe (Mesa 25, 26.2)
+crashes on one of its own `llvmpipe` threads as the second race begins, about 50 s in. That is lavapipe's: it is the
+first draw with one of RT64's specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val
+with every texture index NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes
+and zero in others; the validation layers report nothing, and with the ubershader alone it plays on. Debian 12's
+lavapipe (Mesa 22.3) crashed at boot in 4 runs of 4, creating the ubershader's pipelines on RT64's threads. No Linux
+GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
+the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
+is the shape. The zip holds no ROM.
 
 Publishing a page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what a page runs
 publishes that page right after the merge, as part of the same work and without being asked. That is anything the
@@ -774,7 +781,9 @@ palette load past the end of memory, a texture 8404 texels wide) in two runs of 
 timeouts out. From Pages (main 550269d, N64Recomp-browser 33d43a9), cold, RTX 2070: Firefox 158 waited 19-29 s for
 the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter test's, then drew 59-60 with no sound
 short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
-and drew 57 beside another page; no WebGPU errors. Its BUILDING.md has the web page's section.
+and drew 57 beside another page; no WebGPU errors. On 7277a2e (main 4448311), from Pages, cold, RTX 2070: Chrome 155
+headless waited 4.1 s for 9 and drew 58.2, Firefox 158 18.2 s for the boot and drew 57.8, sound short only in the
+waits, no WebGPU errors. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
@@ -1104,7 +1113,9 @@ in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing 
 (Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
 2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
 boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
-and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. What to know:
+and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. From Pages on
+7277a2e (main 9be63a2, rt64 8bea892), RTX 2070, 1256x645, cold: Chrome 155 headless waited 0.5 s for 4 and drew 58.6,
+Firefox 158 2.1 and 7.4 s and drew 59.5, sound short only in the waits, no WebGPU errors. What to know:
 
 - To drive the page, use N64Recomp-browser's `tools/play_page.mjs` (or `page_driver.mjs` in a script of your own),
   with `--profile` kept between runs for a warm one, on a fixed port (it is): IndexedDB belongs to the origin, port
