@@ -21,6 +21,8 @@ namespace rush2049 {
     bool rumble_pak_selected();
     // The "Controller Pak Size" setting: 62 banks (about 1.9 MB) rather than the original 32 KiB.
     bool large_controller_pak();
+    // The "Save Ghosts" setting: the SAVE GHOST prompt after every finished Ghost Race, not only a developer's.
+    bool save_ghosts();
     // Frames a second the game draws at the "Game Frame Rate" setting: 30, 60, or more with Match Framerate.
     // The frame rate the Game Frame Rate option asks for; 0 is Match Framerate (src/frame_rate.cpp).
     void set_game_frame_rate(uint32_t fps);

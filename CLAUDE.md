@@ -422,9 +422,11 @@ shaders the game uses before it starts (Step 2).
 
 - The cheat menu (in the README) unlocks every track.
 - Ghost Race (mode word `0x8014A110` == 2) replays the player's inputs, recorded only for a race finished inside the
-  time limit, and offered as GHOST 1 in the *next* Ghost Race on that track; ghosts never survive a restart (the
-  SAVE GHOST prompt needs a developer profile name). To skip a 47-second lap, write a bigger float into the
-  track's time limit in the table at `0x80111754` before the race starts.
+  time limit, and offered as GHOST 1 in the *next* Ghost Race on that track. The SAVE GHOST prompt, which writes it
+  to the pak for later starts, needs a profile on the pak (not Just Play) and the Save Ghosts setting (Original: a
+  developer profile name only). To end a race in seconds, write a small float (12.0) into the track's time limit in the table
+  at `0x80111754` before it starts, and at its end (`func_800D510C` at 0x800D5208, `v0` the car's result) set the
+  finished byte +0xEF and a time below the limit at +0xF0: it then counts as finished inside the limit.
 - Every port reports a controller with a pak; a port nobody plays reads as a pad left alone.
 
 ## The web target

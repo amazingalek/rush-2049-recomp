@@ -19,6 +19,13 @@
 // Files are saves/controllerpak_<port>.mpk in the app folder. A port without a file gets a freshly formatted pak,
 // written out on the first change. When the game initializes a pak of the other size, its files are moved to a pak
 // of the size picked; a pak whose files would not fit keeps its size.
+//
+// Ghosts: the game writes a Ghost Race's ghost to the pak only from its SAVE GHOST prompt, and its ghost select offers
+// the ghosts read from the pak beside the one kept in RAM for the session. The game shows that prompt only when byte
+// 0x801148E4 is set, which it does only when it loads a profile named "000F1CC5 EJK", a developer's (the name entry
+// can type it). The Save Ghosts setting sets it before each check (rush2049_ghost_save_check, hooked in us.toml), but
+// only for a player profile on a pak: the prompt names the ghost's file after the profile's file, and in Just Play
+// there is none (its profile's file pointer is 0, and saving read through it). Original leaves the byte to the game.
 
 #include <array>
 #include <cstring>
@@ -523,4 +530,22 @@ extern "C" void osPfsReadWriteFile_recomp(uint8_t* rdram, recomp_context* ctx) {
         save(port);
     }
     ctx->r2 = 0;
+}
+
+// Whether a guest pointer is in RDRAM.
+static bool in_rdram(uint32_t addr) {
+    return addr >= 0x80000000u && addr < 0x80800000u;
+}
+
+extern "C" void rush2049_ghost_save_check(uint8_t* rdram) {
+    if (!rush2049::save_ghosts()) {
+        return;
+    }
+    // The chain the prompt's save (func_800CC040) reads for the file name: the player at 0x8014A160, its profile,
+    // the profile's pak file at +0x08 and that file's record.
+    uint32_t player = (uint32_t)MEM_W(0, (gpr)(int32_t)0x8014A160);
+    uint32_t profile = in_rdram(player) ? (uint32_t)MEM_W(0, (gpr)(int32_t)player) : 0;
+    uint32_t file = in_rdram(profile) ? (uint32_t)MEM_W(0x08, (gpr)(int32_t)profile) : 0;
+    uint32_t record = in_rdram(file) ? (uint32_t)MEM_W(0, (gpr)(int32_t)file) : 0;
+    MEM_B(0, (gpr)(int32_t)0x801148E4) = in_rdram(record) ? 1 : 0;
 }

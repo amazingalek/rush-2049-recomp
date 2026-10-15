@@ -48,6 +48,10 @@ void rush2049_rewind_tick_end(uint8_t* rdram);
 void rush2049_rewind_frame_begin(uint8_t* rdram);
 void rush2049_rewind_frame_draw(uint8_t* rdram);
 
+/* Save Ghosts (src/controller_pak.cpp): at the end of a Ghost Race, before the game checks whether to offer
+   SAVE GHOST. */
+void rush2049_ghost_save_check(uint8_t* rdram);
+
 /* Debug tracing for bring-up: prints "<ms> <tag> <value>" to stderr. */
 void rush2049_trace(const char* tag, uint32_t value);
 void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg);

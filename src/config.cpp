@@ -50,6 +50,17 @@ namespace {
     };
     const std::string rewind_option = "rewind";
 
+    enum class SaveGhosts {
+        Original,
+        On,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> save_ghosts_options = {
+        {SaveGhosts::Original, "Original", "Original"},
+        {SaveGhosts::On, "On", "On"},
+    };
+    const std::string save_ghosts_option = "save_ghosts";
+
     enum class GameFrameRate {
         Original,
         Sixty,
@@ -158,6 +169,11 @@ bool rush2049::rumble_pak_selected() {
     return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
 }
 
+bool rush2049::save_ghosts() {
+    auto value = recompui::config::get_general_config().get_option_value(save_ghosts_option);
+    return static_cast<SaveGhosts>(std::get<uint32_t>(value)) == SaveGhosts::On;
+}
+
 bool rush2049::large_controller_pak() {
     auto value = recompui::config::get_general_config().get_option_value(pak_size_option);
     return static_cast<PakSize>(std::get<uint32_t>(value)) == PakSize::Large;
@@ -261,6 +277,18 @@ void rush2049::init_config() {
         "a minute, and uses up to 128 MB of memory for it.",
         rewind_options,
         Rewind::On
+    );
+    general.add_enum_option(
+        save_ghosts_option,
+        "Save Ghosts",
+        "Whether a Ghost Race you finish inside the time limit can be saved to the Controller Pak, to race against "
+        "in later sessions as GHOST 2 to 4."
+        "<br/>"
+        "<b>On:</b> the game's own SAVE GHOST prompt comes up after every such race. "
+        "<b>Original:</b> as the game shipped, a ghost lasts only until you quit, as GHOST 1 on the same track. "
+        "The game saves one only for a developer's profile.",
+        save_ghosts_options,
+        SaveGhosts::On
     );
     // Called on load too.
     general.add_option_change_callback(rewind_option,
