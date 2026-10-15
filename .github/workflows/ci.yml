@@ -158,6 +158,18 @@ jobs:
       - name: Configure again before a build that gets cached
         if: steps.cache.outputs.cache-hit != 'true'
         run: cmake build
+      # Started once, before ninja: otherwise the first compiles all race to start it, and a client whose start isn't
+      # confirmed within sccache's 10 s fails its compile ("Timed out waiting for server startup"), which
+      # SCCACHE_IGNORE_SERVER_IO_ERROR doesn't cover. A start that timed out may still come up, so look before retrying.
+      - name: Start sccache
+        shell: bash
+        run: |
+          for i in 1 2 3; do
+            sccache --start-server && exit 0
+            sleep 5; sccache --show-stats > /dev/null && exit 0
+            echo "attempt $i failed"
+          done
+          exit 1
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
@@ -246,6 +258,15 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+      # As in build.
+      - name: Start sccache
+        run: |
+          for i in 1 2 3; do
+            sccache --start-server && exit 0
+            sleep 5; sccache --show-stats > /dev/null && exit 0
+            echo "attempt $i failed"
+          done
+          exit 1
       - name: Build runtime, renderer and frontend libraries
         run: ninja -C build librecomp ultramodern rt64 recompui recompinput nfd
       - name: Compile the game's own sources
