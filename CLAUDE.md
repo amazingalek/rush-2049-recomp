@@ -169,28 +169,39 @@ the README's words, never the list of merged PRs (most are web support and other
 is the shape. The zip holds no ROM.
 
 Publishing the page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what the page runs
-publishes it right after the merge, as part of the same work and without being asked. That is anything the page is
+publishes it once the merge is in, as part of the same work and without being asked. That is anything the page is
 built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
 `lib/N64Recomp-browser` pin that changes the page's code, the prebuilt shader list), not docs, tests, CI or a tool the
-build doesn't run. Then it plays the page from Pages in Chrome and Firefox (N64Recomp-browser's `tools/play_page.mjs`
-with `tools/play_plan.json`) and writes what it saw in Step 3 (The web target). The page's commit names the main it was
-built from (`git log -1 origin/gh-pages`), so a page behind main is easy to see; one found behind is published by
-whoever finds it.
+build doesn't run. The page is played before it is published and booted from Pages after: build origin/main with
+`tools/publish_page.sh --dry-run`, serve `out/page` with the README's headers and play it in Chrome and Firefox
+(N64Recomp-browser's `tools/play_page.mjs` with `tools/play_plan.json`), then publish it, boot it from Pages, and write
+what was seen in Step 3 (The web target). A build that plays worse than Step 3's last record is not published; fixing
+it is the work. The page's commit names the main it was built from (`git log -1 origin/gh-pages`), so a page behind
+main is easy to see; one found behind is played and published by whoever finds it.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/) is published like a release: `bash
-tools/publish_page.sh` from a checkout with `roms/` (`--dry-run` builds and stages it in `out/page` only, to serve and
-try first). It builds origin/main through `tools/remote_build.sh`, in a copy named `publish` (kept with its
-`build-web/`, so a republish rebuilds only what changed), and force-pushes the page as the only commit on the orphan
-branch `gh-pages`, which Pages serves. The first visit reloads once (`coi_serviceworker.js`); right after a publish
-that can take a second visit.
+tools/publish_page.sh` from a checkout with `roms/` (`--dry-run` builds and stages it in `out/page` only), or
+N64Recomp-browser's `tools/publish_pages.sh <checkout> rush`, which also boots it from Pages in headless Chrome. Both
+build origin/main through `tools/remote_build.sh`, in a copy named `publish` (kept with its `build-web/`, so a
+republish rebuilds only what changed and the `--dry-run` build is the one published), and force-push the page as the
+only commit on the orphan branch `gh-pages`, which Pages serves. The first visit reloads once (`coi_serviceworker.js`);
+right after a publish that can take a second visit.
 
-**Moving `lib/N64Recomp-browser`.** A change to the web support lands and is tagged in N64Recomp-browser, which moves
-the other games' pages onto it there; it reaches this game in a pull request here that moves `lib/N64Recomp-browser` to
-that commit (and the submodules, if a fork merged upstream in and `patches/patches.txt` names new upstream commits).
-Reset each project whose patch changed and rerun the patch script (it stops on one and says how; rebase a game patch
-that stops applying in the same PR), build and run the desktop game, and once the PR has merged, publish the page and
-play it as above. A change that only the desktop build compiles (code outside the WGSL build, rt64 7734fe4) is checked
-by a run of the desktop game and republishes no page; a web-only change needs no desktop release.
+**Moving `lib/N64Recomp-browser`.** A change to the web support lands and is tagged in N64Recomp-browser, and reaches
+this game when a pull request here moves the pin, which comes from one of two places (N64Recomp-browser's CLAUDE.md,
+The pins). N64Recomp-browser's scheduled retest moves it to its newest tag, taking every change since the pin at once:
+`tools/publish_pages.sh <checkout> --browser <tag>` has built this game's main with the pin at the tag (in the build
+host's `publish` copy, from a commit made in a scratch index and pushed nowhere) and played that build in Chrome and
+Firefox, so the page the pull request publishes is bytes that have already played. The retest also moves it to a tag
+that left the page's bytes alone, since the desktop build can still take something from it. A critical fix for the
+page on Pages (it crashes, never boots, loses its WebGPU device or can't be played) moves it at once, its page played
+in both browsers first. Nothing else moves it: any other change waits for the retest. The pull request moves
+`lib/N64Recomp-browser` to the tag (and the submodules, if a fork merged upstream in and `patches/patches.txt` names
+new upstream commits), resets each project whose patch changed and reruns the patch script (it stops on one and says
+how; rebase a game patch that stops applying in the same PR), and builds and runs the desktop game. Once it has
+merged, publish the page (above) and write what the retest measured (or the fix's own play) into Step 3. A change that
+only the desktop build compiles (code outside the WGSL build, rt64 7734fe4) is checked by a run of the desktop game
+and republishes no page; a web-only change needs no desktop release.
 
 ## Developer flags
 
