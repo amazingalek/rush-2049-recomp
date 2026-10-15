@@ -101,7 +101,10 @@ for sub in \$moved; do
         git -C "\$sub" reset -q --hard && git -C "\$sub" clean -fdq
     fi
 done
-for i in 1 2; do git submodule sync -q --recursive; git submodule update -q --init --recursive; done
+# The host has no GitHub key, so a public repo's submodule on a git@github.com: URL (a game fork's decomp can have
+# one) is fetched over HTTPS.
+for i in 1 2; do git submodule sync -q --recursive
+    git -c url.https://github.com/.insteadOf=git@github.com: submodule update -q --init --recursive; done
 if [ -f tools/apply_runtime_patches.sh ]; then
     # A patch main has since edited (N64Recomp-browser's, when it moved) makes the script stop before it touches
     # anything: then all of them start over.
