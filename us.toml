@@ -115,6 +115,19 @@ func = "inflate_rom"
 before_vram = 0x80006954
 text = "    rush2049_inflate_end(rdram, ctx);"
 
+# A recorded ghost is kept deflated in RAM: func_8000697C(src, len, dst) inflates it when a Ghost Race starts again
+# after one was recorded (Race Again; func_800CBE08), through the same reader as the ROM streams (func_80005464 and
+# the rest, gzip's inflate). That reader takes 16 bits whenever it holds fewer than a table lookup needs, the lookup's
+# full width even for a shorter code, and past the end of its buffer it waits for the ROM stream's next PI DMA
+# (func_800066D4). So a ghost whose last code, the end of block, is shorter than its table and ends too few bits
+# before a halfword asks for one more after its last byte, no DMA is coming, and the frame loop polls for one forever:
+# the game freezes on the loading screen. The bits looked at past the code are never used, so the end of the source
+# ($t8, stored just before) is put 4 bytes later, past anything the lookup reads, and those are the next bytes of RDRAM.
+[[patches.hook]]
+func = "func_8000697C"
+before_vram = 0x800069B4
+text = "    MEM_W(0x54B4, ctx->r1) = ADD32(ctx->r24, 4);"
+
 # lw $zero, 0x0($t8) (from 0x8002EB94): a load with no effect that N64Recomp emits as "0 = MEM_W(...)".
 [[patches.instruction]]
 func = "func_800CADA4"
