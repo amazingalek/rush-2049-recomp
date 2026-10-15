@@ -218,14 +218,19 @@ rt64 53f8e55           CPU hot paths, on every build (the same hashes and matche
 rt64 fe91344           RT64_FLIPPED_RECT_HIGH_RES: a high-res replacement on a rect drawn backwards sampled on the texel
                        the RDP picks, not a native pixel behind it
 N64ModernRuntime       ULTRAMODERN_LIBULTRA_THREAD_STOP: osStopThread on another thread takes it off the queue it waits
-0df8334                in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
-                       the queue's head, on every build (upstream's never returned)
+0df8334, f0e0884       in and osStartThread puts it back, as libultra does (upstream asserts); thread_queue_remove past
+                       the queue's head, on every build (upstream's never returned), and nothing for a null queue
+                       (osDestroyThread of a thread on none read one: Majora's Mask's page crashed leaving its pause menu)
 rt64 58fc4e4           presents paced (e8e162e, 6734747) judged only over a whole 2 s of presents, and never for a game
                        at about the display's rate: the first few dozen after a boot's shader wait paced Donkey Kong 64's
                        page in Firefox at 30 for 70 s, each try falling straight back, and the launcher switched it on and off
 rt64 9ed449d           and counted again from a second after any prebuilt shader wait: a wait shorter than the 2 s left
                        presents from before it in the count beside the burst after it (Banjo's 1.5 s in Chrome, then
                        30 a second for 10 s)
+N64ModernRuntime       OSThread's context pointer past libultra's thprof (0x1C) on a 32-bit host: on wasm it sat there,
+53b5583                and Banjo-Tooie writes thprof creating its threads, so osStartThread read a wild pointer
+RecompFrontend 75fe596 the dummy workload (before a game starts, each VI's frame at 0x80700000) not copied to RDRAM on a
+                       page: Firefox's late GPU reports left them seconds behind, landing on Donkey Kong 64's code after Start
 plume 90ef8e5          ?present-stats prints a line every 5 s: presents a second, how long each one's onSubmittedWorkDone
 rt64 f34b19c           took to come back, the time spent at the presents-in-flight cap, the animation frames a second;
                        ?presents-in-flight=<1-8> sets the cap (2): to read on a laptop's GPU what holds presents back
@@ -237,6 +242,9 @@ N64Recomp's `RECOMP_FUNC_ENTRY`, which redirects a function at its entry on wasm
 `--static`, which writes a mod as C to link in; N64ModernRuntime's `register_precompiled_mod`, which runs a built-in mod
 from that code with its replacements and hooks as those redirects; `worker_alert.js`, which turns an `alert` on a
 thread (a mod that fails to load) into a console error instead of an exception that stops the page;
+`thread_stdio.js`, which prints a thread's stdout and stderr from that thread: Emscripten proxies every write to the
+page's thread, WebGPU's, and waits, so each line held its thread for up to a frame (Banjo-Tooie's upstream logs ~100
+lines a second: its title screen's sound was 12,900-13,400 frames short of ~2.1 million before, 235-1,325 with it);
 `frontend/build_speed.cmake` (ccache) and `N64RECOMP_BROWSER_FAST_LINK` (Step 3 says what they give); a page's link
 that fails on any wasm-ld warning (`--fatal-warnings`: a call whose signature doesn't match the function's links as a
 trap) and takes a game's own `-sINITIAL_MEMORY`, stack sizes and thread pool over `frontend/`'s;
@@ -511,6 +519,13 @@ twelve runs. Chrome 155: Banjo waited 1.4-1.7 s for 6 and drew 59-60, where on e
 paced to 20-30 for 10 s straight after; the others no wait and 56-60. Firefox 158 waited 5.2 s for Banjo's boot, 3.2 s
 for Majora's Mask's, 16.1 s for Donkey Kong 64's, 8.6 s for GoldenEye's, 5.2 s for Conker's and 2.2 and 7.3 s for
 Rush 2049's two sections, then 57-60 every one. No sound short after the waits, no WebGPU errors.
+
+Every page again on d3b9031 (N64ModernRuntime f0e0884, RecompFrontend 75fe596, rt64 f34b19c), the six forks' gh-pages
+files served locally and Rush 2049 from a local build of the same commit, cold, 1256x645, RTX 2070, a host with every
+core busy with other work, 2026-10-15: Majora's Mask through its plan's whole clock-town section, pause menu
+included, 59 presents a second in Chrome 155 and Firefox 158, where before f0e0884 it stopped ~35 s in; Banjo, Donkey
+Kong 64, GoldenEye, Conker, Wave Race 64 and Rush 2049 through their boots and 25-60 s of play, 57-60 in Chrome and
+52-59 in Firefox (Conker's median holds its wait), Firefox's waits 3.2-18.9 s, no WebGPU errors or exceptions.
 
 A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
 the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
