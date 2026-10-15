@@ -787,7 +787,7 @@ the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter tes
 short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
 and drew 57 beside another page; no WebGPU errors. On 7277a2e (main 4448311), from Pages, cold, RTX 2070: Chrome 155
 headless waited 4.1 s for 9 and drew 58.2, Firefox 158 18.2 s for the boot and drew 57.8, sound short only in the
-waits, no WebGPU errors. Its BUILDING.md has the web page's section.
+waits, no WebGPU errors; at 3840x2000 Chrome waited 5.0 s and drew 58.2, Firefox 30.7 s and drew 60. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
