@@ -87,14 +87,20 @@ jobs:
       SCCACHE_GHA_VERSION: "2"
     steps:
       # Not actions/checkout: its cleanup walks every submodule the cache restored, ~15 s on Windows.
+      # Retried, as actions/checkout retries its fetch: a runner's DNS blip ("Could not resolve host: github.com")
+      # otherwise fails the whole build.
       - name: Checkout
         shell: bash
         env:
           TOKEN: ${{ github.token }}
         run: |
           git init -q
-          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA"
-          git checkout -q FETCH_HEAD
+          for i in 1 2 3; do
+            git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" fetch -q --depth 1 --no-tags "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_SHA" &&
+              git checkout -q FETCH_HEAD && exit 0
+            echo "attempt $i failed"; sleep $((i * 5))
+          done
+          exit 1
       - name: Cache key
         id: key
         shell: bash
@@ -138,6 +144,7 @@ jobs:
           cmakeVersion: "~3.31.0"
           ninjaVersion: "^1.13.0"
       - uses: mozilla-actions/sccache-action@v0.0.9
+        id: sccache
       - name: Stand in for the ROM-generated sources
         shell: bash
         run: |
@@ -181,7 +188,8 @@ jobs:
           echo "$objs"
           ninja -C build $objs
       - name: sccache stats
-        if: always()
+        # Not when an earlier step failed before sccache was installed: there is nothing to show then.
+        if: always() && steps.sccache.outcome == 'success'
         run: sccache --show-stats
 
   # Same build as above, on Linux with clang (what a Steam Deck build would be).
@@ -247,6 +255,7 @@ jobs:
           cmakeVersion: "~3.31.0"
           ninjaVersion: "^1.13.0"
       - uses: mozilla-actions/sccache-action@v0.0.9
+        id: sccache
       - name: Stand in for the ROM-generated sources
         run: |
           mkdir -p RecompiledFuncs rsp
@@ -289,5 +298,6 @@ jobs:
           name: rush2049_hello_mod
           path: mod_template/build/rush2049_hello_mod.nrm
       - name: sccache stats
-        if: always()
+        # Not when an earlier step failed before sccache was installed: there is nothing to show then.
+        if: always() && steps.sccache.outcome == 'success'
         run: sccache --show-stats
