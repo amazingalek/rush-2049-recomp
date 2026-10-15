@@ -25,15 +25,18 @@
 #   get <dir> <local dir>   copy the files at the top of <dir> (relative to the copy) here, build files left out
 #   clean             delete the copy (ccache stays)
 # -C works on another checkout, a game fork for one (only sync, run, get and clean mean anything there); -n names the
-# copy, for one shared by several runs, as tools/publish_page.sh does.
+# copy, for one shared by several runs, as tools/publish_page.sh does; -d runs in another image, the Dockerfile given
+# (tools/release.sh's Linux build, tools/docker/Dockerfile.linux).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 checkout="$(cd "$here/.." && pwd)"
 name=""
+dockerfile="$here/docker/Dockerfile"
 while [[ $# -gt 0 ]]; do
     case "$1" in
     -C) checkout="$(cd "$2" && pwd)"; shift 2 ;;
     -n) name="$2"; shift 2 ;;
+    -d) dockerfile="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
     *) break ;;
     esac
 done
@@ -42,7 +45,6 @@ cmd="${1:-}"
 name="${name:-$(basename "$checkout")}"
 base=rush2049                     # under the host's home
 dir="$base/$name"
-dockerfile="$here/docker/Dockerfile"
 image="n64recomp-build:$(git hash-object "$dockerfile" | cut -c1-12)"
 cpus="${BUILD_CPUS:-12}"
 host="${BUILD_HOST:-}"
