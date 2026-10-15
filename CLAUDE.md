@@ -237,6 +237,9 @@ rt64 f34b19c           took to come back, the time spent at the presents-in-flig
 rt64 8bea892           tile copies reused from one display list to the next, on every build: the HLE side never recorded
                        a copy's size, so it never reused one, and with render to RAM off the renderer kept a texture for
                        every copy it made (Banjo-Tooie's page 4 a frame, 2.7 GB in 200 s, its frame rate falling)
+rt64 7734fe4           native builds only: the SPIR-V of every shader that reads the texture sets built for per-draw
+                       textures too (<name>PerDraw, ~2 MB) and picked by perDrawTextures(), so a Vulkan device without
+                       descriptor indexing gets shaders that match its layout (Debian 12's lavapipe crashed at boot)
 ```
 
 `lib/N64Recomp-browser` is pinned at the commit whose `forks.txt` names those fork commits and whose `patches/` holds
@@ -324,19 +327,17 @@ crashes on one of its own `llvmpipe` threads as the second race begins, about 50
 first draw with one of RT64's specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val
 with every texture index NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes
 and zero in others; the validation layers report nothing, and with the ubershader alone it plays on. Debian 12's
-lavapipe (Mesa 22.3) crashes at boot, creating the ubershader's first pipeline. It has no descriptor indexing, so RT64
-binds textures per draw (rt64-0007, `perDrawTextures`), but the desktop build's shaders declare the 8192-texture array,
-which that layout doesn't hold, and lavapipe's lowering then sets a bit for each of the 8192 in a 128-bit set
-(`textures_used`) and overwrites the shader. Not a race: on one core it crashes the same. Built with
-`-DRT64_PER_DRAW_TEXTURES=ON` it boots there and draws the attract race. So the desktop game needs a Vulkan driver with
-descriptor indexing, as upstream RT64 does. No Linux GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
+lavapipe (Mesa 22.3) has no descriptor indexing, so RT64 binds textures per draw there (rt64-0007, `perDrawTextures`)
+with the shaders built for it (rt64 7734fe4): it boots and draws the attract race, 90 s in two runs of two. With the
+8192-texture array's shaders in that layout, lavapipe's lowering set a bit for each of the 8192 in a 128-bit set
+(`textures_used`) and overwrote the shader, crashing at boot. No Linux GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
 the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
 is the shape. The zip holds no ROM.
 
 Publishing a page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what a page runs
 publishes that page right after the merge, as part of the same work and without being asked. That is anything the
 page is built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
-`lib/N64Recomp-browser` pin that changes code, the prebuilt shader list), not docs, tests, CI or a tool the build
+`lib/N64Recomp-browser` pin that changes the page's code, the prebuilt shader list), not docs, tests, CI or a tool the build
 doesn't run. Then it plays the page from Pages in Chrome and Firefox (The web target). Each page's commit names the
 main it was built from (`git log -1 origin/gh-pages`), so a page behind main is easy to see; one found behind is
 published by whoever finds it.
@@ -353,10 +354,13 @@ game drawing. Each is built by its BUILDING.md steps (in the same Docker image, 
 since emsdk's environment resets it; a new one needs `$EM_CACHE/sysroot/lib/pkgconfig` made first, or `embuilder`
 fails writing `sdl2.pc`) and published with N64Recomp-browser's `tools/publish_page.sh <build dir> <name>
 amazingalek/<fork> "main <sha>"` (it switches Pages on the first time). A page published before a fork's change has
-merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change to the
-web support (a fork, a new N64Recomp-browser commit) reaches every game in the same work, never a later card: the
-agent moves this repo and every game fork onto it, rebuilds and republishes each page, plays each one in Chrome and
-Firefox, and updates the games table, before calling it done. A fork's rt64 older
+merged doesn't have it, so the agent that pushes a change to a fork's page publishes it, as above. A change reaches the
+builds whose code it changes. A change to what a page runs (a fork, a new N64Recomp-browser commit) reaches every game
+in the same work, never a later card: the agent moves this repo and every game fork onto it, rebuilds and republishes
+each page, plays each one in Chrome and Firefox, and updates the games table, before calling it done. A change that
+only the desktop build compiles (code outside the WGSL build, rt64 7734fe4) reaches this game's desktop build through
+its `lib/N64Recomp-browser` pin, checked by a run of the desktop game: no page is republished, and no game fork moves
+for it (a fork carries only what its page needs). A web-only change needs no desktop release. A fork's rt64 older
 than 7910126 needs a fresh build dir when it moves: an incremental build there keeps the WGSL made from an `.hlsli`
 that changed, and Conker's page built that way loaded and then failed every pipeline with "Binding doesn't exist"
 (moving onto 7910126 rebuilds every shader). The first visit reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.

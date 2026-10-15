@@ -90,8 +90,7 @@ You need your own copy of the game either way. A release on the [Releases
 page](https://github.com/amazingalek/rush-2049-recomp/releases) is the game without the ROM, for Windows (a zip: unzip
 it and run `Rush2049Recompiled.exe` from that folder, see **Run** below) and for Linux on x86-64 (a `.tar.gz`: extract
 it and run `Rush2049Recompiled` in that folder). The Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or
-later), a Vulkan driver with descriptor indexing (drivers for current GPUs have it), and GTK 3 and FreeType, which
-desktop distributions have; it brings its own SDL2. Otherwise build it from source.
+later), a Vulkan driver, and GTK 3 and FreeType, which desktop distributions have; it brings its own SDL2. Otherwise build it from source.
 
 **The ROM.** *San Francisco Rush 2049 (U)*, the US release, as a `.z64` with SHA-1
 `3f99351d7bb61656614bdb2aa1a90cfe55d1922c`. The build and the launcher both check its hash. Other regions and
