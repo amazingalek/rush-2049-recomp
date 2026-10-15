@@ -36,11 +36,12 @@ bash tools/recompile.sh -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-c
 # Its own build directory, so the dev build in build keeps its RelWithDebInfo configuration.
 build=build-release
 # Release's own flags plus debug info, which doesn't change the code: the .pdb ships beside the exe, so a crash's
-# trace in the player's rush2049.log names the game function it crashed in (src/crash_handler.cpp).
+# trace in the player's rush2049.log names the game function it crashed in (src/crash_handler.cpp). The flags are
+# written -X, not /X, which Git Bash would turn into a path.
 cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
-    -DCMAKE_C_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /Z7" -DCMAKE_CXX_FLAGS_RELEASE="/O2 /Ob2 /DNDEBUG /Z7" \
-    -DCMAKE_EXE_LINKER_FLAGS_RELEASE="/INCREMENTAL:NO /DEBUG /OPT:REF /OPT:ICF" \
+    -DCMAKE_C_FLAGS_RELEASE="-O2 -Ob2 -DNDEBUG -Z7" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -Ob2 -DNDEBUG -Z7" \
+    -DCMAKE_EXE_LINKER_FLAGS_RELEASE="-INCREMENTAL:NO -DEBUG -OPT:REF -OPT:ICF" \
     -DPATCHES_C_COMPILER="$MIPS_CC" -DPATCHES_LD="$MIPS_LD" > "$build.log" 2>&1 || { tail -20 "$build.log"; exit 1; }
 ninja -C "$build" Rush2049Recompiled > "$build/build.log" 2>&1 ||
     { grep -E " error|FAILED|undefined" "$build/build.log" | head -20; exit 1; }
