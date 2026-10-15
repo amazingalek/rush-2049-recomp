@@ -104,10 +104,11 @@ text = "    rush2049_enable_extended_gbi(rdram, (uint32_t)MEM_W(0x24, ctx->r29) 
 # The game inflates its own code (raw deflate) with func_80006814(rom, dst, flag): the main segment at boot
 # and the two overlays at 0x8038A400 later. Tell the runtime about recompiled code once it is in RDRAM
 # (src/code_loading.cpp maps the original ROM address to the extracted section).
+# Also the inflater's lock, below.
 [[patches.hook]]
 func = "inflate_rom"
 before_vram = 0x80006814
-text = "    rush2049_inflate_begin(rdram, ctx);"
+text = "    rush2049_inflater_acquire(rdram); rush2049_inflate_begin(rdram, ctx);"
 
 # After osInvalICache over the output; dst is still in the caller's arg slot at 0x4C($sp).
 [[patches.hook]]
@@ -115,18 +116,23 @@ func = "inflate_rom"
 before_vram = 0x80006954
 text = "    rush2049_inflate_end(rdram, ctx);"
 
-# A recorded ghost is kept deflated in RAM: func_8000697C(src, len, dst) inflates it when a Ghost Race starts again
-# after one was recorded (Race Again; func_800CBE08), through the same reader as the ROM streams (func_80005464 and
-# the rest, gzip's inflate). That reader takes 16 bits whenever it holds fewer than a table lookup needs, the lookup's
-# full width even for a shorter code, and past the end of its buffer it waits for the ROM stream's next PI DMA
-# (func_800066D4). So a ghost whose last code, the end of block, is shorter than its table and ends too few bits
-# before a halfword asks for one more after its last byte, no DMA is coming, and the frame loop polls for one forever:
-# the game freezes on the loading screen. The bits looked at past the code are never used, so the end of the source
-# ($t8, stored just before) is put 4 bytes later, past anything the lookup reads, and those are the next bytes of RDRAM.
+# One thread inflates at a time: the loader thread's inflate_rom and the frame loop's func_8000697C (a recorded ghost,
+# inflated from RAM on Race Again after a Ghost Race) share the inflater's globals, and either gives the CPU away
+# partway through (src/code_loading.cpp). Released after func_8000697C has read the output's end (0x800069E8).
+[[patches.hook]]
+func = "inflate_rom"
+before_vram = 0x80006974
+text = "    rush2049_inflater_release(rdram);"
+
 [[patches.hook]]
 func = "func_8000697C"
-before_vram = 0x800069B4
-text = "    MEM_W(0x54B4, ctx->r1) = ADD32(ctx->r24, 4);"
+before_vram = 0x8000697C
+text = "    rush2049_inflater_acquire(rdram);"
+
+[[patches.hook]]
+func = "func_8000697C"
+before_vram = 0x800069F4
+text = "    rush2049_inflater_release(rdram);"
 
 # lw $zero, 0x0($t8) (from 0x8002EB94): a load with no effect that N64Recomp emits as "0 = MEM_W(...)".
 [[patches.instruction]]
