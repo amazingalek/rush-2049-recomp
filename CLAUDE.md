@@ -519,6 +519,13 @@ paced to 20-30 for 10 s straight after; the others no wait and 56-60. Firefox 15
 for Majora's Mask's, 16.1 s for Donkey Kong 64's, 8.6 s for GoldenEye's, 5.2 s for Conker's and 2.2 and 7.3 s for
 Rush 2049's two sections, then 57-60 every one. No sound short after the waits, no WebGPU errors.
 
+Every page again on d3b9031 (N64ModernRuntime f0e0884, RecompFrontend 75fe596, rt64 f34b19c), the six forks' gh-pages
+files served locally and Rush 2049 from a local build of the same commit, cold, 1256x645, RTX 2070, a host with every
+core busy with other work, 2026-10-15: Majora's Mask through its plan's whole clock-town section, pause menu
+included, 59 presents a second in Chrome 155 and Firefox 158, where before f0e0884 it stopped ~35 s in; Banjo, Donkey
+Kong 64, GoldenEye, Conker, Wave Race 64 and Rush 2049 through their boots and 25-60 s of play, 57-60 in Chrome and
+52-59 in Firefox (Conker's median holds its wait), Firefox's waits 3.2-18.9 s, no WebGPU errors or exceptions.
+
 A steady 2% of GoldenEye's sound short (960 frames a second, in both browsers and natively) was its own audio glue:
 the frames left that osAiGetLength reports counted the buffer the game had just queued, which the console's leaves out,
 so the game made every buffer its minimum (GoldenEye64Recomp-web 59dc8e8, `get_frames_remaining`). A game's
