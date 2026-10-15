@@ -324,8 +324,12 @@ crashes on one of its own `llvmpipe` threads as the second race begins, about 50
 first draw with one of RT64's specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val
 with every texture index NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes
 and zero in others; the validation layers report nothing, and with the ubershader alone it plays on. Debian 12's
-lavapipe (Mesa 22.3) crashed at boot in 4 runs of 4, creating the ubershader's pipelines on RT64's threads. No Linux
-GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
+lavapipe (Mesa 22.3) crashes at boot, creating the ubershader's first pipeline. It has no descriptor indexing, so RT64
+binds textures per draw (rt64-0007, `perDrawTextures`), but the desktop build's shaders declare the 8192-texture array,
+which that layout doesn't hold, and lavapipe's lowering then sets a bit for each of the 8192 in a 128-bit set
+(`textures_used`) and overwrites the shader. Not a race: on one core it crashes the same. Built with
+`-DRT64_PER_DRAW_TEXTURES=ON` it boots there and draws the attract race. So the desktop game needs a Vulkan driver with
+descriptor indexing, as upstream RT64 does. No Linux GPU has run it. The notes are for someone downloading it: what changed in the desktop game since the last release, in
 the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
 is the shape. The zip holds no ROM.
 
