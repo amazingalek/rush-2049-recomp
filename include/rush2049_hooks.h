@@ -10,9 +10,6 @@ extern "C" {
 /* Hooks inserted into recompiled code by us.toml ([[patches.hook]]). */
 void rush2049_inflate_begin(uint8_t* rdram, recomp_context* ctx);
 void rush2049_inflate_end(uint8_t* rdram, recomp_context* ctx);
-/* At the entry and return of both inflaters (us.toml): one thread inflates at a time (src/code_loading.cpp). */
-void rush2049_inflater_acquire(uint8_t* rdram);
-void rush2049_inflater_release(uint8_t* rdram);
 
 /* Before the scheduler's swap throttle (us.toml): retraces since the last swap, as the game should see them. */
 gpr rush2049_frame_pace(gpr retraces);

@@ -8,16 +8,6 @@
 // extracted section.
 //
 // Both overlays inflate to 0x8038A400, so whichever is loaded there is unloaded first.
-//
-// The inflater keeps its state in globals (0x800354B0 on: the source, its end, the output, the bit buffer, the ROM
-// address), shared by inflate_rom and func_8000697C, which inflates a recorded ghost from RAM. Both give the CPU away
-// partway through: each allocates its tables (func_800CC3C0, which waits for the allocator's mutex) and frees them,
-// and inflate_rom waits for each PI DMA of its stream. The loader thread (thread 8) inflates from ROM while the frame
-// loop (thread 7) loads a race, and Race Again after a recorded Ghost Race inflates the ghost in thread 7 meanwhile,
-// so one could take over the other's state halfway: the ghost's reader then ran past its end and waited for a ROM DMA
-// that never came, and the game froze on the loading screen. rush2049_inflater_acquire and _release, at each
-// function's entry and return (us.toml), make the second wait for the first. Neither caller holds the allocator's
-// mutex when it starts one, so the wait always ends.
 
 #include <algorithm>
 #include <cstdio>
@@ -28,7 +18,6 @@
 
 #include "recomp.h"
 #include "librecomp/overlays.hpp"
-#include "ultramodern/ultramodern.hpp"
 #include "rush2049_hooks.h"
 #include "rush2049_game.h"
 
@@ -53,31 +42,7 @@ constexpr uint32_t overlay_region_size = 0x803AF980 - 0x8038A400; // the larger 
 // Game threads are host threads under ultramodern, so the source address is per thread.
 thread_local uint32_t inflate_src_rom = 0;
 
-// Only one game thread runs at a time (ultramodern), so these need no lock of their own.
-PTR(OSThread) inflater_owner = NULLPTR;
-int inflater_depth = 0;
-
 } // namespace
-
-extern "C" void rush2049_inflater_acquire(uint8_t* rdram) {
-    PTR(OSThread) self = ultramodern::this_thread();
-    if (inflater_owner != NULLPTR && inflater_owner != self) {
-        fprintf(stderr, "[rush2049] thread %d waits for thread %d's inflate\n", TO_PTR(OSThread, self)->id,
-            TO_PTR(OSThread, inflater_owner)->id);
-        while (inflater_owner != NULLPTR) {
-            rush2049_spin_yield(rdram);
-        }
-    }
-    inflater_owner = self;
-    inflater_depth++;
-}
-
-extern "C" void rush2049_inflater_release(uint8_t* rdram) {
-    (void)rdram;
-    if (--inflater_depth == 0) {
-        inflater_owner = NULLPTR;
-    }
-}
 
 extern "C" void rush2049_inflate_begin(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
