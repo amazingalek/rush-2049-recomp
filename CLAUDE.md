@@ -273,6 +273,7 @@ rt64-0004              one barrier call around all of a frame's buffer uploads, 
 rt64-0005              every slot of the texture set holds a live texture: the blank tile texture in a new set's slots
                        and an evicted texture's, which eviction marks changed (a tile whose texture missed the cache
                        read slot 0, never written or left on a deleted texture)
+rt64-0006              a fill rect's clear clamped to its target (a rect ending on the scissor's edge is a pixel wider)
 ```
 
 The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:
