@@ -477,9 +477,10 @@ does all of this in the same work:
   the pixels of a laptop's window, in both browsers at one CSS pixel a pixel (`play_page.mjs --size 3840x2000 --play
   25`). A desktop GPU at a normal size plays every page, so it never fills a cell. The stand-in is gentler than a
   laptop: Banjo played smooth on it in Firefox and almost smooth on the laptop, so it finds a problem but can't clear
-  one, and a laptop result stays until a newer laptop run replaces it. A cell keeps its last result, and the date says
-  when; one whose result a fix was made for reads "not yet on this version" until it is played again, and one never
-  played "not yet".
+  one, and a laptop result stays until a newer laptop run replaces it. A cell says how the page plays as of its date,
+  in absolute terms (smooth, the presents a second, never boots), never against an earlier result ("the crash is
+  gone"); one whose laptop result a fix was made for gives the stand-in's result and "not yet on a laptop" until it is
+  played there again, and one never played "not yet". A cell that isn't smooth has work filed to make it so.
 - Every change to a page is played in Firefox as well as Chrome, always: Firefox is where pages fall behind.
 - One page at a time on the machine, in any browser. With two Firefox windows each playing a page, one window's
   animation frames came in bursts (a quarter of the intervals under 5 ms, up to 20 presents between two frames), which
@@ -552,8 +553,7 @@ so the game made every buffer its minimum (GoldenEye64Recomp-web 59dc8e8, `get_f
 `get_frames_remaining` must match how its audio manager reads osAiGetLength. To see a page's sound as the game writes
 it, wrap `AudioWorkletNode` in a preload, take `processorOptions.ring` and sample its two counters every few ms.
 
-A new game gets a row in the same work as its port, and none is added until every game in the table is smooth in both
-browsers on integrated graphics.
+A new game gets a row in the same work as its port.
 
 The game forks below are on `main` too. On BanjoRecomp-web upstream's `validate-internal` workflow, a native build on
 every push to main with no ROM, is disabled. Banjo, Majora's Mask, Donkey Kong 64 and Conker are on their own upstream
@@ -794,7 +794,7 @@ the boot, 2.2-2.8 s for a glider test's section and 10-11 s for a gyrocopter tes
 short after the waits, three runs of three; Chrome 155 headless (the same files served locally) waited 5.9 s once
 and drew 57 beside another page; no WebGPU errors. On 7277a2e (main 4448311), from Pages, cold, RTX 2070: Chrome 155
 headless waited 4.1 s for 9 and drew 58.2, Firefox 158 18.2 s for the boot and drew 57.8, sound short only in the
-waits, no WebGPU errors. Its BUILDING.md has the web page's section.
+waits, no WebGPU errors; at 3840x2000 Chrome waited 5.0 s and drew 58.2, Firefox 30.7 s and drew 60. Its BUILDING.md has the web page's section.
 
 Nothing in these repos names this game, includes from this repo or needs its ROM; what is the game's stays here:
 `headless/` (the game without the frontend, as a test page or with no renderer) and the `EMSCRIPTEN` branches of
