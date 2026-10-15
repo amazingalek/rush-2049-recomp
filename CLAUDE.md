@@ -628,8 +628,8 @@ BUILDING.md says how). Firefox runs the game through the wait and never lost it.
 Its hooks and patches called C functions whose signatures didn't match the call, which only wasm-ld's `function
 signature mismatch` shows, an error with `frontend/` (N64Recomp-browser's README, what a recomp does itself). Render to RAM stays on: a
 Banana Fairy photo is a patch of the frame the CPU copies out of RDRAM (`func_global_asm_806FFF88`, its BUILDING.md
-says more); its transition snapshots are copied on the GPU. Its copy stays exact, not a list late: the photo came out
-right a list late, but boots in headless Chrome 155 crashed a second or two after Start (a call through a function
+says more); its transition snapshots are copied on the GPU. Its copy lands a list late on the page (rt64 73e9ca0),
+and the photo comes out right that way. Before RecompFrontend-web 75fe596 it stayed exact: boots in headless Chrome 155 crashed a second or two after Start (a call through a function
 table out of bounds, or the audio microcode jumping nowhere): 1 in 24 with rt64 73e9ca0's copy, 5 in 48 with
 cb75c5c's, none in 24 with the copy taken late but never written to RDRAM (a test build) or in about 12 exact. Those
 copies were the runtime's dummy frames, not the game's: before a game starts, every VI draws one into 0x80700000 or
@@ -638,8 +638,11 @@ audio microcode at 0x80741310), and a late copy of the last one landed on it. Wh
 (Firefox on a laptop's Intel UHD) even the exact copies fell seconds behind the VIs that queued them and kept landing
 after Start, so the page never booted there ("Failed to execute task type: 2", "index out of bounds"); a preload that
 holds `onSubmittedWorkDone` back 100 ms reproduces it in Firefox on any GPU. RecompFrontend-web 75fe596 keeps the
-dummy frame out of RDRAM on a page; the late copy hasn't been tried on this game again since. A list in DK Isles takes 6-7 ms exact,
-about 2 late (RTX 2070). `patches/shader_survey.c`'s `film` gives the
+dummy frame out of RDRAM on a page, and with it none of 29 cold boots in headless Chrome 155 and 25 in Firefox 158
+crashed with the late copy. Most report one kept CPU write, at 0x00034000: the boot draws there and the overlay at
+0x80024000 zeroes its BSS over it, which drops that copy; that framebuffer's black is 0x00010001, so no zero is written
+over a zero. A list through the menus and DK Isles takes 7.8 ms exact, 3.7 late (median, RTX 2070).
+`patches/shader_survey.c`'s `film` gives the
 camera, so a script can take a photo. The ROM is the US 1.0, decompressed with the DK64 decomp's
 `tools/generate_decompressed_rom.py` for building.
 
@@ -1008,11 +1011,12 @@ headless Chrome. N64Recomp-browser's CI `wgsl` job builds and checks them on eve
   `?render-to-ram=1` on the headless page).
   Another recomp whose game reads its frames on the CPU needs it on. If it can take a frame one list old (a patch of
   the screen, a row of depth), `set_render_to_ram_late` (rt64 73e9ca0) makes the copy land when the next list starts
-  instead, and the list stops waiting: Conker's and GoldenEye's pages do. Majora's Mask can't: it flushes its task
+  instead, and the list stops waiting: Conker's, GoldenEye's and Donkey Kong 64's pages do. Majora's Mask can't: it flushes its task
   queue and reads the pictograph and the pause background at once, so it keeps the exact copy. Nor can a game that
   puts something in a framebuffer's memory once the RDP is done: the copy lands while the game runs, and though it
   keeps every word the CPU changed (rt64 cb75c5c), a word written with the value it held looks untouched and gets the
-  frame. (Donkey Kong 64's boot crash with it, once put down to this, was the runtime's dummy frames: The web target.) The console reports each write it kept, so a page
+  frame. (Donkey Kong 64's boot crash with it, once put down to this, was the runtime's dummy frames: The web target.)
+  The console reports each write it kept, so a page
   run through a game's levels with the late copy says whether its CPU touches a framebuffer with one pending.
   Through the device thread, `map()` polls `isMapReady()` while the main thread returns to the browser, which
   delivers the data; a build without threads would need `-sJSPI` (or ASYNCIFY) to wait in place. A call that waits
