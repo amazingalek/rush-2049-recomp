@@ -262,9 +262,14 @@ text = "    rush2049_ghost_save_check(rdram);"
 
 # Controller Accessory at Both (src/controller_pak.cpp). The game keeps a byte per port, +6 of its pak record
 # (0x80144030, 0x304 a port), set when osPfsInitPak fails and osMotorInit succeeds: a Rumble Pak. The menus read it
-# (func_80094FC4) to skip a port's saves, so it stays as the game sets it. Only the two routines that drive the motors
-# read it through rush2049_rumble_pak_in: the rumble thread (func_8008A77C, which starts and stops each port's motor)
-# and the stop of every motor (func_800A13E8).
+# (func_80094FC4) to skip a port's saves, so it stays as the game sets it, as do the other reads that decide saves: the
+# pak code's error on a failed write (func_800A1F18), its scan of a port's files (func_800C813C), the pak status a
+# port reports (func_800F0F44) and the wording of a save error (func_800DDFAC). Every read about rumble goes through
+# rush2049_rumble_pak_in: the rumble thread (func_8008A77C, which starts and stops each port's motor), the stop of every
+# motor (func_800A13E8), the race-start INSERT RUMBLE PAK NOW banner (its box in func_80106874, its text in
+# func_80106B3C), the rumble item of the game's CONTROLS menu, which is skipped by the cursor (func_800D91A0) and drawn
+# greyed out with no value (func_800FFDE8, func_80100564) without a Rumble Pak, and the screen listing each player's
+# Rumble Pak (func_8010BC84, and its header box's visibility, func_80094FE8).
 [[patches.hook]]
 func = "func_8008A77C"
 before_vram = 0x8008A874
@@ -274,3 +279,68 @@ text = "    ctx->r15 = rush2049_rumble_pak_in(ctx->r15);"
 func = "func_800A13E8"
 before_vram = 0x800A1488
 text = "    ctx->r24 = rush2049_rumble_pak_in(ctx->r24);"
+
+[[patches.hook]]
+func = "func_80106874"
+before_vram = 0x801069EC
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_80106B3C"
+before_vram = 0x80106CE0
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800D91A0"
+before_vram = 0x800D97FC
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800D91A0"
+before_vram = 0x800D9890
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800D91A0"
+before_vram = 0x800D9964
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800D91A0"
+before_vram = 0x800D9A38
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800FFDE8"
+before_vram = 0x801003A4
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_800FFDE8"
+before_vram = 0x80100494
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_80100564"
+before_vram = 0x80100918
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_80100564"
+before_vram = 0x80100A6C
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_8010BC84"
+before_vram = 0x8010BD50
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_8010BC84"
+before_vram = 0x8010BF68
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+[[patches.hook]]
+func = "func_80094FE8"
+before_vram = 0x8009504C
+text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"

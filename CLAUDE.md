@@ -170,6 +170,13 @@ with the shaders built for it (rt64 7734fe4): it boots and draws the attract rac
 the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
 is the shape. The zip holds no ROM.
 
+Shipping a change means both: the page and a desktop release. A merge that changes what the desktop game runs (the
+files the page is built from, below, less code only the Emscripten build compiles) is not shipped when the page is
+published: the agent whose merge it is also cuts a release with it, Windows and Linux, as part of the same work and
+without being asked, so a fix never reaches only the page's players. Several such merges in a day can share one
+release, cut by the last of them. Code only the web build compiles needs no release, and code only the desktop build
+compiles republishes no page.
+
 Publishing the page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what the page runs
 publishes it once the merge is in, as part of the same work and without being asked. That is anything the page is
 built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
@@ -453,7 +460,9 @@ errors. On v0.50.0 (a6ea767: the LOD shaders in loops, section 1 in the boot thr
 page's thread), a build of this pin move, RTX 2070, a quiet host, a fresh profile each: at 1256x645 Chrome 155 headless
 waited not at all and drew 59.4, Firefox 158 waited 1.8 and 4.4 s and drew 59.5; uncapped at 3840x2000 (`play_page.mjs
 --uncapped --size 3840x2000 --play 25`, the first such runs) Chrome 147 presents a second, Firefox 118 with both waits
-inside the 25 s; sound short only in the waits, no WebGPU errors.
+inside the 25 s; sound short only in the waits, no WebGPU errors. With v0.1.4 (Both's rumble reads, port 1 always playing), a
+build of its branch on v0.50.0, RTX 2070, a host 6% busy, a fresh profile each at 1256x645: Chrome 155 headless waited
+not at all and drew 59.2, Firefox 158 1.8 and 4.3 s and drew 59.6; sound short only in the waits, no WebGPU errors.
 
 - With the whole list as one section, Firefox 157 (RTX 2070, a busy host) waited 27.9-30.2 s at the bar; then the
   attract races and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap

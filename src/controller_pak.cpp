@@ -29,10 +29,12 @@
 //
 // Rumble with a Controller Pak in (Controller Accessory at Both): the game probes each port with osPfsInitPak and only
 // when that fails tries osMotorInit, and marks the port as holding a Rumble Pak. Its menus skip such a port's saves,
-// so the probe still finds a Controller Pak, and only the game's motor routines are told there is a Rumble Pak too
-// (rush2049_rumble_pak_in, hooked in us.toml). They pass the port's OSPfs, the Controller Pak's, to osMotorInit and
-// osMotorStart. The runtime's versions only rewrite its status, queue, channel and activebank (to the same queue and
-// channel), and drive the controller's rumble; nothing in this file reads status or activebank.
+// so the probe still finds a Controller Pak, and only the game's reads about rumble are told there is a Rumble Pak too
+// (rush2049_rumble_pak_in, hooked in us.toml, which lists them): the motor routines, the INSERT RUMBLE PAK NOW banner,
+// the rumble item of its CONTROLS menu and its Rumble Pak screen. The motor routines pass the port's OSPfs, the
+// Controller Pak's, to osMotorInit and osMotorStart. The runtime's versions only rewrite its status, queue, channel and
+// activebank (to the same queue and channel), and drive the controller's rumble; nothing in this file reads status or
+// activebank.
 
 #include <array>
 #include <cstring>

@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.3";
+const std::string version_string = "0.1.4";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -149,11 +149,12 @@ bool rush2049::scripted_rewind() {
     return in != nullptr && (in->buttons & 0x10000) != 0;
 }
 
-// Whether a player plays on this port. In multiplayer mode (the Controllers option's Per Player) the ports of the
-// players who have joined (src/config.cpp); in single-player mode (One Player) only port 1. --players N: ports 1..N,
-// so split screen can be tested with one pad (the extra ports get port 1's input).
+// Whether a player plays on this port. Port 1 always: the keyboard drives player 1 before any controller has joined,
+// and --input drives it. In multiplayer mode (the Controllers option's Per Player) also the ports of the players who
+// have joined (src/config.cpp). --players N: ports 1..N, so split screen can be tested with one pad (the extra ports
+// get port 1's input).
 static bool port_has_player(int port) {
-    bool assigned = recompinput::players::is_single_player_mode() ? port == 0 : recompinput::players::get_player_is_assigned(port);
+    bool assigned = port == 0 || (!recompinput::players::is_single_player_mode() && recompinput::players::get_player_is_assigned(port));
     return assigned || port < fake_players;
 }
 
@@ -184,9 +185,9 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
 }
 
 static void set_rumble_logged(int controller_num, bool rumble) {
-    static bool logged = false;
-    if (rumble && !logged) {
-        logged = true;
+    static bool logged[4] = {};
+    if (rumble && controller_num >= 0 && controller_num < 4 && !logged[controller_num]) {
+        logged[controller_num] = true;
         fprintf(stderr, "[rumble] first motor start on port %d\n", controller_num + 1);
     }
     recompinput::set_rumble(controller_num, rumble);
