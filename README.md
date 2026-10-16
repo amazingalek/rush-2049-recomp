@@ -206,6 +206,12 @@ recomp menu       Esc                    Back
 These are defaults: rebind them on the Controls tab, and the game's own CONTROLS screen still applies. A pad with
 a saved profile keeps its bindings until "Reset to defaults".
 
+Started from Steam (on a Steam Deck, always), the game sees Steam's virtual controller instead of yours, and it has
+only the buttons Steam's controller layout maps to it: a button the layout leaves blank never reaches the game and
+can't be bound. On the Nintendo Switch Online N64 controller that is C-Right, which Steam calls M1. Map it to a
+gamepad button nothing else uses in the game's controller layout in Steam, or turn Steam Input off for the game so it
+reads the controller itself, as it does outside Steam.
+
 **Cheat menu**: unlocks every track and car without playing through Circuit. On the main menu, highlight OPTIONS
 and press L+R+Z+C-Up+C-Right together (keyboard: E+R+Q+T+H) until CHEATS appears, and open it with A (Space).
 Highlight ALL TRACKS, hold L+R and press Z with C-Up+C-Right, C-Down+C-Left, C-Left+C-Up, C-Down+C-Right in turn
