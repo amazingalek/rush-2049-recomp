@@ -9,9 +9,10 @@
 namespace rush2049 {
     // Prints a symbolized stack trace to stderr on an unhandled exception or an abort.
     void install_crash_handler();
-    // Linux: until this is called, SIGTERM and exit() print every thread's stack and end the process at once (a hung
-    // game that is force-closed under X exits from Xlib's I/O error handler). Called once the game has quit.
-    void quit_cleanly();
+    // Linux: on SIGTERM (installed by install_crash_handler) and when the X server closes the connection (a hung game
+    // force-closed), print every thread's stack and end the process. Set after GTK has opened the display, which sets
+    // a handler of its own.
+    void install_x_error_handler();
     // If stdout and stderr go nowhere (the game started from Explorer or a desktop launcher, not from a terminal or
     // with a redirect), writes both to rush2049.log in dir, keeping the last run's as rush2049.old.log, and starts
     // it with first_line.
