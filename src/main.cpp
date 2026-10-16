@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.6";
+const std::string version_string = "0.1.7";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -657,6 +657,7 @@ int main(int argc, char** argv) {
 
 #ifndef __EMSCRIPTEN__
     NFD_Init();
+    rush2049::install_x_error_handler();
 #endif
 
     recompui::programconfig::set_program_name(rush2049::program_name);

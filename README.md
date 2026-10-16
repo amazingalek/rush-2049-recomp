@@ -139,6 +139,10 @@ the log as it plays, run it with `--show-console` instead.
 
 **If it crashes**, the log ends with where it crashed: open an [issue](https://github.com/amazingalek/rush-2049-recomp/issues)
 with `rush2049.log` attached (or `rush2049.old.log`, if you have started the game again since) and what you were doing.
+**If it hangs** on Linux, end it (Exit Game in Steam, or `kill` with its process id, not `kill -9`): the log then
+ends with what every thread was doing. Send it before starting the game again, or send `rush2049.old.log`. Started
+from a terminal, or by a launcher that keeps the game's output, the game writes no `rush2049.log`, and the log is that
+output.
 
 ## In a browser
 

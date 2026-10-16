@@ -1,4 +1,5 @@
-// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), and
+// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), on Linux
+// every thread's when the game is killed or loses its X server (a hung game force-closed), and
 // writes stdout and stderr to a log file when they have nowhere else to go (start_log_file), so a player has the
 // trace to send in.
 //
@@ -9,6 +10,22 @@
 
 #include "crash_handler.h"
 #include "debug_probe.h"
+
+#include <cstdint>
+
+namespace {
+
+[[maybe_unused]] const char* state_name(uint16_t state) {
+    switch (state) {
+        case 0: return "stopped";
+        case 1: return "queued";
+        case 2: return "running";
+        case 3: return "blocked";
+        default: return "?";
+    }
+}
+
+} // namespace
 
 #ifdef _WIN32
 
@@ -38,16 +55,6 @@ std::mutex crash_mutex;
 // Native thread id -> game thread, recorded by game_thread_name (ultramodern calls it on each new game thread).
 std::mutex game_threads_mutex;
 std::map<DWORD, const OSThread*> game_threads;
-
-const char* state_name(uint16_t state) {
-    switch (state) {
-        case 0: return "stopped";
-        case 1: return "queued";
-        case 2: return "running";
-        case 3: return "blocked";
-        default: return "?";
-    }
-}
 
 bool sym_initialized = false;
 
@@ -215,6 +222,8 @@ void rush2049::install_crash_handler() {
     SetUnhandledExceptionFilter(crash_filter);
     signal(SIGABRT, abort_signal);
 }
+
+void rush2049::install_x_error_handler() {}
 
 void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
     std::thread([interval_seconds, stacks]() {
@@ -468,16 +477,135 @@ void rush2049::start_profiler(int after_seconds, int seconds) {
 
 #elif defined(__linux__)
 
-// Linux: the crash trace only. The executable links with -rdynamic, so backtrace_symbols names the recompiled
-// functions; the --stacks, --watch and --hwwatch dev flags are Windows only and do nothing here.
+// Linux: the crash trace, and every thread's stack for --stacks and when the game is ended from outside. The
+// executable links with -rdynamic, so backtrace_symbols names the recompiled functions; --profile, --watch and
+// --hwwatch are Windows only and do nothing here.
+//
+// A thread's stack can only be walked from that thread, so dump_all_stacks sends each one SIGUSR2 in turn and its
+// handler writes its own backtrace. A hung game is ended in one of two ways, and both print every thread's stack,
+// which shows where it was stuck. Killed, it gets SIGTERM. Force-closed under X (the Steam Deck's game mode too) it
+// gets no signal: the X server drops its connection and Xlib calls its I/O error handler, which must not return.
+// Xlib's own calls exit() while the other threads are still going, and RmlUi's static destructors then crashed under
+// them; GTK's, set when the file dialogs' GTK opens the display, calls _exit(). install_x_error_handler sets this
+// file's after that, and it prints the stacks and ends the process.
 
+#include <atomic>
+#include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <dirent.h>
+#include <dlfcn.h>
 #include <execinfo.h>
+#include <map>
+#include <mutex>
+#include <sys/syscall.h>
+#include <thread>
 #include <unistd.h>
 
 namespace {
+
+std::mutex dump_mutex;
+
+// Linux thread id -> game thread, recorded by game_thread_name (ultramodern calls it on each new game thread).
+std::mutex game_threads_mutex;
+std::map<pid_t, const OSThread*> game_threads;
+
+std::atomic<bool> stack_written{ false };
+
+pid_t current_tid() {
+    return (pid_t)syscall(SYS_gettid);
+}
+
+void stack_signal(int) {
+    void* frames[64];
+    int depth = backtrace(frames, 64);
+    // Without this handler's own frame.
+    backtrace_symbols_fd(frames + 1, depth - 1, STDERR_FILENO);
+    stack_written = true;
+}
+
+// with_self: this thread's too, where the process is ending (the main thread, in exit() or the SIGTERM handler).
+void dump_all_stacks(bool with_self) {
+    std::lock_guard lock{ dump_mutex };
+    pid_t self = current_tid();
+    fflush(stdout);
+    fprintf(stderr, "[stacks]\n");
+    if (DIR* dir = opendir("/proc/self/task")) {
+        while (dirent* entry = readdir(dir)) {
+            pid_t tid = (pid_t)atoi(entry->d_name);
+            if (tid <= 0 || (tid == self && !with_self)) {
+                continue;
+            }
+            char name[32] = "";
+            char path[64];
+            snprintf(path, sizeof(path), "/proc/self/task/%d/comm", (int)tid);
+            if (FILE* comm = fopen(path, "r")) {
+                if (fgets(name, sizeof(name), comm) != nullptr) {
+                    name[strcspn(name, "\n")] = '\0';
+                }
+                fclose(comm);
+            }
+            // Threads that block every signal (Mesa's) never answer.
+            bool blocks = false;
+            snprintf(path, sizeof(path), "/proc/self/task/%d/status", (int)tid);
+            if (FILE* status = fopen(path, "r")) {
+                char line[128];
+                unsigned long long mask;
+                while (fgets(line, sizeof(line), status) != nullptr) {
+                    if (sscanf(line, "SigBlk: %llx", &mask) == 1) {
+                        blocks = (mask >> (SIGUSR2 - 1)) & 1;
+                        break;
+                    }
+                }
+                fclose(status);
+            }
+            fprintf(stderr, "  %5d %s:", (int)tid, name);
+            {
+                std::lock_guard threads_lock{ game_threads_mutex };
+                auto it = game_threads.find(tid);
+                if (it != game_threads.end()) {
+                    const OSThread* gt = it->second;
+                    fprintf(stderr, " [id %d pri %d %s%s]", gt->id, gt->priority, state_name(gt->state),
+                            gt->queue == (PTR(PTR(OSThread)))-1 ? " in run queue" : "");
+                }
+            }
+            fprintf(stderr, blocks && tid != self ? " (blocks signals)\n" : "\n");
+            fflush(stderr);
+            stack_written = false;
+            if (blocks && tid != self) {
+                continue;
+            }
+            if (tid == self) {
+                void* frames[64];
+                backtrace_symbols_fd(frames, backtrace(frames, 64), STDERR_FILENO);
+            }
+            else if (syscall(SYS_tgkill, getpid(), tid, SIGUSR2) == 0) {
+                for (int i = 0; i < 200 && !stack_written; i++) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
+        }
+        closedir(dir);
+    }
+    rush2049::print_probes();
+    fflush(stderr);
+}
+
+// Its argument is the Display*.
+int x_io_error(void*) {
+    fprintf(stderr, "\n[exit] the X server closed the game's connection; every thread:\n");
+    dump_all_stacks(true);
+    _exit(EXIT_FAILURE);
+}
+
+// Not async-signal-safe, but the process is ending either way.
+void term_signal(int sig) {
+    fprintf(stderr, "\n[exit] signal %d (%s); every thread:\n", sig, strsignal(sig));
+    dump_all_stacks(true);
+    _exit(128 + sig);
+}
 
 void crash_signal(int sig, siginfo_t* info, void*) {
     fprintf(stderr, "\n[crash] signal %d (%s) at address %p\n", sig, strsignal(sig), info->si_addr);
@@ -503,11 +631,48 @@ void rush2049::install_crash_handler() {
     for (int sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT }) {
         sigaction(sig, &sa, nullptr);
     }
+    struct sigaction stack{};
+    stack.sa_handler = stack_signal;
+    stack.sa_flags = SA_RESTART;
+    sigemptyset(&stack.sa_mask);
+    sigaction(SIGUSR2, &stack, nullptr);
+    signal(SIGTERM, term_signal);
+}
+
+void rush2049::install_x_error_handler() {
+    // SDL loads libX11 itself when it opens a window, so it is looked up rather than linked.
+    void* x11 = dlopen("libX11.so.6", RTLD_NOW);
+    using Handler = int (*)(void*);
+    auto set_handler = x11 ? (Handler(*)(Handler))dlsym(x11, "XSetIOErrorHandler") : nullptr;
+    if (set_handler != nullptr) {
+        set_handler(x_io_error);
+    }
+}
+
+std::string rush2049::game_thread_name(const OSThread* t) {
+    {
+        std::lock_guard lock{ game_threads_mutex };
+        game_threads[current_tid()] = t;
+    }
+    return "Game Thread " + std::to_string(t->id);
+}
+
+void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
+    std::thread([interval_seconds, stacks]() {
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::seconds(interval_seconds));
+            if (stacks) {
+                dump_all_stacks(false);
+            }
+            else {
+                rush2049::print_probes();
+                fflush(stderr);
+            }
+        }
+    }).detach();
 }
 
 void rush2049::start_hw_watch(uint32_t) {}
-std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
-void rush2049::start_stack_sampler(int, bool) {}
 void rush2049::start_profiler(int, int) {}
 void rush2049::start_byte_watch(uint32_t) {}
 
@@ -580,6 +745,7 @@ void rush2049::start_log_file(const std::filesystem::path&, const char*) {}
 
 void rush2049::start_hw_watch(uint32_t) {}
 void rush2049::install_crash_handler() {}
+void rush2049::install_x_error_handler() {}
 std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
 void rush2049::start_stack_sampler(int, bool) {}
 void rush2049::start_profiler(int, int) {}
