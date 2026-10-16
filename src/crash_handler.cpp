@@ -581,9 +581,7 @@ void exit_without_quitting() {
 // Not async-signal-safe, but the process is ending either way.
 void term_signal(int sig) {
     if (!quitting_cleanly) {
-        fprintf(stderr, "
-[exit] signal %d (%s) before the game quit; every thread:
-", sig, strsignal(sig));
+        fprintf(stderr, "\n[exit] signal %d (%s) before the game quit; every thread:\n", sig, strsignal(sig));
         dump_all_stacks();
     }
     _exit(128 + sig);
