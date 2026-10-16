@@ -51,6 +51,9 @@ void rush2049_rewind_frame_draw(uint8_t* rdram);
 /* Save Ghosts (src/controller_pak.cpp): at the end of a Ghost Race, before the game checks whether to offer
    SAVE GHOST. */
 void rush2049_ghost_save_check(uint8_t* rdram);
+/* Save Ghosts: whether the SAVE GHOST prompt's per-pak check takes a ghost as this profile's, in place of the game's
+   answer (v0, 0 for a match). */
+void rush2049_ghost_prompt_match(uint8_t* rdram, recomp_context* ctx);
 
 /* Controller Accessory at Both (src/controller_pak.cpp): whether the game's motor routines see a Rumble Pak in a port,
    given the game's own answer. */

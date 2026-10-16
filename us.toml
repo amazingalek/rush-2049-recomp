@@ -260,6 +260,19 @@ func = "func_800F64D4"
 before_vram = 0x800F66F8
 text = "    rush2049_ghost_save_check(rdram);"
 
+# The prompt shows, for each pak, the ghost it already holds for this track (func_800F0F44, for the port in fp). It
+# takes a ghost in the list (s0) as this profile's (s2) when the ghost's file name and the profile's file name agree
+# in their first 14 characters (func_800950AC, a strncmp), but the save names the ghost's file after the profile's
+# file with the track and direction appended (func_800CC040), and a profile's file is "RUSH2049" and the player's name
+# of up to 6: for a shorter name the two never agree, so every pak reads NO GHOST and SAVE replaces the pak's ghost
+# without the prompt's OVERWRITE SAVED GHOST? question. The prompt was a developer's only, so the game shipped this.
+# rush2049_ghost_prompt_match replaces the compare's answer with Save Ghosts on: the whole name the save would give,
+# since a prefix would take player AA's ghost as player A's.
+[[patches.hook]]
+func = "func_800F0F44"
+before_vram = 0x800F10AC
+text = "    rush2049_ghost_prompt_match(rdram, ctx);"
+
 # Controller Accessory at Both (src/controller_pak.cpp). The game keeps a byte per port, +6 of its pak record
 # (0x80144030, 0x304 a port), set when osPfsInitPak fails and osMotorInit succeeds: a Rumble Pak. The menus read it
 # (func_80094FC4) to skip a port's saves, so it stays as the game sets it, as do the other reads that decide saves: the
