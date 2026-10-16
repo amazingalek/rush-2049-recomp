@@ -13,7 +13,7 @@ drawing it. It is not an emulator and it contains no game data: you supply your 
 six race tracks race to the results screen, two- and four-player split screen renders, and Controller Pak saves
 survive a restart. There is a Linux build too, which boots and runs the title screen and first attract race with a
 software Vulkan driver (that driver then crashes on a bug of its own), but nobody has played it on a Linux GPU or a
-Steam Deck yet. Multiplayer has only been driven from one pad.
+Steam Deck yet. Split screen with a controller for each player has only been tried with virtual controllers.
 
 **In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
@@ -59,7 +59,8 @@ option has an Original value that runs the game as it shipped.
 - **Rumble and saves together**: every controller has both a Controller Pak and a Rumble Pak in, so races rumble and
   players, records and ghosts still save. A real controller holds one or the other.
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
-  driving-friendly defaults, rebindable on the Controls tab.
+  driving-friendly defaults, rebindable on the Controls tab. Each controller is a player of its own, as on the
+  console (see [Controls](#controls)).
 - **No frame copies to RAM**: each frame stays on the GPU instead of also being drawn again at 320×240 and copied
   back into the console's memory, which the game isn't known to read. Saves GPU time, and about 6 ms a frame in a
   browser.
@@ -208,6 +209,13 @@ recomp menu       Esc                    Back
 
 These are defaults: rebind them on the Controls tab, and the game's own CONTROLS screen still applies. A pad with
 a saved profile keeps its bindings until "Reset to defaults".
+
+**Several players.** Each controller is a player of its own, as on the console: the first controller to press a
+button is player 1, the next one player 2, and so on up to 4, and the keyboard drives player 1. To put players in
+another order, or give the keyboard to another player, press Assign Players on the Controls tab, then a button on
+each controller (or a key, for the keyboard) in player order, and confirm. Each controller has bindings of its own
+on the Controls tab, starting from the one-player ones. Players join again each time the game starts. With
+Controllers (General tab) at One Player, every controller and the keyboard drive player 1 instead.
 
 Started from Steam (on a Steam Deck, always), the game sees Steam's virtual controller instead of yours, and it has
 only the buttons Steam's controller layout maps to it: a button the layout leaves blank never reaches the game and

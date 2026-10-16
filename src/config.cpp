@@ -11,6 +11,7 @@
 #include "musyx_hle.h"
 #include "librecomp/config.hpp"
 #include "recompinput/input_mapping.h"
+#include "recompinput/players.h"
 #include "recompui/config.h"
 #include "recompui/renderer.h"
 #include "util/file.h"
@@ -29,6 +30,17 @@ namespace {
         {Accessory::Both, "Both"},
     };
     const std::string accessory_option = "accessory";
+
+    enum class Controllers {
+        PerPlayer,
+        OnePlayer,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> controllers_options = {
+        {Controllers::PerPlayer, "PerPlayer", "Per Player"},
+        {Controllers::OnePlayer, "OnePlayer", "One Player"},
+    };
+    const std::string controllers_option = "controllers";
 
     enum class PakSize {
         Original,
@@ -265,6 +277,24 @@ void rush2049::init_config() {
         accessory_options,
         Accessory::Both
     );
+    // Per Player is RecompFrontend's multiplayer mode: each player has a port of their own and each controller a
+    // profile of its own, and a controller becomes the next player the first time it presses a button
+    // (RecompFrontend-0003), or players are put in order with Assign Players (Controls page). Nothing of it is saved,
+    // so players join again each session. One Player is its single-player mode: every controller and the keyboard on
+    // port 1 through one shared profile. The Controls page reads the mode each time its tab opens, so switching needs
+    // no restart.
+    general.add_enum_option(
+        controllers_option,
+        "Controllers",
+        "How controllers and the keyboard map to players."
+        "<br/>"
+        "<b>Per Player:</b> each controller is a player of its own, as on the console. The first controller to press a "
+        "button is player 1, the next player 2, and so on, and the keyboard drives player 1. Assign Players on the "
+        "Controls tab puts them in another order or gives the keyboard to another player. "
+        "<b>One Player:</b> every controller and the keyboard drive player 1.",
+        controllers_options,
+        Controllers::PerPlayer
+    );
     general.add_enum_option(
         pak_size_option,
         "Controller Pak Size",
@@ -302,6 +332,11 @@ void rush2049::init_config() {
         SaveGhosts::On
     );
     // Called on load too.
+    general.add_option_change_callback(controllers_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            recompinput::players::set_single_player_mode(
+                static_cast<Controllers>(std::get<uint32_t>(cur_value)) == Controllers::OnePlayer);
+        });
     general.add_option_change_callback(rewind_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_rewind(static_cast<Rewind>(std::get<uint32_t>(cur_value)) == Rewind::On);
