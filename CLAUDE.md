@@ -170,6 +170,13 @@ with the shaders built for it (rt64 7734fe4): it boots and draws the attract rac
 the README's words, never the list of merged PRs (most are web support and other games' pages); `releases/v0.1.0.md`
 is the shape. The zip holds no ROM.
 
+Shipping a change means both: the page and a desktop release. A merge that changes what the desktop game runs (the
+files the page is built from, below, less code only the Emscripten build compiles) is not shipped when the page is
+published: the agent whose merge it is also cuts a release with it, Windows and Linux, as part of the same work and
+without being asked, so a fix never reaches only the page's players. Several such merges in a day can share one
+release, cut by the last of them. Code only the web build compiles needs no release, and code only the desktop build
+compiles republishes no page.
+
 Publishing the page is the deploy, and no CI job or pipeline does it: the agent whose merge changed what the page runs
 publishes it once the merge is in, as part of the same work and without being asked. That is anything the page is
 built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime-patches/`, a submodule or
