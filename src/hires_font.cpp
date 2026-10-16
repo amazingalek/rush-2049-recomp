@@ -39,7 +39,10 @@
 // The picture is made from the game's art, so the repo can't hold it. It holds assets/title.patch, which describes
 // the picture in terms of the title as the game draws it and is noise without it (tools/title_patch.py says
 // how). On the first task that draws the whole title, the strips make the original, which unlocks and unpacks the
-// patch, and the strips are cut into hires_title/pack/ in the app folder: once per launch, about 100 ms. The Midway
+// patch, and the strips are cut into hires_title/pack/ in the app folder: once per launch, about 100 ms natively and
+// 150-350 on a page, on a thread of its own. The walk runs in the scheduler's thread, and while it is busy no other
+// game thread runs, the audio thread included, so the cut there left the sound that long without a buffer (more
+// than the 40 ms queued); the title shows the original for those frames instead. The Midway
 // screen is drawn the same way but never covers the whole picture. Hi-res Title Screen (Graphics) turns it off, and
 // the strips are drawn bottom-up, which needs RT64_FLIPPED_RECT_HIGH_RES (CMakeLists.txt). To make a patch for another picture, save it as hires_title/title.png in the app folder: it is used instead,
 // and each run writes the title as the game draws it to hires_title/original.ppm for the tool.
@@ -53,6 +56,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -148,6 +152,8 @@ uint8_t channel(uint32_t c, int k) {
 }
 std::unordered_set<uint64_t> title_seen;
 std::vector<uint64_t> title_in_pack;
+// While the patch is unpacked and cut on its own thread, which then owns the title's state: the walk leaves it alone.
+std::atomic<bool> title_cutting{ false };
 
 struct Rdp {
     uint8_t* rdram;
@@ -663,6 +669,9 @@ void Rdp::make_texture(uint64_t hash, uint32_t width, uint32_t height, const std
 }
 
 void Rdp::title_rect(const RT64::LoadTile& tile, const uint32_t* rect) {
+    if (title_cutting.load(std::memory_order_acquire)) {
+        return;
+    }
     uint32_t w0 = rect[0], w1 = rect[1], st = rect[2], d = rect[3];
     int dsdx = (int16_t)(d >> 16), dtdy = (int16_t)d;  // s5.10
     if (dsdx != 4 << 10 || std::abs(dtdy) != 1 << 10) {  // copy mode, a texel to a pixel
@@ -868,8 +877,8 @@ bool unpack_title(const std::vector<uint8_t>& original) {
     return true;
 }
 
-// The strips this task drew while the patch is still packed: if they make the whole title, unpack it and cut them.
-bool cut_pending_title(std::vector<TitleStrip>& pending) {
+// The title as the strips this task drew while the patch is still packed show it, or empty if they don't cover it.
+std::vector<uint8_t> pending_title(const std::vector<TitleStrip>& pending) {
     std::vector<uint8_t> original((size_t)title_width * title_height * 3);
     std::vector<bool> covered((size_t)title_width * title_height);
     size_t count = 0;
@@ -882,8 +891,13 @@ bool cut_pending_title(std::vector<TitleStrip>& pending) {
         }
     }
     if (count < covered.size()) {
-        return false;  // another screen, or the title with a strip whose palette came in an earlier task
+        return {};  // another screen, or the title with a strip whose palette came in an earlier task
     }
+    return original;
+}
+
+// The patch unpacked against the whole title and the strips that drew it cut from it.
+bool cut_pending_title(const std::vector<TitleStrip>& pending, const std::vector<uint8_t>& original) {
     auto began = std::chrono::steady_clock::now();
     if (!unpack_title(original)) {
         fprintf(stderr, "[hires title] a full screen of strips that isn't the patch's title, left alone\n");
@@ -921,6 +935,16 @@ void write_original() {
     std::fprintf(f, "P6\n%d %d\n255\n", title_width, title_height);
     std::fwrite(title_original.data(), 1, title_original.size(), f);
     std::fclose(f);
+}
+
+// Strips added to the title's pack: RT64 reloads it.
+void title_cut() {
+    fprintf(stderr, "[hires title] %zu strip(s) in the pack\n", title_in_pack.size());
+    write_database(title_dir / "pack", title_in_pack);
+    register_pack();
+    if (!title_original.empty()) {
+        write_original();
+    }
 }
 
 // hires_title/title.png in the app folder, or failing that assets/title.patch: the pack is cut afresh each launch.
@@ -1027,15 +1051,19 @@ extern "C" void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr) {
         rdp.make_texture(hash, atlas.width, atlas.height, atlas.texels);
     }
     if (!rdp.title_pending.empty()) {
-        rdp.found_title |= cut_pending_title(rdp.title_pending);
+        std::vector<uint8_t> original = pending_title(rdp.title_pending);
+        if (!original.empty()) {
+            title_cutting.store(true, std::memory_order_relaxed);
+            std::thread([pending = std::move(rdp.title_pending), original = std::move(original)] {
+                if (cut_pending_title(pending, original)) {
+                    title_cut();
+                }
+                title_cutting.store(false, std::memory_order_release);
+            }).detach();
+        }
     }
     if (rdp.found_title) {
-        fprintf(stderr, "[hires title] %zu strip(s) in the pack\n", title_in_pack.size());
-        write_database(title_dir / "pack", title_in_pack);
-        register_pack();
-        if (!title_original.empty()) {
-            write_original();
-        }
+        title_cut();
     }
     if (!rdp.found.empty()) {
         write_database(pack_dir, in_pack);

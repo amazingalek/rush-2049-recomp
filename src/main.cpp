@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.4";
+const std::string version_string = "0.1.5";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -255,6 +255,12 @@ void update_gfx(void*) {
 // the resampler plays up to 1% faster or slower (17 cents, too little to hear as pitch) to keep it near
 // audio_queue_target_ms: a long queue drains and a short one refills without a seam.
 //
+// The game queues its buffers on the VI clock (an AI event per buffer played, N64ModernRuntime-0001), not by how much
+// the device holds, so the queue stays as deep as it started. Its first buffer reaches an empty device, so the device
+// is filled with silence up to audio_queue_target_ms ahead of it, and again whenever it has run dry: started a buffer
+// deep, the queue took seconds to reach the target at the resampler's pace, and on a page the game's first moments
+// left the device 3-17 ms without a buffer.
+//
 // On a page the device is N64Recomp-browser's AudioWorklet output (audio_output.h) instead of SDL's queue, which
 // Emscripten's SDL2 plays from the page's thread: the music broke up whenever WebGPU kept that thread busy.
 
@@ -338,6 +344,12 @@ void queue_samples(int16_t* audio_data, size_t sample_count) {
 
     size_t frames = output.size() / 2;
     rush2049::probe_output(output.data(), frames, output_sample_rate);
+    size_t target_frames = size_t(audio_queue_target_ms * output_sample_rate / 1000.0);
+    if (queued_us == 0 && frames < target_frames) {
+        static std::vector<float> silence;
+        silence.assign((target_frames - frames) * 2, 0.0f);
+        device_queue(silence.data(), target_frames - frames);
+    }
     device_queue(output.data(), frames);
 }
 
