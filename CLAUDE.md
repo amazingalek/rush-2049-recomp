@@ -460,7 +460,9 @@ errors. On v0.50.0 (a6ea767: the LOD shaders in loops, section 1 in the boot thr
 page's thread), a build of this pin move, RTX 2070, a quiet host, a fresh profile each: at 1256x645 Chrome 155 headless
 waited not at all and drew 59.4, Firefox 158 waited 1.8 and 4.4 s and drew 59.5; uncapped at 3840x2000 (`play_page.mjs
 --uncapped --size 3840x2000 --play 25`, the first such runs) Chrome 147 presents a second, Firefox 118 with both waits
-inside the 25 s; sound short only in the waits, no WebGPU errors.
+inside the 25 s; sound short only in the waits, no WebGPU errors. With v0.1.4 (Both's rumble reads, port 1 always playing), a
+build of its branch on v0.50.0, RTX 2070, a host 6% busy, a fresh profile each at 1256x645: Chrome 155 headless waited
+not at all and drew 59.2, Firefox 158 1.8 and 4.3 s and drew 59.6; sound short only in the waits, no WebGPU errors.
 
 - With the whole list as one section, Firefox 157 (RTX 2070, a busy host) waited 27.9-30.2 s at the bar; then the
   attract races and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap
