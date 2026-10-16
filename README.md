@@ -55,7 +55,9 @@ option has an Original value that runs the game as it shipped.
   As shipped, the game kept a ghost only until you quit (as GHOST 1) and showed the prompt only for a developer's
   profile name. Saving needs a player profile on the pak: Just Play has none, so it keeps the ghost for the session.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't
-  run out of room. Rumble Pak is also supported (General tab, Controller Accessory).
+  run out of room.
+- **Rumble and saves together**: every controller has both a Controller Pak and a Rumble Pak in, so races rumble and
+  players, records and ghosts still save. A real controller holds one or the other.
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
   driving-friendly defaults, rebindable on the Controls tab.
 - **No frame copies to RAM**: each frame stays on the GPU instead of also being drawn again at 320×240 and copied
@@ -82,6 +84,7 @@ closed. For the game exactly as it shipped, set every Original value:
 | Hi-res title screen | Hi-res Title Screen | `graphics.json` `hires_title` | `"On"` | `"Original"` (240p) |
 | No frame copies to RAM | Copy Frames to RAM | `graphics.json` `copy_frames_to_ram` | `"Off"` (takes effect on the next start) | `"Original"` (every frame copied) |
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
+| Rumble and saves together | Controller Accessory | `general.json` `accessory` | `"Both"` | `"Controller Pak"` (saves, no rumble) or `"Rumble Pak"` (rumble, no saves) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |
 | Save Ghosts | Save Ghosts | `general.json` `save_ghosts` | `"On"` | `"Original"` (no SAVE GHOST prompt) |

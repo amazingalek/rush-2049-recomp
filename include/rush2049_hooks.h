@@ -52,6 +52,10 @@ void rush2049_rewind_frame_draw(uint8_t* rdram);
    SAVE GHOST. */
 void rush2049_ghost_save_check(uint8_t* rdram);
 
+/* Controller Accessory at Both (src/controller_pak.cpp): whether the game's motor routines see a Rumble Pak in a port,
+   given the game's own answer. */
+gpr rush2049_rumble_pak_in(gpr rumble_pak);
+
 /* Debug tracing for bring-up: prints "<ms> <tag> <value>" to stderr. */
 void rush2049_trace(const char* tag, uint32_t value);
 void rush2049_probe_sched_msg(uint8_t* rdram, uint32_t msg);

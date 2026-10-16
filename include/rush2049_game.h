@@ -17,8 +17,9 @@ namespace rush2049 {
     void register_mod_exports();
     std::vector<uint8_t> build_recomp_rom(std::span<const uint8_t> rom);
     void init_config();
-    // The accessory in every controller: a Controller Pak (saves) or a Rumble Pak (rumble, no saves).
+    // The accessory in every controller: a Controller Pak (saves), a Rumble Pak (rumble, no saves), or both at once.
     bool rumble_pak_selected();
+    bool both_paks_selected();
     // The "Controller Pak Size" setting: 62 banks (about 1.9 MB) rather than the original 32 KiB.
     bool large_controller_pak();
     // The "Save Ghosts" setting: the SAVE GHOST prompt after every finished Ghost Race, not only a developer's.
