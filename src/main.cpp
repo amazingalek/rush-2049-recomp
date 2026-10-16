@@ -185,9 +185,9 @@ static bool get_n64_input_logged(int player_index, uint16_t* buttons_out, float*
 }
 
 static void set_rumble_logged(int controller_num, bool rumble) {
-    static bool logged = false;
-    if (rumble && !logged) {
-        logged = true;
+    static bool logged[4] = {};
+    if (rumble && controller_num >= 0 && controller_num < 4 && !logged[controller_num]) {
+        logged[controller_num] = true;
         fprintf(stderr, "[rumble] first motor start on port %d\n", controller_num + 1);
     }
     recompinput::set_rumble(controller_num, rumble);
