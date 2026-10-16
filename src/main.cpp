@@ -149,9 +149,9 @@ bool rush2049::scripted_rewind() {
     return in != nullptr && (in->buttons & 0x10000) != 0;
 }
 
-// Whether a player plays on this port. In single-player mode (the Controllers option's One Player) that's only port 1;
-// in multiplayer mode (Per Player) the ports of the players assigned on the Controls page. --players N: ports 1..N, so
-// split screen can be tested with one pad (the extra ports get port 1's input).
+// Whether a player plays on this port. In multiplayer mode (the Controllers option's Per Player) the ports of the
+// players who have joined (src/config.cpp); in single-player mode (One Player) only port 1. --players N: ports 1..N,
+// so split screen can be tested with one pad (the extra ports get port 1's input).
 static bool port_has_player(int port) {
     bool assigned = recompinput::players::is_single_player_mode() ? port == 0 : recompinput::players::get_player_is_assigned(port);
     return assigned || port < fake_players;

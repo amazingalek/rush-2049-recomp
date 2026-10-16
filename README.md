@@ -13,7 +13,7 @@ drawing it. It is not an emulator and it contains no game data: you supply your 
 six race tracks race to the results screen, two- and four-player split screen renders, and Controller Pak saves
 survive a restart. There is a Linux build too, which boots and runs the title screen and first attract race with a
 software Vulkan driver (that driver then crashes on a bug of its own), but nobody has played it on a Linux GPU or a
-Steam Deck yet. Multiplayer has only been driven from one pad.
+Steam Deck yet. Split screen with a controller for each player has only been tried with virtual controllers.
 
 **In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
@@ -57,8 +57,8 @@ option has an Original value that runs the game as it shipped.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't
   run out of room. Rumble Pak is also supported (General tab, Controller Accessory).
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
-  driving-friendly defaults, rebindable on the Controls tab. Every controller drives player 1, or for split screen
-  each one its own player (General tab, Controllers; see [Controls](#controls)).
+  driving-friendly defaults, rebindable on the Controls tab. Each controller is a player of its own, as on the
+  console (see [Controls](#controls)).
 - **No frame copies to RAM**: each frame stays on the GPU instead of also being drawn again at 320×240 and copied
   back into the console's memory, which the game isn't known to read. Saves GPU time, and about 6 ms a frame in a
   browser.
@@ -86,7 +86,6 @@ closed. For the game exactly as it shipped, set every Original value:
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |
 | Save Ghosts | Save Ghosts | `general.json` `save_ghosts` | `"On"` | `"Original"` (no SAVE GHOST prompt) |
-| Every controller drives player 1 | Controllers | `general.json` `controllers` | `"OnePlayer"` | `"PerPlayer"` (each controller its own player, as on the console, assigned on the Controls tab) |
 
 Not options, because they don't change the game: the keyboard and gamepad layouts, playback at half the game's
 sample level so its mix doesn't clip, and the Expansion Pak, which the game was built for.
@@ -208,11 +207,12 @@ recomp menu       Esc                    Back
 These are defaults: rebind them on the Controls tab, and the game's own CONTROLS screen still applies. A pad with
 a saved profile keeps its bindings until "Reset to defaults".
 
-**Several players.** With Controllers (General tab) at One Player, the default, every controller and the keyboard
-drive player 1. For two- or four-player split screen, set it to Per Player, then on the Controls tab press Assign
-Players, press a button on each controller (or a key, for the keyboard) in player order, and confirm. Each player
-then has a port of their own, and each controller its own bindings on the Controls tab (one new to Per Player starts
-from the defaults above). Players are assigned again each time the game starts, and nobody drives until they are.
+**Several players.** Each controller is a player of its own, as on the console: the first controller to press a
+button is player 1, the next one player 2, and so on up to 4, and the keyboard drives player 1. To put players in
+another order, or give the keyboard to another player, press Assign Players on the Controls tab, then a button on
+each controller (or a key, for the keyboard) in player order, and confirm. Each controller has bindings of its own
+on the Controls tab, starting from the one-player ones. Players join again each time the game starts. With
+Controllers (General tab) at One Player, every controller and the keyboard drive player 1 instead.
 
 **Cheat menu**: unlocks every track and car without playing through Circuit. On the main menu, highlight OPTIONS
 and press L+R+Z+C-Up+C-Right together (keyboard: E+R+Q+T+H) until CHEATS appears, and open it with A (Space).

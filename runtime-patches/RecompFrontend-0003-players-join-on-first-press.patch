@@ -1,0 +1,89 @@
+diff --git a/recompinput/src/input_events.cpp b/recompinput/src/input_events.cpp
+--- a/recompinput/src/input_events.cpp
++++ b/recompinput/src/input_events.cpp
+@@ -25,7 +25,20 @@
+     int profile_index = profiles::get_input_profile_by_key(default_profile_key);
+     if (profile_index < 0) {
+         profile_index = profiles::add_input_profile(default_profile_key, "Controller", InputDevice::Controller, false);
+-        profiles::reset_profile_bindings(profile_index, InputDevice::Controller);
++        // A new controller starts from the single-player controller bindings, so bindings made in single-player mode
++        // carry over to multiplayer mode.
++        int sp_profile_index = profiles::get_sp_controller_profile_index();
++        if (sp_profile_index >= 0) {
++            for (size_t input = 0; input < static_cast<size_t>(GameInput::COUNT); input++) {
++                for (size_t binding_index = 0; binding_index < recompinput::num_bindings_per_input; binding_index++) {
++                    profiles::set_input_binding(profile_index, static_cast<GameInput>(input), binding_index,
++                        profiles::get_input_binding(sp_profile_index, static_cast<GameInput>(input), binding_index));
++                }
++            }
++        }
++        else {
++            profiles::reset_profile_bindings(profile_index, InputDevice::Controller);
++        }
+     }
+     return profile_index;
+ }
+diff --git a/recompinput/src/players.cpp b/recompinput/src/players.cpp
+--- a/recompinput/src/players.cpp
++++ b/recompinput/src/players.cpp
+@@ -149,17 +149,29 @@
+     PlayerState.queue_close_player_assignment_modal = true;
+ }
+ 
++// A controller player has no keyboard, except player 1 while nobody has the keyboard: every player starts out on the
++// single-player keyboard profile, which would make the keyboard drive them all.
++static void set_controller_player_profiles(int player_index, SDL_GameController* controller, bool keyboard_assigned) {
++    int cont_profile_index = profiles::get_controller_profile_index_from_sdl_controller(controller);
++    if (cont_profile_index >= 0) {
++        profiles::set_input_profile_for_player(player_index, cont_profile_index, InputDevice::Controller);
++    }
++    int kb_profile_index = (player_index == 0 && !keyboard_assigned) ? profiles::get_sp_keyboard_profile_index() : -1;
++    profiles::set_input_profile_for_player(player_index, kb_profile_index, InputDevice::Keyboard);
++}
++
+ void playerassignment::commit_player_assignment() {
+     stop_and_close_modal();
+ 
+     PlayerState.players = PlayerState.temp_players;
++    bool keyboard_assigned = false;
++    for (int i = 0; i < players::get_number_of_assigned_players(); i++) {
++        keyboard_assigned |= PlayerState.players[i].keyboard_enabled;
++    }
+     for (int i = 0; i < players::get_number_of_assigned_players(); i++) {
+         Player &player = PlayerState.players[i];
+         if (player.controller != nullptr) {
+-            int cont_profile_index = profiles::get_controller_profile_index_from_sdl_controller(player.controller);
+-            if (cont_profile_index >= 0) {
+-                profiles::set_input_profile_for_player(i, cont_profile_index, InputDevice::Controller);
+-            }
++            set_controller_player_profiles(i, player.controller, keyboard_assigned);
+         } else {
+             profiles::set_input_profile_for_player(i, profiles::get_or_create_mp_keyboard_profile_index(i), InputDevice::Keyboard);
+         }
+@@ -214,6 +226,26 @@
+         return;
+     }
+ 
++    // In multiplayer mode, outside player assignment, a controller that isn't a player yet becomes the next one the
++    // first time it presses a button, so each controller is a player of its own without assigning them.
++    if (!playerassignment::is_active() && !PlayerState.single_player_mode && event->type == SDL_EventType::SDL_CONTROLLERBUTTONDOWN) {
++        SDL_GameController* controller = recompinput::get_controller_from_joystick_id(event->cbutton.which);
++        bool is_player = false;
++        bool keyboard_assigned = false;
++        for (size_t i = 0; i < PlayerState.players.get_count(); i++) {
++            is_player |= PlayerState.players[i].controller == controller;
++            keyboard_assigned |= PlayerState.players[i].keyboard_enabled;
++        }
++        if (controller != nullptr && !is_player && PlayerState.players.get_count() < PlayerState.max_players) {
++            int player_index = (int)PlayerState.players.get_count();
++            PlayerState.players.add_controller_player(controller);
++            set_controller_player_profiles(player_index, controller, keyboard_assigned);
++            if (recompui::controls_page != nullptr) {
++                recompui::controls_page->force_update();
++            }
++        }
++    }
++
+     if (!playerassignment::is_active()) {
+         return;
+     }

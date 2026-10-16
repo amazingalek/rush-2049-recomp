@@ -30,13 +30,13 @@ namespace {
     const std::string accessory_option = "accessory";
 
     enum class Controllers {
-        OnePlayer,
         PerPlayer,
+        OnePlayer,
         OptionCount
     };
     const std::vector<recomp::config::ConfigOptionEnumOption> controllers_options = {
-        {Controllers::OnePlayer, "OnePlayer", "One Player"},
         {Controllers::PerPlayer, "PerPlayer", "Per Player"},
+        {Controllers::OnePlayer, "OnePlayer", "One Player"},
     };
     const std::string controllers_option = "controllers";
 
@@ -266,22 +266,23 @@ void rush2049::init_config() {
         accessory_options,
         Accessory::ControllerPak
     );
-    // RecompFrontend's single-player mode routes every controller and the keyboard to port 1 through one shared
-    // profile, and its Controls page shows only that profile's bindings. Multiplayer mode gives each player assigned
-    // with Assign Players (Controls page) a port of its own, in order, and each controller a profile of its own; the
-    // assignment isn't saved, so it's made again each session. The Controls page reads the mode each time its tab
-    // opens, so switching needs no restart.
+    // Per Player is RecompFrontend's multiplayer mode: each player has a port of their own and each controller a
+    // profile of its own, and a controller becomes the next player the first time it presses a button
+    // (RecompFrontend-0003), or players are put in order with Assign Players (Controls page). Nothing of it is saved,
+    // so players join again each session. One Player is its single-player mode: every controller and the keyboard on
+    // port 1 through one shared profile. The Controls page reads the mode each time its tab opens, so switching needs
+    // no restart.
     general.add_enum_option(
         controllers_option,
         "Controllers",
         "How controllers and the keyboard map to players."
         "<br/>"
-        "<b>One Player:</b> every controller and the keyboard drive player 1, with the bindings on the Controls tab. "
-        "<b>Per Player:</b> for split screen. On the Controls tab, press Assign Players and then a button on each "
-        "controller (or a key) in player order; each controller keeps bindings of its own. Players are assigned again "
-        "each time the game starts, and nobody drives until they are.",
+        "<b>Per Player:</b> each controller is a player of its own, as on the console. The first controller to press a "
+        "button is player 1, the next player 2, and so on, and the keyboard drives player 1. Assign Players on the "
+        "Controls tab puts them in another order or gives the keyboard to another player. "
+        "<b>One Player:</b> every controller and the keyboard drive player 1.",
         controllers_options,
-        Controllers::OnePlayer
+        Controllers::PerPlayer
     );
     general.add_enum_option(
         pak_size_option,
