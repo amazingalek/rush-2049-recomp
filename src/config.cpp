@@ -11,6 +11,7 @@
 #include "musyx_hle.h"
 #include "librecomp/config.hpp"
 #include "recompinput/input_mapping.h"
+#include "recompinput/players.h"
 #include "recompui/config.h"
 #include "recompui/renderer.h"
 #include "util/file.h"
@@ -27,6 +28,17 @@ namespace {
         {Accessory::RumblePak, "Rumble Pak"},
     };
     const std::string accessory_option = "accessory";
+
+    enum class Controllers {
+        OnePlayer,
+        PerPlayer,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> controllers_options = {
+        {Controllers::OnePlayer, "OnePlayer", "One Player"},
+        {Controllers::PerPlayer, "PerPlayer", "Per Player"},
+    };
+    const std::string controllers_option = "controllers";
 
     enum class PakSize {
         Original,
@@ -254,6 +266,23 @@ void rush2049::init_config() {
         accessory_options,
         Accessory::ControllerPak
     );
+    // RecompFrontend's single-player mode routes every controller and the keyboard to port 1 through one shared
+    // profile, and its Controls page shows only that profile's bindings. Multiplayer mode gives each player assigned
+    // with Assign Players (Controls page) a port of its own, in order, and each controller a profile of its own; the
+    // assignment isn't saved, so it's made again each session. The Controls page reads the mode each time its tab
+    // opens, so switching needs no restart.
+    general.add_enum_option(
+        controllers_option,
+        "Controllers",
+        "How controllers and the keyboard map to players."
+        "<br/>"
+        "<b>One Player:</b> every controller and the keyboard drive player 1, with the bindings on the Controls tab. "
+        "<b>Per Player:</b> for split screen. On the Controls tab, press Assign Players and then a button on each "
+        "controller (or a key) in player order; each controller keeps bindings of its own. Players are assigned again "
+        "each time the game starts, and nobody drives until they are.",
+        controllers_options,
+        Controllers::OnePlayer
+    );
     general.add_enum_option(
         pak_size_option,
         "Controller Pak Size",
@@ -291,6 +320,11 @@ void rush2049::init_config() {
         SaveGhosts::On
     );
     // Called on load too.
+    general.add_option_change_callback(controllers_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            recompinput::players::set_single_player_mode(
+                static_cast<Controllers>(std::get<uint32_t>(cur_value)) == Controllers::OnePlayer);
+        });
     general.add_option_change_callback(rewind_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_rewind(static_cast<Rewind>(std::get<uint32_t>(cur_value)) == Rewind::On);
