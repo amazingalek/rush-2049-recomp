@@ -52,6 +52,7 @@ option has an Original value that runs the game as it shipped.
   up to about a minute.
 - **Save Ghosts**: after a Ghost Race finished inside the time limit, the game's own SAVE GHOST prompt comes up and
   writes the ghost to the Controller Pak, where it is offered in later Ghost Races on that track, after a restart too.
+  It shows the ghost each pak already holds for that track and asks before replacing it.
   As shipped, the game kept a ghost only until you quit (as GHOST 1) and showed the prompt only for a developer's
   profile name. Saving needs a player profile on the pak: Just Play has none, so it keeps the ghost for the session.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't

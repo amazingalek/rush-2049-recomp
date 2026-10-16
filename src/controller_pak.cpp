@@ -26,6 +26,9 @@
 // can type it). The Save Ghosts setting sets it before each check (rush2049_ghost_save_check, hooked in us.toml), but
 // only for a player profile on a pak: the prompt names the ghost's file after the profile's file, and in Just Play
 // there is none (its profile's file pointer is 0, and saving read through it). Original leaves the byte to the game.
+// For each pak the prompt shows the ghost it already holds for the track, and asks before replacing it; the game's
+// check for that only works for a player name of 6 characters, so with Save Ghosts on rush2049_ghost_prompt_match
+// (us.toml) answers it instead.
 //
 // Rumble with a Controller Pak in (Controller Accessory at Both): the game probes each port with osPfsInitPak and only
 // when that fails tries osMotorInit, and marks the port as holding a Rumble Pak. Its menus skip such a port's saves,
@@ -41,6 +44,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "recomp.h"
@@ -561,4 +565,32 @@ extern "C" void rush2049_ghost_save_check(uint8_t* rdram) {
     uint32_t file = in_rdram(profile) ? (uint32_t)MEM_W(0x08, (gpr)(int32_t)profile) : 0;
     uint32_t record = in_rdram(file) ? (uint32_t)MEM_W(0, (gpr)(int32_t)file) : 0;
     MEM_B(0, (gpr)(int32_t)0x801148E4) = in_rdram(record) ? 1 : 0;
+}
+
+// A pak file record's name, from +0x12: at most 16 characters, as a note holds.
+static std::string record_name(uint8_t* rdram, uint32_t file) {
+    uint32_t record = in_rdram(file) ? (uint32_t)MEM_W(0, (gpr)(int32_t)file) : 0;
+    std::string name;
+    for (int i = 0; in_rdram(record) && i < 16; i++) {
+        char c = (char)MEM_B(0x12 + i, (gpr)(int32_t)record);
+        if (c == 0) {
+            break;
+        }
+        name += c;
+    }
+    return name;
+}
+
+extern "C" void rush2049_ghost_prompt_match(uint8_t* rdram, recomp_context* ctx) {
+    if (!rush2049::save_ghosts()) {
+        return;
+    }
+    // The ghost's list entry (s0, its file at +0x04, track at +0x08, direction at +0x09) and the profile (s2, its file
+    // at +0x08). The save names the ghost's file "%s%d%s": the profile's file name, the track + 1, and F, or B for a
+    // reversed track; a note keeps 16 characters of it.
+    uint32_t ghost = (uint32_t)ctx->r16;
+    uint32_t profile = (uint32_t)ctx->r18;
+    std::string expected = record_name(rdram, (uint32_t)MEM_W(0x08, (gpr)(int32_t)profile)) +
+        std::to_string((int)MEM_B(0x08, (gpr)(int32_t)ghost) + 1) + (MEM_B(0x09, (gpr)(int32_t)ghost) != 0 ? "B" : "F");
+    ctx->r2 = record_name(rdram, (uint32_t)MEM_W(0x04, (gpr)(int32_t)ghost)) == expected.substr(0, 16) ? 0 : 1;
 }
