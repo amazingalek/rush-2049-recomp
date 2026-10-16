@@ -26,6 +26,13 @@
 // can type it). The Save Ghosts setting sets it before each check (rush2049_ghost_save_check, hooked in us.toml), but
 // only for a player profile on a pak: the prompt names the ghost's file after the profile's file, and in Just Play
 // there is none (its profile's file pointer is 0, and saving read through it). Original leaves the byte to the game.
+//
+// Rumble with a Controller Pak in (Controller Accessory at Both): the game probes each port with osPfsInitPak and only
+// when that fails tries osMotorInit, and marks the port as holding a Rumble Pak. Its menus skip such a port's saves,
+// so the probe still finds a Controller Pak, and only the game's motor routines are told there is a Rumble Pak too
+// (rush2049_rumble_pak_in, hooked in us.toml). They pass the port's OSPfs, the Controller Pak's, to osMotorInit and
+// osMotorStart. The runtime's versions only rewrite its status, queue, channel and activebank (to the same queue and
+// channel), and drive the controller's rumble; nothing in this file reads status or activebank.
 
 #include <array>
 #include <cstring>
@@ -535,6 +542,10 @@ extern "C" void osPfsReadWriteFile_recomp(uint8_t* rdram, recomp_context* ctx) {
 // Whether a guest pointer is in RDRAM.
 static bool in_rdram(uint32_t addr) {
     return addr >= 0x80000000u && addr < 0x80800000u;
+}
+
+extern "C" gpr rush2049_rumble_pak_in(gpr rumble_pak) {
+    return rumble_pak != 0 || rush2049::both_paks_selected() ? 1 : 0;
 }
 
 extern "C" void rush2049_ghost_save_check(uint8_t* rdram) {

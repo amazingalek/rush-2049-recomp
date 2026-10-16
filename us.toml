@@ -259,3 +259,18 @@ text = "    rush2049_rewind_frame_draw(rdram);"
 func = "func_800F64D4"
 before_vram = 0x800F66F8
 text = "    rush2049_ghost_save_check(rdram);"
+
+# Controller Accessory at Both (src/controller_pak.cpp). The game keeps a byte per port, +6 of its pak record
+# (0x80144030, 0x304 a port), set when osPfsInitPak fails and osMotorInit succeeds: a Rumble Pak. The menus read it
+# (func_80094FC4) to skip a port's saves, so it stays as the game sets it. Only the two routines that drive the motors
+# read it through rush2049_rumble_pak_in: the rumble thread (func_8008A77C, which starts and stops each port's motor)
+# and the stop of every motor (func_800A13E8).
+[[patches.hook]]
+func = "func_8008A77C"
+before_vram = 0x8008A874
+text = "    ctx->r15 = rush2049_rumble_pak_in(ctx->r15);"
+
+[[patches.hook]]
+func = "func_800A13E8"
+before_vram = 0x800A1488
+text = "    ctx->r24 = rush2049_rumble_pak_in(ctx->r24);"
