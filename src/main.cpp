@@ -753,6 +753,7 @@ int main(int argc, char** argv) {
         .error_handling_callbacks = error_handling_callbacks,
         .threads_callbacks = { .get_game_thread_name = rush2049::game_thread_name },
     });
+    rush2049::quit_cleanly();
 
 #ifndef __EMSCRIPTEN__
     NFD_Quit();

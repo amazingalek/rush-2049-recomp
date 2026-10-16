@@ -1,4 +1,5 @@
-// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), and
+// Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), on Linux
+// every thread's when the game ends without quitting (a hung game force-closed), and
 // writes stdout and stderr to a log file when they have nowhere else to go (start_log_file), so a player has the
 // trace to send in.
 //
@@ -9,6 +10,22 @@
 
 #include "crash_handler.h"
 #include "debug_probe.h"
+
+#include <cstdint>
+
+namespace {
+
+[[maybe_unused]] const char* state_name(uint16_t state) {
+    switch (state) {
+        case 0: return "stopped";
+        case 1: return "queued";
+        case 2: return "running";
+        case 3: return "blocked";
+        default: return "?";
+    }
+}
+
+} // namespace
 
 #ifdef _WIN32
 
@@ -38,16 +55,6 @@ std::mutex crash_mutex;
 // Native thread id -> game thread, recorded by game_thread_name (ultramodern calls it on each new game thread).
 std::mutex game_threads_mutex;
 std::map<DWORD, const OSThread*> game_threads;
-
-const char* state_name(uint16_t state) {
-    switch (state) {
-        case 0: return "stopped";
-        case 1: return "queued";
-        case 2: return "running";
-        case 3: return "blocked";
-        default: return "?";
-    }
-}
 
 bool sym_initialized = false;
 
@@ -215,6 +222,8 @@ void rush2049::install_crash_handler() {
     SetUnhandledExceptionFilter(crash_filter);
     signal(SIGABRT, abort_signal);
 }
+
+void rush2049::quit_cleanly() {}
 
 void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
     std::thread([interval_seconds, stacks]() {
@@ -468,16 +477,117 @@ void rush2049::start_profiler(int after_seconds, int seconds) {
 
 #elif defined(__linux__)
 
-// Linux: the crash trace only. The executable links with -rdynamic, so backtrace_symbols names the recompiled
-// functions; the --stacks, --watch and --hwwatch dev flags are Windows only and do nothing here.
+// Linux: the crash trace, and every thread's stack for --stacks and for a run that ends without quitting. The
+// executable links with -rdynamic, so backtrace_symbols names the recompiled functions; --profile, --watch and
+// --hwwatch are Windows only and do nothing here.
+//
+// A thread's stack can only be walked from that thread, so dump_all_stacks sends each one SIGUSR2 in turn and its
+// handler writes its own backtrace. A hung game is ended in one of two ways, and until quit_cleanly() both print every
+// thread's stack, which shows where it was stuck. Killed, it gets SIGTERM. Force-closed under X (the Steam Deck's game
+// mode too) it gets no signal: the X server drops it, and Xlib's I/O error handler calls exit() on the main thread
+// while every other thread is still going, so exit() ends the process right after the stacks: the static destructors
+// that would run next (RmlUi's) crashed under threads still using them.
 
+#include <atomic>
+#include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <dirent.h>
 #include <execinfo.h>
+#include <map>
+#include <mutex>
+#include <sys/syscall.h>
+#include <thread>
 #include <unistd.h>
 
 namespace {
+
+std::mutex dump_mutex;
+
+// Linux thread id -> game thread, recorded by game_thread_name (ultramodern calls it on each new game thread).
+std::mutex game_threads_mutex;
+std::map<pid_t, const OSThread*> game_threads;
+
+std::atomic<bool> stack_written{ false };
+std::atomic<bool> quitting_cleanly{ false };
+
+pid_t current_tid() {
+    return (pid_t)syscall(SYS_gettid);
+}
+
+void stack_signal(int) {
+    void* frames[64];
+    int depth = backtrace(frames, 64);
+    // Without this handler's own frame.
+    backtrace_symbols_fd(frames + 1, depth - 1, STDERR_FILENO);
+    stack_written = true;
+}
+
+void dump_all_stacks() {
+    std::lock_guard lock{ dump_mutex };
+    pid_t self = current_tid();
+    fprintf(stderr, "[stacks]\n");
+    if (DIR* dir = opendir("/proc/self/task")) {
+        while (dirent* entry = readdir(dir)) {
+            pid_t tid = (pid_t)atoi(entry->d_name);
+            if (tid <= 0 || tid == self) {
+                continue;
+            }
+            char name[32] = "";
+            char path[64];
+            snprintf(path, sizeof(path), "/proc/self/task/%d/comm", (int)tid);
+            if (FILE* comm = fopen(path, "r")) {
+                if (fgets(name, sizeof(name), comm) != nullptr) {
+                    name[strcspn(name, "\n")] = '\0';
+                }
+                fclose(comm);
+            }
+            fprintf(stderr, "  %5d %s:", (int)tid, name);
+            {
+                std::lock_guard threads_lock{ game_threads_mutex };
+                auto it = game_threads.find(tid);
+                if (it != game_threads.end()) {
+                    const OSThread* gt = it->second;
+                    fprintf(stderr, " [id %d pri %d %s%s]", gt->id, gt->priority, state_name(gt->state),
+                            gt->queue == (PTR(PTR(OSThread)))-1 ? " in run queue" : "");
+                }
+            }
+            fprintf(stderr, "\n");
+            fflush(stderr);
+            stack_written = false;
+            if (syscall(SYS_tgkill, getpid(), tid, SIGUSR2) == 0) {
+                for (int i = 0; i < 200 && !stack_written; i++) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+            }
+        }
+        closedir(dir);
+    }
+    rush2049::print_probes();
+    fflush(stderr);
+}
+
+void exit_without_quitting() {
+    if (quitting_cleanly) {
+        return;
+    }
+    fprintf(stderr, "\n[exit] the game ended without quitting (a force close drops the X connection); every thread:\n");
+    dump_all_stacks();
+    _exit(EXIT_FAILURE);
+}
+
+// Not async-signal-safe, but the process is ending either way.
+void term_signal(int sig) {
+    if (!quitting_cleanly) {
+        fprintf(stderr, "
+[exit] signal %d (%s) before the game quit; every thread:
+", sig, strsignal(sig));
+        dump_all_stacks();
+    }
+    _exit(128 + sig);
+}
 
 void crash_signal(int sig, siginfo_t* info, void*) {
     fprintf(stderr, "\n[crash] signal %d (%s) at address %p\n", sig, strsignal(sig), info->si_addr);
@@ -503,11 +613,44 @@ void rush2049::install_crash_handler() {
     for (int sig : { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT }) {
         sigaction(sig, &sa, nullptr);
     }
+    struct sigaction stack{};
+    stack.sa_handler = stack_signal;
+    stack.sa_flags = SA_RESTART;
+    sigemptyset(&stack.sa_mask);
+    sigaction(SIGUSR2, &stack, nullptr);
+    signal(SIGTERM, term_signal);
+    // Registered in main, so it runs before the destructors of statics made before main.
+    atexit(exit_without_quitting);
+}
+
+void rush2049::quit_cleanly() {
+    quitting_cleanly = true;
+}
+
+std::string rush2049::game_thread_name(const OSThread* t) {
+    {
+        std::lock_guard lock{ game_threads_mutex };
+        game_threads[current_tid()] = t;
+    }
+    return "Game Thread " + std::to_string(t->id);
+}
+
+void rush2049::start_stack_sampler(int interval_seconds, bool stacks) {
+    std::thread([interval_seconds, stacks]() {
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::seconds(interval_seconds));
+            if (stacks) {
+                dump_all_stacks();
+            }
+            else {
+                rush2049::print_probes();
+                fflush(stderr);
+            }
+        }
+    }).detach();
 }
 
 void rush2049::start_hw_watch(uint32_t) {}
-std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
-void rush2049::start_stack_sampler(int, bool) {}
 void rush2049::start_profiler(int, int) {}
 void rush2049::start_byte_watch(uint32_t) {}
 
@@ -580,6 +723,7 @@ void rush2049::start_log_file(const std::filesystem::path&, const char*) {}
 
 void rush2049::start_hw_watch(uint32_t) {}
 void rush2049::install_crash_handler() {}
+void rush2049::quit_cleanly() {}
 std::string rush2049::game_thread_name(const OSThread* t) { return "Game Thread " + std::to_string(t->id); }
 void rush2049::start_stack_sampler(int, bool) {}
 void rush2049::start_profiler(int, int) {}
