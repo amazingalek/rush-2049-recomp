@@ -21,11 +21,13 @@ namespace {
     enum class Accessory {
         ControllerPak,
         RumblePak,
+        Both,
         OptionCount
     };
     const std::vector<recomp::config::ConfigOptionEnumOption> accessory_options = {
         {Accessory::ControllerPak, "Controller Pak"},
         {Accessory::RumblePak, "Rumble Pak"},
+        {Accessory::Both, "Both"},
     };
     const std::string accessory_option = "accessory";
 
@@ -176,9 +178,17 @@ bool rush2049::menu_expand() {
     return menu_ratio_setting.load(std::memory_order_relaxed) == MenuRatio::Expand;
 }
 
-bool rush2049::rumble_pak_selected() {
+static Accessory accessory() {
     auto value = recompui::config::get_general_config().get_option_value(accessory_option);
-    return static_cast<Accessory>(std::get<uint32_t>(value)) == Accessory::RumblePak;
+    return static_cast<Accessory>(std::get<uint32_t>(value));
+}
+
+bool rush2049::rumble_pak_selected() {
+    return accessory() == Accessory::RumblePak;
+}
+
+bool rush2049::both_paks_selected() {
+    return accessory() == Accessory::Both;
 }
 
 bool rush2049::save_ghosts() {
@@ -258,13 +268,14 @@ void rush2049::init_config() {
     general.add_enum_option(
         accessory_option,
         "Controller Accessory",
-        "What is plugged into each controller. A controller has one accessory slot, so this is a choice between saving "
-        "and rumble."
+        "What is plugged into each controller. A real controller has one accessory slot, so the game was made for "
+        "either saving or rumble."
         "<br/>"
         "<b>Controller Pak:</b> saves players, records and ghosts. "
-        "<b>Rumble Pak:</b> rumble, but the game can't save.",
+        "<b>Rumble Pak:</b> rumble, but the game can't save. "
+        "<b>Both:</b> saves, and rumble in races.",
         accessory_options,
-        Accessory::ControllerPak
+        Accessory::Both
     );
     // Per Player is RecompFrontend's multiplayer mode: each player has a port of their own and each controller a
     // profile of its own, and a controller becomes the next player the first time it presses a button

@@ -55,7 +55,9 @@ option has an Original value that runs the game as it shipped.
   As shipped, the game kept a ghost only until you quit (as GHOST 1) and showed the prompt only for a developer's
   profile name. Saving needs a player profile on the pak: Just Play has none, so it keeps the ghost for the session.
 - **Large Controller Paks**: about 1.9 MB of save space per pak instead of 32 KiB, so ghosts and profiles don't
-  run out of room. Rumble Pak is also supported (General tab, Controller Accessory).
+  run out of room.
+- **Rumble and saves together**: every controller has both a Controller Pak and a Rumble Pak in, so races rumble and
+  players, records and ghosts still save. A real controller holds one or the other.
 - **Modern controls**: keyboard and gamepad (Xbox, PlayStation, Switch Pro, and N64/GameCube adapters) with
   driving-friendly defaults, rebindable on the Controls tab. Each controller is a player of its own, as on the
   console (see [Controls](#controls)).
@@ -83,6 +85,7 @@ closed. For the game exactly as it shipped, set every Original value:
 | Hi-res title screen | Hi-res Title Screen | `graphics.json` `hires_title` | `"On"` | `"Original"` (240p) |
 | No frame copies to RAM | Copy Frames to RAM | `graphics.json` `copy_frames_to_ram` | `"Off"` (takes effect on the next start) | `"Original"` (every frame copied) |
 | 44.1 kHz MusyX mix | MusyX Mixing | `sound.json` `musyx_mix` | `"HighQuality"` | `"Original"` (22.05 kHz) |
+| Rumble and saves together | Controller Accessory | `general.json` `accessory` | `"Both"` | `"Controller Pak"` (saves, no rumble) or `"Rumble Pak"` (rumble, no saves) |
 | Large Controller Paks | Controller Pak Size | `general.json` `pak_size` | `"Large"` (62 banks, about 1.9 MB) | `"Original"` (32 KiB) |
 | Rewind | Rewind | `general.json` `rewind` | `"On"` | `"Off"` |
 | Save Ghosts | Save Ghosts | `general.json` `save_ghosts` | `"On"` | `"Original"` (no SAVE GHOST prompt) |
@@ -213,6 +216,12 @@ another order, or give the keyboard to another player, press Assign Players on t
 each controller (or a key, for the keyboard) in player order, and confirm. Each controller has bindings of its own
 on the Controls tab, starting from the one-player ones. Players join again each time the game starts. With
 Controllers (General tab) at One Player, every controller and the keyboard drive player 1 instead.
+
+Started from Steam (on a Steam Deck, always), the game sees Steam's virtual controller instead of yours, and it has
+only the buttons Steam's controller layout maps to it: a button the layout leaves blank never reaches the game and
+can't be bound. On the Nintendo Switch Online N64 controller that is C-Right, which Steam calls M1. Map it to a
+gamepad button nothing else uses in the game's controller layout in Steam, or turn Steam Input off for the game so it
+reads the controller itself, as it does outside Steam.
 
 **Cheat menu**: unlocks every track and car without playing through Circuit. On the main menu, highlight OPTIONS
 and press L+R+Z+C-Up+C-Right together (keyboard: E+R+Q+T+H) until CHEATS appears, and open it with A (Space).

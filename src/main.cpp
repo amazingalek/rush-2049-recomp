@@ -196,7 +196,8 @@ ultramodern::input::connected_device_info_t get_connected_device_info(int) {
     // All four ports always have a controller with the accessory picked in the config plugged in, so every port's
     // Controller Pak (src/controller_pak.cpp) can be loaded from and saved to. A port nobody plays on reads as a
     // controller left alone (get_n64_input_logged). osPfsInitPak fails for a Rumble Pak, and the runtime's
-    // osMotorInit always succeeds, so reporting RumblePak here for both is harmless.
+    // osMotorInit always succeeds, so reporting RumblePak here for every Controller Accessory is harmless (with Both,
+    // osMotorInit is called on the Controller Pak's OSPfs: src/controller_pak.cpp).
     return ultramodern::input::connected_device_info_t{
         .connected_device = ultramodern::input::Device::Controller,
         .connected_pak = ultramodern::input::Pak::RumblePak,
