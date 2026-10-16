@@ -147,14 +147,14 @@ index 3227ab1..7ebc699 100644
  #include "common/rt64_thread.h"
  #include "rhi/rt64_render_hooks.h"
  
-@@ -87,6 +89,7 @@ namespace RT64 {
+@@ -89,6 +91,7 @@ namespace RT64 {
+
+     void PresentQueue::setup(const External &ext) {
          this->ext = ext;
- 
-         viRenderer = std::make_unique<VIRenderer>();
 +        queryPool = ext.device->createQueryPool(8);
- 
-         presentThreadRunning = true;
-         presentThread = new std::thread(&PresentQueue::threadLoop, this);
+
+         viRenderer = std::make_unique<VIRenderer>();
+
 @@ -309,6 +312,8 @@ namespace RT64 {
                  RenderFramebuffer *swapChainFramebuffer = swapChainFramebuffers[swapChainIndex].get();
                  RenderCommandList *commandList = ext.presentGraphicsWorker->commandList.get();
