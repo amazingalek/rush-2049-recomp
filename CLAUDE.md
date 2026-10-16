@@ -447,7 +447,11 @@ presents in flight, fewer WebGPU calls a draw, readback and swap chain answers o
 built by the retest, RTX 2070, a host 14-27% busy, a fresh profile each: at 1256x645 Chrome 155 headless waited not at
 all and drew 58.0, Firefox 158 waited 2.4 and 6.2 s and drew 59.2; at 3840x2000 (25 s played) Chrome 59.0, Firefox
 56.0 and 57.6 with race's wait inside the 25 s, 58.6-59.5 between the waits; sound short only in the waits, no WebGPU
-errors.
+errors. On v0.50.0 (a6ea767: the LOD shaders in loops, section 1 in the boot threads, `?uncapped`, fewer waits for the
+page's thread), a build of this pin move, RTX 2070, a quiet host, a fresh profile each: at 1256x645 Chrome 155 headless
+waited not at all and drew 59.4, Firefox 158 waited 1.8 and 4.4 s and drew 59.5; uncapped at 3840x2000 (`play_page.mjs
+--uncapped --size 3840x2000 --play 25`, the first such runs) Chrome 147 presents a second, Firefox 118 with both waits
+inside the 25 s; sound short only in the waits, no WebGPU errors.
 
 - With the whole list as one section, Firefox 157 (RTX 2070, a busy host) waited 27.9-30.2 s at the bar; then the
   attract races and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap
