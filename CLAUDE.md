@@ -183,9 +183,10 @@ built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime
 `lib/N64Recomp-browser` pin that changes the page's code, the prebuilt shader list), not docs, tests, CI or a tool the
 build doesn't run. The page is played before it is published and booted from Pages after: build origin/main with
 `tools/publish_page.sh --dry-run`, serve `out/page` with the README's headers and play it in Chrome and Firefox
-(N64Recomp-browser's `tools/play_page.mjs` with `tools/play_plan.json`), then publish it, boot it from Pages, and write
-what was seen in Step 3 (The web target). A build that plays worse than Step 3's last record is not published; fixing
-it is the work. The page's commit names the main it was built from (`git log -1 origin/gh-pages`), so a page behind
+(N64Recomp-browser's `tools/play_page.mjs` with `tools/play_plan.json`), then publish it, boot it from Pages, and record
+each run in N64Recomp-browser's `plays.jsonl` (`play_page.mjs --record plays.jsonl --game rush`). A build that plays
+worse than the runs recorded before it (`play_page.mjs` flags a regression, exit code 3) is not published; fixing it is
+the work. The page's commit names the main it was built from (`git log -1 origin/gh-pages`), so a page behind
 main is easy to see; one found behind is played and published by whoever finds it.
 
 The web page (https://amazingalek.github.io/rush-2049-recomp/) is published like a release: `bash
@@ -208,7 +209,8 @@ in both browsers first. Nothing else moves it: any other change waits for the re
 `lib/N64Recomp-browser` to the tag (and the submodules, if a fork merged upstream in and `patches/patches.txt` names
 new upstream commits), resets each project whose patch changed and reruns the patch script (it stops on one and says
 how; rebase a game patch that stops applying in the same PR), and builds and runs the desktop game. Once it has
-merged, publish the page (above) and write what the retest measured (or the fix's own play) into Step 3. A change that
+merged, publish the page (above) and record each run of it in N64Recomp-browser's `plays.jsonl` (`play_page.mjs
+--record plays.jsonl --game rush`), as the retest recorded its own. A change that
 only the desktop build compiles (code outside the WGSL build, rt64 7734fe4) is checked by a run of the desktop game
 and republishes no page; a web-only change needs no desktop release.
 
@@ -433,36 +435,17 @@ With a 40 ms sleep added in that window (a test build), a walk in headless Chrom
 with 918deb3. Built locally with it, three fresh-profile walks in Firefox 158 (35-36 remakes, then a race) logged none,
 and no other WebGPU error. With rt64 c6cf6c4, built locally against the same commit without it, three runs each in
 Firefox 158 (a host 57-66% busy): the shaders took 11.9-12.6 s against 13.6-14.6, then the attract race drew as before
-in Firefox and in Chrome, with no WebGPU errors. On N64Recomp-browser b1c35d1 (plume 97f4e64), a local build, a cold
-profile each (RTX 2070, an idle host): Firefox 158 waited 9.6 s and Chrome 155 not at all, then the attract race at
-58-60 presents a second in both, no sound short after the wait, no WebGPU errors. On ed8764a (v0.36.0: the CPU hot
-paths, the flipped rect and the thread stop in the forks, rt64 58fc4e4's pacing), the same way: Chrome 155 headless
-waited not at all and Firefox 158 9.8 s, then 59 presents a second (median) in both through the title and attract races,
-sound short only in the first seconds after Start Game, no WebGPU errors. With the list in sections (a local build on
-b1c35d1 against the page published from it, two cold runs each, interleaved; RTX 2070, a quiet host, 1256x645):
-Firefox 158 waited 1.9-2.0 s for the boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s
-for race's 41 when the attract race began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game
-against ~2 s, and once of two runs held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a
-second (median) and no WebGPU errors either way. At 3840x2000, cold: from Pages on ed8764a Firefox 158 waited 2.4 s
-and 8.5 s and then drew 59-60 with the GPU's memory flat; a local build on 2efc795 (rt64 9ed449d) waited 2.2 and 7.3 s
-in Firefox and not at all in Chrome 155 headless, then 57-59 and 59, the pacing never on. On a laptop's Intel UHD
-(Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from Pages (main ab8fb5b, N64Recomp-browser
-2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile each: Firefox 158 waited 2.7 s for the
-boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median; 53-59), Chrome 155 headless 1.0 s for 5
-and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the waits, no WebGPU errors. From Pages on
-7277a2e (main 9be63a2, rt64 8bea892), RTX 2070, 1256x645, cold: Chrome 155 headless waited 0.5 s for 4 and drew 58.6,
-Firefox 158 2.1 and 7.4 s and drew 59.5, sound short only in the waits, no WebGPU errors. On v0.46.0 (cb6b259: plume's
-presents in flight, fewer WebGPU calls a draw, readback and swap chain answers off the device thread), main 15c6dce
-built by the retest, RTX 2070, a host 14-27% busy, a fresh profile each: at 1256x645 Chrome 155 headless waited not at
-all and drew 58.0, Firefox 158 waited 2.4 and 6.2 s and drew 59.2; at 3840x2000 (25 s played) Chrome 59.0, Firefox
-56.0 and 57.6 with race's wait inside the 25 s, 58.6-59.5 between the waits; sound short only in the waits, no WebGPU
-errors. On v0.50.0 (a6ea767: the LOD shaders in loops, section 1 in the boot threads, `?uncapped`, fewer waits for the
-page's thread), a build of this pin move, RTX 2070, a quiet host, a fresh profile each: at 1256x645 Chrome 155 headless
-waited not at all and drew 59.4, Firefox 158 waited 1.8 and 4.4 s and drew 59.5; uncapped at 3840x2000 (`play_page.mjs
---uncapped --size 3840x2000 --play 25`, the first such runs) Chrome 147 presents a second, Firefox 118 with both waits
-inside the 25 s; sound short only in the waits, no WebGPU errors. With v0.1.4 (Both's rumble reads, port 1 always playing), a
-build of its branch on v0.50.0, RTX 2070, a host 6% busy, a fresh profile each at 1256x645: Chrome 155 headless waited
-not at all and drew 59.2, Firefox 158 1.8 and 4.3 s and drew 59.6; sound short only in the waits, no WebGPU errors.
+in Firefox and in Chrome, with no WebGPU errors. With the list in sections (a local build on b1c35d1 against the page
+published from it, two cold runs each, interleaved; RTX 2070, a quiet host, 1256x645): Firefox 158 waited 1.9-2.0 s
+for the boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s for race's 41 when the attract
+race began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game against ~2 s, and once of two runs
+held the attract race's first frame 0.5 s for 5 of them; both at 59 presents a second (median) and no WebGPU errors
+either way. On a laptop's Intel UHD (Tiger Lake, Windows 11 in its best power efficiency mode) on 2026-10-14, from
+Pages (main ab8fb5b, N64Recomp-browser 2efc795), by `tools/play_plan.json` (`--play 90`) at 1256x645, a fresh profile
+each: Firefox 158 waited 2.7 s for the boot's 21 and 6.8 s for race's 41 and then drew 56 presents a second (median;
+53-59), Chrome 155 headless 1.0 s for 5 and then 58 (55-60), the Intel chip 50-54% busy, no sound short after the
+waits, no WebGPU errors. Every play of the page, one JSON line a run, is in N64Recomp-browser's `plays.jsonl` (game
+`rush`), not here.
 
 - With the whole list as one section, Firefox 157 (RTX 2070, a busy host) waited 27.9-30.2 s at the bar; then the
   attract races and a 1P race drew correctly at 39-56 frames a second in a 1280x876 canvas, the race's longest gap
