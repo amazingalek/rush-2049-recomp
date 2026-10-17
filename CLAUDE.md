@@ -184,7 +184,9 @@ built from (`src/`, `us.toml`, `patches/`, `assets/`, `CMakeLists.txt`, `runtime
 build doesn't run. The page is played before it is published and booted from Pages after: build origin/main with
 `tools/publish_page.sh --dry-run`, serve `out/page` with the README's headers and play it in Chrome and Firefox
 (N64Recomp-browser's `tools/play_page.mjs` with `tools/play_plan.json`), then publish it, boot it from Pages, and record
-each run in N64Recomp-browser's `plays.jsonl` (`play_page.mjs --record plays.jsonl --game rush`). A build that plays
+each run in N64Recomp-browser's `plays.jsonl` (`play_page.mjs --record plays.jsonl --game rush`): whoever played it
+commits the lines there and merges them, in a pull request that changes only that file, as part of the same work,
+even when this repo's pull request has already merged. A build that plays
 worse than the runs recorded before it (`play_page.mjs` flags a regression, exit code 3) is not published; fixing it is
 the work. The page's commit names the main it was built from (`git log -1 origin/gh-pages`), so a page behind
 main is easy to see; one found behind is played and published by whoever finds it.
