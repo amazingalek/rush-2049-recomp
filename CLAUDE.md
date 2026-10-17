@@ -291,7 +291,12 @@ cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120  
 - AI upsampling (AudioSR) of the MusyX mix: inaudible in a headphone A/B. The mix is close to mono (L/R correlate
   0.99).
 - A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
-- A draw-distance unlock: the game draws to just short of its far plane already, and its fog sits beyond it.
+- A draw-distance option. The game's limits are the far plane (camera +0x3C times 16, 32000 units in a race), the
+  node matrix builders' 2048-unit test on each axis (`func_8009D99C`, `func_8009D45C`: past it s15.16 can't hold the
+  translation, and a node gets no matrix), and the LOD cutoff and level distances in `func_8009C8F0`. With all of
+  them at 4x, paused frames at about 35 spots on tracks 1-8 and in split screen are identical to the pixel, and at
+  1/4x the bridge and sky drop out: what the limits drop is already out of view. The hooks that scale each one, with
+  a setting to switch them, are in tag `v0.1.12-drawdist1`.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
 - Merging or batching RT64's draws to cut the 240p floor (`start_gpu_profiler`'s table in `src/main.cpp`). Only ~5% of
   draws repeat the one before exactly; merging every run that shares a pipeline (wrong textures, timing only) halves the
