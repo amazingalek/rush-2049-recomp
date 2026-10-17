@@ -231,7 +231,7 @@ reads the controller itself, as it does outside Steam.
 **Cheat menu**: unlocks every track and car without playing through Circuit. On the main menu, highlight OPTIONS
 and press L+R+Z+C-Up+C-Right together (keyboard: E+R+Q+T+H) until CHEATS appears, and open it with A (Space).
 Highlight ALL TRACKS, hold L+R and press Z with C-Up+C-Right, C-Down+C-Left, C-Left+C-Up, C-Down+C-Right in turn
-(C buttons first, then Z), then press right to switch it ON.
+(C buttons first, then Z), then press right to switch it ON. The [Hotwire 2049](#mods) mod does away with the combos.
 
 ## Performance
 
@@ -258,8 +258,10 @@ window, which costs more the bigger the window is. So on a weak GPU a smaller wi
 
 ## Mods
 
-N64Recomp mods (`.nrm`) are **supported but untested**: an example mod builds in CI on every change, but no real
-mod has been played with yet, so expect rough edges.
+N64Recomp mods (`.nrm`) are supported. Mods made for the game:
+
+- [Hotwire 2049](https://github.com/Deozaan/Rush2049RecompCheatsMod): the CHEATS menu is on the main menu from the
+  start, and every cheat in it can be set without its button combo.
 
 The game loads mods from the `mods` folder in its settings folder (`mods/` when run from the repo's
 root with a `portable.txt`), enables them when found, and the launcher's mod menu turns them on and off. The mod game id is

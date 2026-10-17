@@ -37,8 +37,7 @@ Both describe main as it is. A PR that makes either one wrong fixes it in the sa
 
 The README changes when a player would notice: an enhancement added, removed or renamed (the list *and* the settings
 table), a default, the status line, build or run steps, where settings, saves, music or mods live, default bindings,
-mod support ("supported but untested" until a real mod has been played). Keep the note at the top saying that this is
-made with AI, as plainly as it is.
+mod support and the mods it links to. Keep the note at the top saying that this is made with AI, as plainly as it is.
 
 This file changes when a rule, a command, a flag or a ruled-out result changes. Keep it short: only what an agent
 can't read from the README or the code. The how and why of a feature go in its comments, not here, and a finding that
