@@ -218,8 +218,9 @@ and republishes no page; a web-only change needs no desktop release.
 
 ```
 --boot                       skip the launcher (needs the ROM already stored)
---show-console               open a console for the log (the exe is a window program; a redirect gets it too, and
-                             with neither it goes to rush2049.log in the app folder, the crash trace with it)
+--show-console               the log to a console (Windows: opens one; a redirect gets it too) or, on Linux, to a
+                             redirect, which without it gets nothing; otherwise it goes to rush2049.log in the app
+                             folder, the crash trace with it (Linux: unless started from a terminal)
 --stacks / --probes          every few seconds: every thread's stack and the probes / the probes only
 --players <n>                ports 2..n copy port 1 (and --input), to drive split screen with one pad
 --input <file>               scripted port 1 input: "<seconds> <buttons hex> [x y]" lines; 0x10000 is Rewind
