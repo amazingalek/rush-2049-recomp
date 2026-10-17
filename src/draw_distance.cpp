@@ -1,86 +1,96 @@
-// Draw Distance (experiment).
+// Draw-distance debug setting (Graphics tab, config.cpp): switches one of the game's distance limits to four times
+// its own value, or all of them, live, so a player who sees something pop in can find which limit (if any) it is.
+// A last value cuts all four to a quarter instead, to show that the setting works: far scenery visibly drops out.
+//
+// The limits, all hooked in us.toml:
+//   Far plane      the far plane (camera +0x3C, times 16 in world units: 32000 in a race) as func_8009F058 builds the
+//       projection, and the cull distance (0x80151AA0) func_8009DD88 tests nodes against, which the game only sets
+//       below its 2000 sentinel for split screen.
+//   Matrix limit   the 2048-unit test of the node matrix builders (func_8009D99C, func_8009D45C): a node whose offset from the
+//       camera is 2048 or more on any axis gets no matrix and isn't drawn, as s15.16 can't hold the translation
+//       (2048 * 16 = 32768). Here a farther node's offset is divided by a power of two before the test, and the rest
+//       of the matrix, w included, by the same number after it is written: a homogeneous matrix divided through
+//       puts every vertex in the same place on screen, so nothing is added to the display list.
+//   LOD cutoff     the LOD cutoff in func_8009C8F0: past its last level's distance times the node's scale a model is skipped.
+//   LOD detail     the LOD level choice there: the distances at which a model steps down to a less detailed level.
+//
+// Measured: with all four at 4x, paused races on tracks 1-8 and in split screen drew the same frame to the pixel,
+// so what these limits drop is out of view (behind buildings, hills or the camera). The setting is for finding where
+// a player sees pop-in that this missed.
 
-#include <chrono>
+#include <atomic>
 #include <cmath>
-#include <cstdio>
-#include <cstdlib>
 
+#include "rush2049_game.h"
 #include "rush2049_hooks.h"
-#include "debug_probe.h"
-#include <thread>
 
 namespace {
-float env_scale(const char* name) {
-    const char* e = std::getenv(name);
-    return e ? (float)std::atof(e) : 1.0f;
+
+enum Limit { FarPlane, MatrixLimit, LodCutoff, LodLevels };
+
+// rush2049::DrawDistanceDebug, set from the settings menu, read on the game thread.
+std::atomic<int> mode{ 0 };
+
+float scale(Limit limit) {
+    switch (mode.load(std::memory_order_relaxed)) {
+        case 1: return limit == FarPlane ? 4.0f : 1.0f;
+        case 2: return limit == MatrixLimit ? 4.0f : 1.0f;
+        case 3: return limit == LodCutoff ? 4.0f : 1.0f;
+        case 4: return limit == LodLevels ? 4.0f : 1.0f;
+        case 5: return 4.0f;
+        case 6: return 0.25f;
+        default: return 1.0f;
+    }
 }
-float reach = env_scale("RUSH_REACH");
+
 int matrix_divisor = 1;
-int stretched, matrices, lod_tested, lod_dropped, lod_near, dropped_log;
-auto last = std::chrono::steady_clock::now();
-auto start = last;
 
-float reach_now() {
-    static float flip = env_scale("RUSH_REACH_FLIP");  // seconds after start: from then on, 1x on even seconds
-    if (flip == 1.0f) {
-        return reach;
-    }
-    auto s = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
-    if (s < flip) {
-        return reach;
-    }
-    return ((int)s % 2 == 0) ? 1.0f : reach;
-}
-void report() {
-    auto now = std::chrono::steady_clock::now();
-    if (now - last < std::chrono::seconds(1)) {
-        return;
-    }
-    last = now;
-    fprintf(stderr, "[dd] matrices %d stretched %d lod %d dropped %d (within 2x %d)\n", matrices, stretched,
-            lod_tested, lod_dropped, lod_near);
-    fflush(stderr);
-    matrices = stretched = lod_tested = lod_dropped = lod_near = 0;
-}
+} // namespace
+
+extern "C" float rush2049_draw_distance_lod(float limit, float) {
+    return limit * scale(LodCutoff);
 }
 
-extern "C" float rush2049_draw_distance_lod(float limit, float distance) {
-    lod_tested++;
-    if (distance > limit) {
-        lod_dropped++;
-        if (distance < limit * 2) {
-            lod_near++;
-        }
-        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(36) && dropped_log < 400) {
-            dropped_log++;
-            fprintf(stderr, "[dd] drop limit %.0f distance %.0f\n", limit, distance);
-        }
-    }
-    return limit * reach_now();
+extern "C" float rush2049_draw_distance_level(float switch_distance) {
+    return switch_distance * scale(LodLevels);
+}
+
+void rush2049::set_draw_distance_debug(int value) {
+    mode.store(value, std::memory_order_relaxed);
 }
 
 extern "C" float rush2049_draw_distance_far(float far) {
-    return far * reach_now();
+    return far * scale(FarPlane);
+}
+
+extern "C" float rush2049_draw_distance_cull(float cull) {
+    return cull * scale(FarPlane);
 }
 
 extern "C" void rush2049_far_matrix_begin(recomp_context* ctx) {
     matrix_divisor = 1;
-    matrices++;
-    report();
     float d = std::fmax(std::fabs(ctx->f0.fl), std::fmax(std::fabs(ctx->f2.fl), std::fabs(ctx->f12.fl)));
-    if (d < 2048.0f || d >= 2048.0f * reach_now()) {
+    float limit = 2048.0f * scale(MatrixLimit);
+    if (limit < 2048.0f) {
+        if (d >= limit) {
+            ctx->f0.fl = 4096.0f;  // past the game's own test, which then rejects the node
+        }
+        return;
+    }
+    if (d < 2048.0f || d >= limit) {
         return;
     }
     while (d >= 2048.0f * matrix_divisor) {
         matrix_divisor *= 2;
     }
-    float scale = 1.0f / matrix_divisor;
-    ctx->f0.fl *= scale;
-    ctx->f2.fl *= scale;
-    ctx->f12.fl *= scale;
-    stretched++;
+    float s = 1.0f / matrix_divisor;
+    ctx->f0.fl *= s;
+    ctx->f2.fl *= s;
+    ctx->f12.fl *= s;
 }
 
+// The matrix is N64 s15.16: the 16 whole parts in the first 32 bytes, then the 16 fractions, two to a word. The
+// translation (elements 12-14) was built from the divided offset already.
 extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
     if (matrix_divisor == 1) {
         return;
@@ -88,7 +98,7 @@ extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
     uint32_t* words = reinterpret_cast<uint32_t*>(rdram + ((uint32_t)matrix - 0x80000000));
     for (int i = 0; i < 16; i++) {
         if (i >= 12 && i <= 14) {
-            continue;  // the translation, divided before it was written
+            continue;
         }
         uint32_t& whole = words[i / 2];
         uint32_t& frac = words[8 + i / 2];
@@ -98,84 +108,4 @@ extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
         whole = (whole & ~(0xFFFFu << shift)) | (((uint32_t)value >> 16) << shift);
         frac = (frac & ~(0xFFFFu << shift)) | (((uint32_t)value & 0xFFFF) << shift);
     }
-}
-
-// debug: nodes the walker skips by their per-camera hidden bit, and the ones that turn visible
-namespace {
-uint8_t node_seen[4096];
-int hidden_count, shown_count, popped, popped_far;
-}
-extern "C" void rush2049_dd_visible(uint8_t* rdram, recomp_context* ctx) {
-    uint32_t node = (uint32_t)ctx->r23;
-    uint32_t index = (node - 0x8012E700) / 0x44;
-    if (index >= 4096 || ctx->r18 != 0) {
-        return;
-    }
-    auto f = [&](uint32_t a) { return *reinterpret_cast<float*>(rdram + (a - 0x80000000)); };
-    auto w = [&](uint32_t a) { return *reinterpret_cast<uint32_t*>(rdram + (a - 0x80000000)); };
-    uint32_t p = w(node + 8);
-    float dx = f(p + 0x24) - f(0x80150B70 + 0x24), dz = f(p + 0x2C) - f(0x80150B70 + 0x2C);
-    float d = std::sqrt(dx * dx + dz * dz);
-    bool visible = ctx->r2 != 0;
-    visible ? shown_count++ : hidden_count++;
-    if (visible && node_seen[index] == 1) {
-        popped++;
-        if (d > 300) {
-            popped_far++;
-            if (popped_far < 200) {
-                fprintf(stderr, "[dd] node %u turned visible at %.0f flags %08X parent %d\n", index, d, w(node),
-                        (int)(int16_t)(w(node + 0x14) & 0xFFFF));
-            }
-        }
-    }
-    if (node_seen[index] == 0 && std::chrono::steady_clock::now() - start > std::chrono::seconds(30)) {
-        fprintf(stderr, "[dd] new node %u at %.0f flags %08X visible %d\n", index, d, w(node), visible ? 1 : 0);
-    }
-    node_seen[index] = visible ? 2 : 1;
-    static auto t = std::chrono::steady_clock::now();
-    if (std::chrono::steady_clock::now() - t > std::chrono::seconds(1)) {
-        t = std::chrono::steady_clock::now();
-        fprintf(stderr, "[dd] walker shown %d hidden %d turned visible %d (beyond 300: %d)\n", shown_count,
-                hidden_count, popped, popped_far);
-        shown_count = hidden_count = popped = 0;
-    }
-}
-
-extern "C" float rush2049_draw_distance_level(float switch_distance) {
-    static float bias = env_scale("RUSH_LEVEL");
-    return bias == 1.0f ? switch_distance : switch_distance * (reach_now() == 1.0f ? 1.0f : bias);
-}
-
-// debug: RUSH_POKE="<addr hex> <value> <from s> <to s>" holds one RDRAM byte at a value for a while
-namespace {
-struct Poke {
-    Poke() {
-        const char* e = std::getenv("RUSH_POKE");
-        if (!e) {
-            return;
-        }
-        unsigned addr = 0, value = 0;
-        float from = 0, to = 0;
-        if (sscanf(e, "%x %u %f %f", &addr, &value, &from, &to) != 4) {
-            return;
-        }
-        std::thread([=]() {
-            uint8_t* rdram;
-            while ((rdram = rush2049::probe_get_rdram()) == nullptr) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
-            auto t0 = std::chrono::steady_clock::now();
-            while (true) {
-                float s = std::chrono::duration<float>(std::chrono::steady_clock::now() - t0).count();
-                if (s > to) {
-                    break;
-                }
-                if (s >= from) {
-                    rdram[(addr & 0x7FFFFFFF) ^ 3] = (uint8_t)value;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-        }).detach();
-    }
-} poke;
 }

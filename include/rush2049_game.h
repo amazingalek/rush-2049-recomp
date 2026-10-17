@@ -50,6 +50,8 @@ namespace rush2049 {
     void set_hires_font(bool on);
     // Hi-res title screen (src/hires_font.cpp, set up by init_hires_font): the title cut from assets/title.patch.
     void set_hires_title(bool on);
+    // The draw-distance debug setting (src/draw_distance.cpp): 0 Original, 1-4 one limit at 4x, 5 all at 4x, 6 all at 1/4.
+    void set_draw_distance_debug(int value);
 }
 
 #endif

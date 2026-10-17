@@ -358,12 +358,30 @@ func = "func_80094FE8"
 before_vram = 0x8009504C
 text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
 
-# Draw Distance (src/draw_distance.cpp), experiment.
+# Draw-distance debug setting (src/draw_distance.cpp): each hook scales one of the game's distance limits when the
+# setting picks it, and returns the game's own value on Original.
+
+# The LOD cutoff: f8 is the farthest a model is drawn (its last level's distance times the node's scale), f10 the
+# model's distance. Past it the model is skipped.
 [[patches.hook]]
 func = "func_8009C8F0"
 before_vram = 0x8009CB48
 text = "    ctx->f8.fl = rush2049_draw_distance_lod(ctx->f8.fl, ctx->f10.fl);"
 
+# The LOD level choice: a model steps down to a less detailed level while its distance (f2) is under the next
+# level's switch distance times the node's scale (f6, then f10 in the loop).
+[[patches.hook]]
+func = "func_8009C8F0"
+before_vram = 0x8009CBA8
+text = "    ctx->f6.fl = rush2049_draw_distance_level(ctx->f6.fl);"
+
+[[patches.hook]]
+func = "func_8009C8F0"
+before_vram = 0x8009CBCC
+text = "    ctx->f10.fl = rush2049_draw_distance_level(ctx->f10.fl);"
+
+# The far plane: f8 is the camera's far distance (camera +0x3C) as it goes into the projection, here and for the
+# second projection below. Runs once per camera a frame.
 [[patches.hook]]
 func = "func_8009F058"
 before_vram = 0x8009F484
@@ -374,11 +392,16 @@ func = "func_8009F058"
 before_vram = 0x8009F4E8
 text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
 
+# The cull distance (0x80151AA0, f16): nodes farther than it are skipped, but only while it is under 2000, which
+# the game sets for split screen.
 [[patches.hook]]
 func = "func_8009DD88"
 before_vram = 0x8009E504
-text = "    ctx->f16.fl = rush2049_draw_distance_far(ctx->f16.fl);"
+text = "    ctx->f16.fl = rush2049_draw_distance_cull(ctx->f16.fl);"
 
+# The node matrix builders reject a node whose offset from the camera (f0, f2, f12) is 2048 or more on any axis:
+# s15.16 can't hold its translation. Before the test the offset can be divided down, and before the return the
+# rest of the matrix written at a3 (func_8009D99C) or a2 (func_8009D45C) is divided by the same number.
 [[patches.hook]]
 func = "func_8009D99C"
 before_vram = 0x8009DA04
@@ -398,18 +421,3 @@ text = "    rush2049_far_matrix_begin(ctx);"
 func = "func_8009D45C"
 before_vram = 0x8009D700
 text = "    rush2049_far_matrix_end(rdram, ctx->r6);"
-
-[[patches.hook]]
-func = "func_8009DD88"
-before_vram = 0x8009DECC
-text = "    rush2049_dd_visible(rdram, ctx);"
-
-[[patches.hook]]
-func = "func_8009C8F0"
-before_vram = 0x8009CBA8
-text = "    ctx->f6.fl = rush2049_draw_distance_level(ctx->f6.fl);"
-
-[[patches.hook]]
-func = "func_8009C8F0"
-before_vram = 0x8009CBCC
-text = "    ctx->f10.fl = rush2049_draw_distance_level(ctx->f10.fl);"

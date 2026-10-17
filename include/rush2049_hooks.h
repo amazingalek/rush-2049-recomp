@@ -38,14 +38,15 @@ void rush2049_hires_font_scan(uint8_t* rdram, uint32_t task_addr);
 /* Before the scheduler starts a task (us.toml); writes it out when --dump-dl is due. */
 void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 
-/* Draw Distance (src/draw_distance.cpp): at the start and end of func_800AB18C, which sets a camera's far plane
-   and the cull distance. */
+/* Draw-distance debug setting (src/draw_distance.cpp, us.toml): the LOD cutoff and level choice in func_8009C8F0, the
+   far plane in func_8009F058, the split-screen cull distance in func_8009DD88, and the 2048-unit test of the node
+   matrix builders func_8009D99C and func_8009D45C. */
 float rush2049_draw_distance_lod(float limit, float distance);
+float rush2049_draw_distance_level(float switch_distance);
 float rush2049_draw_distance_far(float far);
+float rush2049_draw_distance_cull(float cull);
 void rush2049_far_matrix_begin(recomp_context* ctx);
 void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix);
-void rush2049_dd_visible(uint8_t* rdram, recomp_context* ctx);
-float rush2049_draw_distance_level(float switch_distance);
 
 /* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
 void rush2049_spin_yield(uint8_t* rdram);

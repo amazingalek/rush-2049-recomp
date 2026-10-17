@@ -121,6 +121,28 @@ namespace {
     };
     const std::string hires_title_option = "hires_title";
 
+    // Debug build only: src/draw_distance.cpp says what each limit is.
+    enum class DrawDistanceDebug {
+        Original,
+        FarPlane,
+        MatrixLimit,
+        LodCutoff,
+        LodDetail,
+        All,
+        Quarter,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> draw_distance_debug_options = {
+        {DrawDistanceDebug::Original, "Original", "Original"},
+        {DrawDistanceDebug::FarPlane, "FarPlane", "Far plane 4x"},
+        {DrawDistanceDebug::MatrixLimit, "MatrixLimit", "Matrix limit 4x"},
+        {DrawDistanceDebug::LodCutoff, "LodCutoff", "LOD cutoff 4x"},
+        {DrawDistanceDebug::LodDetail, "LodDetail", "LOD detail 4x"},
+        {DrawDistanceDebug::All, "All", "All 4x"},
+        {DrawDistanceDebug::Quarter, "Quarter", "All 1/4 (check)"},
+    };
+    const std::string draw_distance_debug_option = "draw_distance_debug";
+
     enum class SplitScreenRatio {
         Expand,
         Original,
@@ -405,6 +427,26 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(hires_title_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_hires_title(static_cast<HiresTitle>(std::get<uint32_t>(cur_value)) == HiresTitle::On);
+        });
+
+    graphics.add_enum_option(
+        draw_distance_debug_option,
+        "Draw Distance (debug)",
+        "A test of the game's four distance limits, to find what makes scenery pop in. Change it while looking at "
+        "a spot where something pops in and see which value makes it appear sooner."
+        "<br/>"
+        "<b>Far plane 4x:</b> the farthest anything is drawn. "
+        "<b>Matrix limit 4x:</b> pieces past about 2,000 game units from the camera. "
+        "<b>LOD cutoff 4x:</b> the distance past which each model stops being drawn. "
+        "<b>LOD detail 4x:</b> the distances at which models switch to less detailed versions. "
+        "<b>All 4x:</b> all four. "
+        "<b>All 1/4:</b> all four cut short, to check that the setting works: far scenery disappears.",
+        draw_distance_debug_options,
+        DrawDistanceDebug::Original
+    );
+    graphics.add_option_change_callback(draw_distance_debug_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            rush2049::set_draw_distance_debug(static_cast<int>(std::get<uint32_t>(cur_value)));
         });
 
     graphics.add_enum_option(
