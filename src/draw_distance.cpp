@@ -97,3 +97,44 @@ extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
         frac = (frac & ~(0xFFFFu << shift)) | (((uint32_t)value & 0xFFFF) << shift);
     }
 }
+
+// debug: nodes the walker skips by their per-camera hidden bit, and the ones that turn visible
+namespace {
+uint8_t node_seen[4096];
+int hidden_count, shown_count, popped, popped_far;
+}
+extern "C" void rush2049_dd_visible(uint8_t* rdram, recomp_context* ctx) {
+    uint32_t node = (uint32_t)ctx->r23;
+    uint32_t index = (node - 0x8012E700) / 0x44;
+    if (index >= 4096 || ctx->r18 != 0) {
+        return;
+    }
+    auto f = [&](uint32_t a) { return *reinterpret_cast<float*>(rdram + (a - 0x80000000)); };
+    auto w = [&](uint32_t a) { return *reinterpret_cast<uint32_t*>(rdram + (a - 0x80000000)); };
+    uint32_t p = w(node + 8);
+    float dx = f(p + 0x24) - f(0x80150B70 + 0x24), dz = f(p + 0x2C) - f(0x80150B70 + 0x2C);
+    float d = std::sqrt(dx * dx + dz * dz);
+    bool visible = ctx->r2 != 0;
+    visible ? shown_count++ : hidden_count++;
+    if (visible && node_seen[index] == 1) {
+        popped++;
+        if (d > 300) {
+            popped_far++;
+            if (popped_far < 200) {
+                fprintf(stderr, "[dd] node %u turned visible at %.0f flags %08X parent %d\n", index, d, w(node),
+                        (int)(int16_t)(w(node + 0x14) & 0xFFFF));
+            }
+        }
+    }
+    if (node_seen[index] == 0 && std::chrono::steady_clock::now() - start > std::chrono::seconds(30)) {
+        fprintf(stderr, "[dd] new node %u at %.0f flags %08X visible %d\n", index, d, w(node), visible ? 1 : 0);
+    }
+    node_seen[index] = visible ? 2 : 1;
+    static auto t = std::chrono::steady_clock::now();
+    if (std::chrono::steady_clock::now() - t > std::chrono::seconds(1)) {
+        t = std::chrono::steady_clock::now();
+        fprintf(stderr, "[dd] walker shown %d hidden %d turned visible %d (beyond 300: %d)\n", shown_count,
+                hidden_count, popped, popped_far);
+        shown_count = hidden_count = popped = 0;
+    }
+}
