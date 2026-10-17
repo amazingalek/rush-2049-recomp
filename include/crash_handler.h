@@ -13,9 +13,9 @@ namespace rush2049 {
     // force-closed), print every thread's stack and end the process. Set after GTK has opened the display, which sets
     // a handler of its own.
     void install_x_error_handler();
-    // If stdout and stderr go nowhere (the game started from Explorer or a desktop launcher, not from a terminal or
-    // with a redirect), writes both to rush2049.log in dir, keeping the last run's as rush2049.old.log, and starts
-    // it with first_line.
+    // If nobody is watching stdout and stderr (Windows: the game started from Explorer, not with a redirect; Linux:
+    // not from a terminal, so also from Steam, which pipes them into its own log), writes both to rush2049.log in
+    // dir, keeping the last run's as rush2049.old.log, and starts it with first_line.
     void start_log_file(const std::filesystem::path& dir, const char* first_line);
     // Development: every interval, print the bring-up probes and, if stacks, the game frames on every thread's
     // stack (suspends each thread briefly; on Linux each writes its own from a signal) to stderr.

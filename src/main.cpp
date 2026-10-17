@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.7";
+const std::string version_string = "0.1.10";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -448,6 +448,7 @@ std::vector<recomp::GameEntry> supported_games = {
 // --boot (development): start the game on the launcher's first frame, as its "Start Game" option does, so
 // bring-up runs don't need someone at the window. Needs the ROM already stored (src/rom_finder.cpp).
 static bool autoboot = false;
+static bool show_console = false;
 
 void on_launcher_update(recompui::LauncherMenu*) {
     static bool done = false;
@@ -484,6 +485,28 @@ void on_launcher_init(recompui::LauncherMenu* menu) {
 // count, rate, mean, median, 95th percentile and max for the rendered frames and for the present pass, the mean time
 // of each part of both (RT64::GPUTimings::RenderPart, PresentPart) with framebuffers and draw calls a frame, and the
 // share of the window the GPU spent on both.
+//
+// The readings are wall time and a desktop GPU's clock wanders (an RTX 2070's 630-1620 MHz under light load), so
+// compare in cycles (ms x the clock nvidia-smi reports over the same run) and interleave runs. Check the host too: with
+// its CPU busy the game drops below 60 fps and the attract race reaches other scenes, so the draw count moves. Separate
+// runs at 240p still differ by +-15% in cycles, so for a change worth less than that, switch it on and off every few
+// frames inside one run and time the two halves apart. Write down what else was running beside a number.
+//
+// Where a frame goes on an RTX 2070, attract race, 240p (Resolution Original) in a 1920x1080 window, thousands of
+// cycles (Auto is the 1080p column), measured with render to RAM still on (its second pass is in render):
+//
+//   part                         240p   1080p
+//   render: draws                 116     754   ~500 calls; ~90k of it stays with no pixels
+//           vertex compute         27      31
+//           uploads                25      35   ~36 at 240p without rt64-0004
+//           barriers, resolves     13      21
+//           everything else         5       6
+//   present: VI pass               71      95   sized by the window: 37 in 1280x720
+//            resolve (MSAA 2x)     20      94   3 with MSAA off
+//            UI                     6       6
+//
+// So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: CLAUDE.md, Ruled out),
+// the VI pass (it scales with the window instead) and about 50k of compute and uploads.
 static void start_gpu_profiler(int after_seconds, int seconds) {
     std::thread([after_seconds, seconds]() {
         std::this_thread::sleep_for(std::chrono::seconds(after_seconds));
@@ -575,6 +598,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--boot") == 0) {
             autoboot = true;
         }
+        if (strcmp(argv[i], "--show-console") == 0) {
+            show_console = true;
+        }
         if (strcmp(argv[i], "--stacks") == 0) {
             rush2049::start_stack_sampler(5, true);
         }
@@ -637,16 +663,11 @@ int main(int argc, char** argv) {
     }
 
 #ifdef _WIN32
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--show-console") == 0) {
-            if (GetConsoleWindow() == nullptr) {
-                AllocConsole();
-                freopen("CONIN$", "r", stdin);
-                freopen("CONOUT$", "w", stderr);
-                freopen("CONOUT$", "w", stdout);
-            }
-            break;
-        }
+    if (show_console && GetConsoleWindow() == nullptr) {
+        AllocConsole();
+        freopen("CONIN$", "r", stdin);
+        freopen("CONOUT$", "w", stderr);
+        freopen("CONOUT$", "w", stdout);
     }
 
     SetConsoleOutputCP(CP_UTF8);
@@ -664,9 +685,12 @@ int main(int argc, char** argv) {
     recompui::programconfig::set_program_id(rush2049::program_id);
 
 #ifndef __EMSCRIPTEN__
-    // Started from Explorer the log would go nowhere, so it goes to rush2049.log beside the settings and saves.
-    rush2049::start_log_file(recompui::file::get_app_folder_path(),
-        (std::string{ rush2049::program_name } + " " + version_string).c_str());
+    // Started from Explorer, a desktop launcher or Steam nobody sees the log, so it goes to rush2049.log beside the
+    // settings and saves. --show-console keeps it in the console, terminal or redirect.
+    if (!show_console) {
+        rush2049::start_log_file(recompui::file::get_app_folder_path(),
+            (std::string{ rush2049::program_name } + " " + version_string).c_str());
+    }
 #endif
 
     SDL_InitSubSystem(SDL_INIT_AUDIO);

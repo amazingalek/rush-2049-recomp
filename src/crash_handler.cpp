@@ -1,6 +1,6 @@
 // Prints a symbolized stack trace to stderr when the process crashes (Windows, and Linux with less detail), on Linux
 // every thread's when the game is killed or loses its X server (a hung game force-closed), and
-// writes stdout and stderr to a log file when they have nowhere else to go (start_log_file), so a player has the
+// writes stdout and stderr to a log file when nobody is watching them (start_log_file), so a player has the
 // trace to send in.
 //
 // Recompiled functions are named after their N64 address (func_800A11E4, ovl1_func_8038A634, ...), or by
@@ -684,7 +684,6 @@ void rush2049::start_byte_watch(uint32_t) {}
 #include <ctime>
 
 #ifndef _WIN32
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -696,12 +695,10 @@ bool stderr_goes_nowhere() {
     HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
     return h == nullptr || h == INVALID_HANDLE_VALUE;
 #else
-    // A desktop launcher hands it /dev/null or the journal's socket; a terminal, a file or a pipe is somebody's.
-    struct stat st;
-    if (isatty(STDERR_FILENO)) {
-        return false;
-    }
-    return fstat(STDERR_FILENO, &st) != 0 || (!S_ISREG(st.st_mode) && !S_ISFIFO(st.st_mode));
+    // Only a terminal is somebody watching. A desktop launcher hands it /dev/null or the journal's socket, and Steam
+    // a pipe into its own console log, which a player never finds; a redirect of one's own keeps it with
+    // --show-console (main.cpp).
+    return !isatty(STDERR_FILENO);
 #endif
 }
 

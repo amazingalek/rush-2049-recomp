@@ -35,7 +35,7 @@ jobs:
           python-version: "3.11"
       - name: No ROM data tracked, TOML parses, Python compiles
         run: python -I tools/ci/check_repo.py
-      # The web support (CLAUDE.md, "The web target"): N64Recomp-browser's patches/ holds each of its forks as a patch on
+      # The web support (CLAUDE.md, "How it fits together"): N64Recomp-browser's patches/ holds each of its forks as a patch on
       # the upstream commit the fork is on, which its patches/patches.txt names and its CI checked, so the submodules
       # here, and plume, hlslpp and N64Recomp inside them, pin those commits.
       - name: Submodules pin the upstream commits N64Recomp-browser's patches are made on
