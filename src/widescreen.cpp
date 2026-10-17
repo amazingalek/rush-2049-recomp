@@ -37,7 +37,8 @@
 // Menus. Their background is a 4:3 picture drawn as texture rectangles, and the menu sits on it, so the menu stays
 // where it is and the picture is extended: with "Menu Aspect Ratio" at Expand, each strip of it at the screen's left
 // or right edge becomes a call to a list that draws the strip and its mirror image across the edge, so the side bars
-// show the circuit-board pattern carried on rather than black.
+// show the circuit-board pattern carried on rather than black. A car select's panels each draw their car under a
+// viewport of their own, laid out like split screen, so a frame that draws the background is a menu, not split screen.
 
 #include <algorithm>
 #include <cmath>
@@ -582,6 +583,10 @@ uint32_t menu_lists = 0;
 int menu_list_frame = 0;
 int menu_lists_used = 0;
 bool rect_menu = false;
+// Whether the display list being built has drawn the menu background. The car select of Ghost Race (and of the
+// multiplayer modes) draws each panel's car under a viewport of its own, laid out like split screen, so a list with
+// the background in it is a menu and never widened as split screen.
+bool menu_background_drawn = false;
 
 // The background's strips (draw_tex_rect's corners are inclusive). The title screen's picture is laid out the same way
 // but drawn in copy mode (4 texels a step in s); it's a picture rather than a pattern that carries on, so only strips
@@ -661,8 +666,11 @@ extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     if (line_open && !(split_view_count > 0 && carries_line_on(x0, y0, x1, y1, read_word(rdram, dl_ptr_addr)))) {
         close_line(rdram);
     }
-    if (rush2049::menu_expand() && split_view_count == 0 && !split_screen_last_frame &&
-        is_menu_background(x0, y0, x1, y1) && !single_player_race(rdram)) {
+    if (is_menu_background(x0, y0, x1, y1) && !single_player_race(rdram)) {
+        menu_background_drawn = true;
+    }
+    if (rush2049::menu_expand() && split_view_count == 0 && menu_background_drawn &&
+        is_menu_background(x0, y0, x1, y1)) {
         rect_menu = true;
         rect_dl_start = read_word(rdram, dl_ptr_addr);
         return;
@@ -746,6 +754,8 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
         menu_list_frame = (menu_list_frame + 1) % model_list_frames;
         menu_lists_used = 0;
     }
+    bool menu = menu_background_drawn;
+    menu_background_drawn = false;
     uint32_t dl = (uint32_t)MEM_W(0x30, task) | 0x80000000;
     bool extended = (hud_moves() || menus) && read_word(rdram, dl) == 0xDB060000 && read_word(rdram, dl + 4) == 0;  // gsSPSegment(0, 0)
     if (extended) {
@@ -838,7 +848,7 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     if (!hud) {
         return;
     }
-    bool widened = scan.split_screen && rush2049::split_screen_expand() && widen_split_screen(rdram, scan);
+    bool widened = scan.split_screen && !menu && rush2049::split_screen_expand() && widen_split_screen(rdram, scan);
     if (!widened) {
         split_view_count = 0;
         hud_list_lo = hud_list_hi = 0;
