@@ -45,6 +45,7 @@ float rush2049_draw_distance_far(float far);
 void rush2049_far_matrix_begin(recomp_context* ctx);
 void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix);
 void rush2049_dd_visible(uint8_t* rdram, recomp_context* ctx);
+float rush2049_draw_distance_level(float switch_distance);
 
 /* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
 void rush2049_spin_yield(uint8_t* rdram);

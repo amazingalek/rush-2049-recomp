@@ -6,6 +6,8 @@
 #include <cstdlib>
 
 #include "rush2049_hooks.h"
+#include "debug_probe.h"
+#include <thread>
 
 namespace {
 float env_scale(const char* name) {
@@ -137,4 +139,43 @@ extern "C" void rush2049_dd_visible(uint8_t* rdram, recomp_context* ctx) {
                 hidden_count, popped, popped_far);
         shown_count = hidden_count = popped = 0;
     }
+}
+
+extern "C" float rush2049_draw_distance_level(float switch_distance) {
+    static float bias = env_scale("RUSH_LEVEL");
+    return bias == 1.0f ? switch_distance : switch_distance * (reach_now() == 1.0f ? 1.0f : bias);
+}
+
+// debug: RUSH_POKE="<addr hex> <value> <from s> <to s>" holds one RDRAM byte at a value for a while
+namespace {
+struct Poke {
+    Poke() {
+        const char* e = std::getenv("RUSH_POKE");
+        if (!e) {
+            return;
+        }
+        unsigned addr = 0, value = 0;
+        float from = 0, to = 0;
+        if (sscanf(e, "%x %u %f %f", &addr, &value, &from, &to) != 4) {
+            return;
+        }
+        std::thread([=]() {
+            uint8_t* rdram;
+            while ((rdram = rush2049::probe_get_rdram()) == nullptr) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            auto t0 = std::chrono::steady_clock::now();
+            while (true) {
+                float s = std::chrono::duration<float>(std::chrono::steady_clock::now() - t0).count();
+                if (s > to) {
+                    break;
+                }
+                if (s >= from) {
+                    rdram[(addr & 0x7FFFFFFF) ^ 3] = (uint8_t)value;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }).detach();
+    }
+} poke;
 }

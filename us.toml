@@ -403,3 +403,13 @@ text = "    rush2049_far_matrix_end(rdram, ctx->r6);"
 func = "func_8009DD88"
 before_vram = 0x8009DECC
 text = "    rush2049_dd_visible(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_8009C8F0"
+before_vram = 0x8009CBA8
+text = "    ctx->f6.fl = rush2049_draw_distance_level(ctx->f6.fl);"
+
+[[patches.hook]]
+func = "func_8009C8F0"
+before_vram = 0x8009CBCC
+text = "    ctx->f10.fl = rush2049_draw_distance_level(ctx->f10.fl);"
