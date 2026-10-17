@@ -26,6 +26,9 @@
 // the centre, so the two 2-player views reach both sides of the window and the four 4-player views meet in the middle.
 // RT64 widens the projection with the view. The HUD moves with the views: a rectangle in a view anchors to the view's
 // left edge, right edge or centre, whichever it's nearest, and a rectangle outside the views to the nearest view edge.
+// Text is a rectangle a letter, so rectangles drawn one after another along one line (a word, a line of the pause
+// menu, a picture in strips) are anchored together, by where the whole line sits; letter by letter, a word reaching
+// across a third of the view would come apart.
 // The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
 // score boxes are fill rectangles in the HUD's list; each fill + sync pair is rewritten in place as RT64's extended
 // fill rectangle, anchored the same way.
@@ -81,6 +84,17 @@ uint32_t hud_list_hi = 0;
 int rect_origin = G_EX_ORIGIN_NONE;
 uint32_t rect_dl_start = 0;
 bool rect_tracked = false;
+bool rect_split = false;
+int rect_x0, rect_y0, rect_x1, rect_y1;
+
+// The split-screen line of rectangles drawn so far, anchored once a rectangle that doesn't carry it on is drawn or
+// the list is submitted.
+struct Line {
+    int x0, x1, y0, y1;             // y: the first rectangle's
+    uint32_t dl_start, dl_end;      // the commands its rectangles appended
+};
+Line line{};
+bool line_open = false;
 
 uint32_t retrace_count(uint8_t* rdram) {
     return (uint32_t)MEM_W(0x27C, (gpr)(int32_t)sched_addr);
@@ -163,6 +177,51 @@ int split_rect_origin(int x0, int x1) {
         }
     }
     return cx >= hi ? G_EX_ORIGIN_RIGHT : cx <= lo ? G_EX_ORIGIN_LEFT : nearest;
+}
+
+// Rewrites each texture rectangle triple between start and end as an extended one anchored to origin.
+void anchor_rects(uint8_t* rdram, uint32_t start, uint32_t end, int origin) {
+    int x_offset = origin_offset(origin);
+    for (uint32_t p = start; p + 24 <= end; p += 8) {
+        uint32_t w0 = read_word(rdram, p);
+        if ((w0 >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 || (read_word(rdram, p + 16) >> 24) != 0xF1) {
+            continue;
+        }
+        uint32_t w1 = read_word(rdram, p + 4);
+        int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
+        int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
+        uint32_t tile = (w1 >> 24) & 7;
+        uint32_t st = read_word(rdram, p + 12);
+        uint32_t dsdxdtdy = read_word(rdram, p + 20);
+        GfxCommand cmds[3]{};
+        gEXTextureRectangle(cmds, origin, origin, ulx + x_offset, uly, lrx + x_offset, lry, tile,
+                            st >> 16, st & 0xFFFF, dsdxdtdy >> 16, dsdxdtdy & 0xFFFF);
+        write_commands(rdram, p, cmds, 3);
+        p += 16;
+    }
+}
+
+// Whether a split-screen rectangle from (x0, y0) to (x1, y1), its commands starting at dl, carries the open line on:
+// drawn right after it, on the same line (overlapping it by half its height), starting no further on than a letter's
+// height past its end, and in the same view.
+bool carries_line_on(int x0, int y0, int x1, int y1, uint32_t dl) {
+    if (!line_open || dl < line.dl_end || dl - line.dl_end > 256) {
+        return false;
+    }
+    int height = std::min(y1 - y0, line.y1 - line.y0);
+    return std::min(y1, line.y1) - std::max(y0, line.y0) >= height / 2 && x0 >= line.x0 &&
+           x0 <= line.x1 + (line.y1 - line.y0) &&
+           view_holding(line.x0, std::max(x1, line.x1)) == view_holding(line.x0, line.x1);
+}
+
+void close_line(uint8_t* rdram) {
+    if (line_open) {
+        line_open = false;
+        int origin = split_rect_origin(line.x0, line.x1);
+        if (origin != G_EX_ORIGIN_NONE) {
+            anchor_rects(rdram, line.dl_start, line.dl_end, origin);
+        }
+    }
 }
 
 // Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
@@ -539,11 +598,15 @@ extern "C" void rush2049_hud_race_mark(uint8_t* rdram) {
 extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     rect_origin = G_EX_ORIGIN_NONE;
     rect_tracked = false;
+    rect_split = false;
     rect_menu = false;
     int x0 = (int)ctx->r4;
     int x1 = (int)ctx->r6;
     int y0 = (int)ctx->r5;
     int y1 = (int)ctx->r7;
+    if (line_open && !(split_view_count > 0 && carries_line_on(x0, y0, x1, y1, read_word(rdram, dl_ptr_addr)))) {
+        close_line(rdram);
+    }
     if (rush2049::menu_expand() && split_view_count == 0 && !split_screen_last_frame &&
         is_menu_background(x0, y0, x1, y1) && !single_player_race(rdram)) {
         rect_menu = true;
@@ -554,8 +617,9 @@ extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
         return;
     }
     if (split_view_count > 0) {
-        rect_origin = split_rect_origin(x0, x1);
+        rect_split = true;
         rect_tracked = true;
+        rect_x0 = x0, rect_y0 = y0, rect_x1 = x1, rect_y1 = y1;
     } else if (!single_player_race(rdram)) {
         return;
     } else if (x1 <= left_hud_max_x) {
@@ -596,27 +660,22 @@ extern "C" void rush2049_hud_rect_end(uint8_t* rdram) {
         hud_list_hi = std::max(hud_list_hi, end);
         rect_tracked = false;
     }
+    if (rect_split) {
+        rect_split = false;
+        if (line_open) {
+            line.x0 = std::min(line.x0, rect_x0);
+            line.x1 = std::max(line.x1, rect_x1);
+            line.dl_end = end;
+        } else {
+            line = { rect_x0, rect_x1, rect_y0, rect_y1, rect_dl_start, end };
+            line_open = true;
+        }
+        return;
+    }
     if (rect_origin == G_EX_ORIGIN_NONE) {
         return;
     }
-    int x_offset = origin_offset(rect_origin);
-    for (uint32_t p = rect_dl_start; p + 24 <= end; p += 8) {
-        uint32_t w0 = read_word(rdram, p);
-        if ((w0 >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 || (read_word(rdram, p + 16) >> 24) != 0xF1) {
-            continue;
-        }
-        uint32_t w1 = read_word(rdram, p + 4);
-        int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
-        int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
-        uint32_t tile = (w1 >> 24) & 7;
-        uint32_t st = read_word(rdram, p + 12);
-        uint32_t dsdxdtdy = read_word(rdram, p + 20);
-        GfxCommand cmds[3]{};
-        gEXTextureRectangle(cmds, rect_origin, rect_origin, ulx + x_offset, uly, lrx + x_offset, lry, tile,
-                            st >> 16, st & 0xFFFF, dsdxdtdy >> 16, dsdxdtdy & 0xFFFF);
-        write_commands(rdram, p, cmds, 3);
-        p += 16;
-    }
+    anchor_rects(rdram, rect_dl_start, end, rect_origin);
     rect_origin = G_EX_ORIGIN_NONE;
 }
 
@@ -625,6 +684,7 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     if (MEM_W(0x00, task) != 1) {  // M_GFXTASK
         return;
     }
+    close_line(rdram);
     // The list is walked at any HUD Placement and Menu Aspect Ratio, to tell split screen (rewind needs to know), but
     // only changed when the HUD moves or the menus widen.
     bool menus = rush2049::menu_expand();
