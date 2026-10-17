@@ -179,51 +179,6 @@ int split_rect_origin(int x0, int x1) {
     return cx >= hi ? G_EX_ORIGIN_RIGHT : cx <= lo ? G_EX_ORIGIN_LEFT : nearest;
 }
 
-// Rewrites each texture rectangle triple between start and end as an extended one anchored to origin.
-void anchor_rects(uint8_t* rdram, uint32_t start, uint32_t end, int origin) {
-    int x_offset = origin_offset(origin);
-    for (uint32_t p = start; p + 24 <= end; p += 8) {
-        uint32_t w0 = read_word(rdram, p);
-        if ((w0 >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 || (read_word(rdram, p + 16) >> 24) != 0xF1) {
-            continue;
-        }
-        uint32_t w1 = read_word(rdram, p + 4);
-        int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
-        int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
-        uint32_t tile = (w1 >> 24) & 7;
-        uint32_t st = read_word(rdram, p + 12);
-        uint32_t dsdxdtdy = read_word(rdram, p + 20);
-        GfxCommand cmds[3]{};
-        gEXTextureRectangle(cmds, origin, origin, ulx + x_offset, uly, lrx + x_offset, lry, tile,
-                            st >> 16, st & 0xFFFF, dsdxdtdy >> 16, dsdxdtdy & 0xFFFF);
-        write_commands(rdram, p, cmds, 3);
-        p += 16;
-    }
-}
-
-// Whether a split-screen rectangle from (x0, y0) to (x1, y1), its commands starting at dl, carries the open line on:
-// drawn right after it, on the same line (overlapping it by half its height), starting no further on than a letter's
-// height past its end, and in the same view.
-bool carries_line_on(int x0, int y0, int x1, int y1, uint32_t dl) {
-    if (!line_open || dl < line.dl_end || dl - line.dl_end > 256) {
-        return false;
-    }
-    int height = std::min(y1 - y0, line.y1 - line.y0);
-    return std::min(y1, line.y1) - std::max(y0, line.y0) >= height / 2 && x0 >= line.x0 &&
-           x0 <= line.x1 + (line.y1 - line.y0) &&
-           view_holding(line.x0, std::max(x1, line.x1)) == view_holding(line.x0, line.x1);
-}
-
-void close_line(uint8_t* rdram) {
-    if (line_open) {
-        line_open = false;
-        int origin = split_rect_origin(line.x0, line.x1);
-        if (origin != G_EX_ORIGIN_NONE) {
-            anchor_rects(rdram, line.dl_start, line.dl_end, origin);
-        }
-    }
-}
-
 // Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
 // view it fills, or edge by edge when it's outside the views (the borders between them).
 void anchor_fill_rect(uint8_t* rdram, uint32_t p) {
@@ -305,6 +260,51 @@ void write_commands(uint8_t* rdram, uint32_t addr, const GfxCommand* cmds, int c
     for (int i = 0; i < count; i++) {
         write_word(rdram, addr + i * 8, cmds[i].values.word0);
         write_word(rdram, addr + i * 8 + 4, cmds[i].values.word1);
+    }
+}
+
+// Rewrites each texture rectangle triple between start and end as an extended one anchored to origin.
+void anchor_rects(uint8_t* rdram, uint32_t start, uint32_t end, int origin) {
+    int x_offset = origin_offset(origin);
+    for (uint32_t p = start; p + 24 <= end; p += 8) {
+        uint32_t w0 = read_word(rdram, p);
+        if ((w0 >> 24) != 0xE4 || (read_word(rdram, p + 8) >> 24) != 0xE1 || (read_word(rdram, p + 16) >> 24) != 0xF1) {
+            continue;
+        }
+        uint32_t w1 = read_word(rdram, p + 4);
+        int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
+        int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
+        uint32_t tile = (w1 >> 24) & 7;
+        uint32_t st = read_word(rdram, p + 12);
+        uint32_t dsdxdtdy = read_word(rdram, p + 20);
+        GfxCommand cmds[3]{};
+        gEXTextureRectangle(cmds, origin, origin, ulx + x_offset, uly, lrx + x_offset, lry, tile,
+                            st >> 16, st & 0xFFFF, dsdxdtdy >> 16, dsdxdtdy & 0xFFFF);
+        write_commands(rdram, p, cmds, 3);
+        p += 16;
+    }
+}
+
+// Whether a split-screen rectangle from (x0, y0) to (x1, y1), its commands starting at dl, carries the open line on:
+// drawn right after it, on the same line (overlapping it by half its height), starting no further on than a letter's
+// height past its end, and in the same view.
+bool carries_line_on(int x0, int y0, int x1, int y1, uint32_t dl) {
+    if (!line_open || dl < line.dl_end || dl - line.dl_end > 256) {
+        return false;
+    }
+    int height = std::min(y1 - y0, line.y1 - line.y0);
+    return std::min(y1, line.y1) - std::max(y0, line.y0) >= height / 2 && x0 >= line.x0 &&
+           x0 <= line.x1 + (line.y1 - line.y0) &&
+           view_holding(line.x0, std::max(x1, line.x1)) == view_holding(line.x0, line.x1);
+}
+
+void close_line(uint8_t* rdram) {
+    if (line_open) {
+        line_open = false;
+        int origin = split_rect_origin(line.x0, line.x1);
+        if (origin != G_EX_ORIGIN_NONE) {
+            anchor_rects(rdram, line.dl_start, line.dl_end, origin);
+        }
     }
 }
 
