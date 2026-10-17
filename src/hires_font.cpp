@@ -7,6 +7,13 @@
 // written to hires_font/ in the app folder, which is registered with RT64 as a built-in pack below any texture
 // packs the user enables. Only the first frame that draws a new font shows the original; after that the pack
 // already has it, across restarts too.
+// Each new glyph makes its atlas's replacement again and reloads the pack, 30-36 times when a fresh profile walks the
+// menus into a race. On the web page that destroyed an old replacement while a list that had bound it waited to be
+// executed ("Destroyed texture [384x136 RGBA8Unorm] used in a submit", once or twice a walk in Chrome 155), which
+// plume be0524c fixed, and RT64's texture upload thread installed replacements from before a reload into a list
+// recorded after they were destroyed (about one walk in three in Firefox 158, whose longer GPU wait widens the window;
+// a test build with a 40 ms sleep in that window logged 115 such textures in Chrome), which rt64 918deb3 fixed. With
+// both, 5 walks in Chrome and 3 in Firefox logged none.
 //
 // The atlases are anti-aliased (rasterised from a vector font), so the upscale is a smooth bicubic followed by a
 // moderate contrast curve around half the atlas's brightest value: edges come out clean without closing the

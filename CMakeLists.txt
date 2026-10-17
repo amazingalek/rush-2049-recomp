@@ -39,7 +39,9 @@ endif()
 if (EMSCRIPTEN)
     # Threads are pthreads (SharedArrayBuffer), and the runtime ends a game thread by throwing. -msimd128 is the web's
     # -march=nehalem: wasm SIMD, which every browser with WebGPU has, for hlslpp (its wasm backend) and the
-    # auto-vectorizer; a race display list took ~5% less time with it (CLAUDE.md). -mtail-call is wasm's tail calls
+    # auto-vectorizer; a race display list took ~5% less time with it (5.83 -> 5.55 ms, the median of 8 runs of each,
+    # interleaved, on the headless page at 960x720 on a busy host, Mann-Whitney p ~ 0.04), the browser's CPU the same
+    # (95 s per 90 s either way). -mtail-call is wasm's tail calls
     # (every such browser has them too): with it the recompiled code's jumps to other functions are return_calls
     # (N64Recomp-web's RECOMP_TAIL_CALL), not calls that grow the stack, as N64Recomp-browser's frontend says to.
     add_compile_options(-pthread -fwasm-exceptions -msimd128 -mtail-call)
@@ -49,6 +51,12 @@ if (EMSCRIPTEN)
     add_compile_options("-DXXH_HAS_INCLUDE(x)=0")
     add_link_options(-pthread -fwasm-exceptions -mtail-call)
     # ccache when it is on PATH (README, "Building the page").
+    # The page is ~640 compiles. On a fully busy Windows host (wall times 1.5-2 times a quiet one's), a fresh build dir
+    # with nothing cached took 72-200 s to configure and 590-810 s to build, the link 120-190 s of it. With ccache warm
+    # from another checkout (636 of 636 hits) the build took 382 s at -O3 (the link 170 s; the objects waited ~200 s
+    # for the shader chain, dxc and naga) and 116 s with -DN64RECOMP_BROWSER_FAST_LINK=ON; one changed file, 185 s and
+    # 25 s. The fast link is -O1: 11 s against 190, the wasm 21.1 MB against 19.7. What it costs the frame rate wasn't
+    # measurable on that host (42-54 presents a second either way), so the page people play links at -O3.
     include(${CMAKE_SOURCE_DIR}/lib/N64Recomp-browser/frontend/build_speed.cmake)
     # Mods are off on the web: the runtime can't recompile a hooked function there (no live recompiler).
     set(RUSH2049_PATCHES OFF)

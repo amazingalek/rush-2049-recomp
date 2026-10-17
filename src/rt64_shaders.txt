@@ -3,7 +3,7 @@
 # README): the lines above the first "section" line are the boot, built before the game starts, and each section after
 # it is built when the game first draws with 4 of its shaders, the game waiting for it in Firefox (Chrome builds the
 # whole list behind the game, a section at a time). A description missing here is built behind the game when it is
-# first drawn, and the page remembers it for the next visit (CLAUDE.md, The web target).
+# first drawn, and the page remembers it for the next visit (N64Recomp-browser's CLAUDE.md, Prebuilt shader lists).
 #
 # Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, in the order it meets
 # them, at the page's default settings. The boot and race are recorded by tools/shader_plan.json with
@@ -14,6 +14,24 @@
 # and Wind on, a crash and the pause menu, 2P Practice, 2P and 4P Battle, 1P and 4P Stunt. Not yet: Ghost Race, the
 # results screens, the other stunt arenas, 3 players. Flags follow settings (filtering, HDR, MSAA, upscaling), so a
 # change to one of those defaults means recording again.
+#
+# To record again, drive the page opened with ?record-shaders by tools/shader_plan.json (its header says how) with
+# N64Recomp-browser's tools/record_shaders.mjs (--players <n> through Module.arguments for split screen), and add the
+# new "rt64 shader:" lines here. The 105 descriptions and the launcher's pipelines come to 5.6-6.0 MB of Chrome's 6 MB
+# shader cache, so check the figure when the list grows.
+#
+# Why it is built first, and in sections, measured on an RTX 2070. With the whole list as one section, Firefox 157 (a
+# busy host) waited 27.9-30.2 s at the bar, then drew the attract races and a 1P race at 39-56 frames a second in a
+# 1280x876 canvas, the race's longest gap 89 ms; with the ubershader alone the same race fell to 13-29 frames a second
+# with stalls up to 3.7 s and its sound ~25 times as short, and a second run froze for good leaving the title for the
+# menus. Cold in headless Chrome 155 (a busy host) the game never waited: its 75 pipelines were built 7 s after Start
+# Game, behind the logos and the title, at 49-57 frames a second, where building them all before the first frame
+# waited 6.0 s at 0-19. With rt64 c6cf6c4 (smaller WGSL), Firefox 158 waited 11.9-12.6 s for the whole list against
+# 13.6-14.6 without it, three runs each on a host 57-66% busy. In sections (a local build on b1c35d1 against the page
+# published from it, two cold runs each, interleaved, a quiet host, 1256x645), Firefox 158 waited 1.9-2.0 s for the
+# boot's 21 pipelines where it had waited 9.7-9.9 s for all 75, then 7.0-7.4 s for race's 41 when the attract race
+# began, ~8 s later; Chrome 155 headless built all 75 by ~9 s after Start Game against ~2 s, and once of two runs held
+# the attract race's first frame 0.5 s for 5 of them; both at 59 presents a second (median), no WebGPU errors either way.
 0f0a4000 00a08cef fcffffff fffcf279 04cb540b
 00504240 00800cef fc11fe23 fffff3f9 0003540b
 0f0a4000 00a08cef fcffffff fffcf279 0003540b

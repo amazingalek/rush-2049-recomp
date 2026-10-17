@@ -1,5 +1,5 @@
 // Headless driver: runs the game with no renderer, no window, no menus and no input, and prints how fast its CPU side
-// runs. It is the first step towards a web build (README, CLAUDE.md): it builds with Emscripten as well as natively,
+// runs. It is the first step towards a web build (README): it builds with Emscripten as well as natively,
 // so the game threads, the runtime and the MusyX audio can be timed in node and in a browser, and compared with the
 // same build on Windows.
 //
@@ -19,6 +19,72 @@
 // used in that time as a share of one core (not in a browser, which has no way to read it). At the end, the same over
 // the whole run but its first interval (the boot), and the CPU time per display list: what a frame costs the CPU side,
 // against the 16.7 ms a frame has at 60 fps. Each line also gives a display list's send_dl wall time, median (p95).
+//
+// Measured with it on the title screen and attract races, 60 retraces and 30 display lists a second wanted, HQ mix:
+//
+//                             retraces/s  display lists/s  CPU, every thread   per display list
+//   native (clang-cl /O2)         60            30          1% of one core        0.3-0.5 ms
+//   node 24                       60            30          4-5%                  1.3-1.8 ms
+//   Chrome 154, headless          60            30          7% (whole browser)    2.3 ms
+//   --fps 120: native, node      120            60          1%, 5%                0.2, 0.9 ms
+//
+// So wasm costs about 4 times the CPU of native, and a frame still uses a small part of its 16.7 ms: the CPU side
+// keeps up. The host was 14-54% busy with other work; at 100% busy both builds fell to 36-54 retraces a second with
+// their own CPU use unchanged, so what drops frames there is threads waiting for a core, not the work.
+//
+// The page against the native build (Vulkan) on an RTX 2070, both at 960x720 (Auto resolution, no MSAA, original
+// aspect, no texture packs), title screen and attract races, 60 display lists a second wanted, render to RAM on; GPU
+// 36-37% busy, host CPU 19-22%. Per display list is wall time from the list to the RDP's interrupt, which takes in the
+// readback of the frame:
+//
+//                   display lists/s   per display list, median: title   races (p95)
+//   native (2 runs)        60                          1.1 ms           4-6 ms (5-9)
+//   Chrome 154           47-59                         6.1 ms           11-15 ms (14-20)
+//
+// Where a race list's 13-14 ms went in Chrome, render to RAM on and off (host 16-18% busy, nothing else on the GPU):
+//
+//   part                               on          off
+//   parsing the display list         ~2.5 ms      ~2.5
+//   the second pass at N64 res.      ~3-4 ms        -
+//   waiting for its readback           ~6 ms        -
+//   uploads and tiles                ~1.5 ms      ~2.6
+//   per race list                   13-14 ms      5.2-5.6 (title 6 -> 0.9)
+//   display lists a second             ~55        59.8 of 60
+//
+// So without render to RAM a list in the browser takes about what it takes natively with it, and the page keeps 60;
+// the game's page (Rush2049Recompiled.html, 1256x805) presented 57-60 frames a second through the title and attract
+// races with the host 100% busy.
+//
+// Like for like, native against the page in Chrome 154, render to RAM off on both unless marked, no MSAA, original
+// aspect, no texture packs, 100 s of title and attract races per run, two runs each, interleaved; nothing else on the
+// GPU, host 23-32% busy, the idle desktop alone 26% GPU busy and 25 W. Per list is send_dl's wall time in a race,
+// median (p95); CPU in cores (Chrome's 8 processes); GPU W from nvidia-smi:
+//
+//                             lists/s  per list    CPU  GPU W
+//   960x720    native RTR on       60  5.0 (7.0)  0.48     61
+//              native              60  3.9 (5.5)  0.38     45
+//              browser             60  5.4 (7.5)  1.03     67
+//   1600x1200  native              60  3.9 (5.3)  0.39     60
+//              browser             60  5.4 (7.6)  1.01     93
+//   2560x1920  native              60  3.7 (5.2)  0.36     64
+//              browser             60  5.2 (7.3)  0.97    124
+//
+// So the page keeps 60 at every size, at ~1.4 times native's time per list and ~2.7 times its CPU (without -msimd128,
+// which takes ~5% off a list: CMakeLists.txt), and its GPU cost grows with resolution: at 2560x1920 the GPU was 74%
+// busy against native's ~35%. That was mostly the ubershader, which specialized pipelines replace (rt64-0011). With
+// RT64's Ubershaders Only flag (workloadQueue->ubershadersOnly) forced natively, --gpu-profile's draws went from 0.38
+// to 1.25 ms a frame at 960x720 and from 0.76-1.15 to 5.1 ms at 2560x1920. The browser has no GPU timestamps, so its
+// GPU side is read from nvidia-smi's power and utilization against the idle desktop. With specialized pipelines, the
+// same page and settings, 80 s per run, interleaved with the ubershader-only page:
+//
+//                 ubershader only      specialized
+//                 busy  MHz    W       busy  MHz    W
+//   960x720        34%  432   49        30%  307   41
+//   2560x1920      68% 1233  118        36%  541   65
+//
+// Every specialized run kept 59-60 lists a second. The cost is CPU in Chrome's GPU process while it builds the
+// pipelines: ~1.2 cores in the first minute, 0.8 in the second, ~0.4 from the third on as new ones stop arriving,
+// against ~0.2 with the ubershader only (each new one is a 3-6 s cold build there).
 
 #include <algorithm>
 #include <atomic>

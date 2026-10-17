@@ -13,6 +13,17 @@
 # in tools/docker/Dockerfile.linux, Ubuntu 22.04, so it needs glibc 2.35 or newer. It carries the libSDL2 it was built
 # with and libatomic (not on every system) beside the binary (RUNPATH $ORIGIN), as the Windows zip carries SDL2.dll, and
 # is a .tar.gz so the binary stays executable.
+# The Linux build is checked by hand, by running it in distribution containers on $BUILD_HOST under Xvfb with Mesa's
+# software Vulkan (lavapipe), from another directory, the ROM beside it, --boot. Ubuntu 24.04 and Arch boot it, find the
+# ROM and draw the title and the first attract race, and then lavapipe (Mesa 25, 26.2) crashes on one of its own
+# llvmpipe threads as the second race begins, about 50 s in. That is lavapipe's: it is the first draw with one of RT64's
+# specialized pixel shaders (two LOD tiles, S mirrored), whose SPIR-V passes spirv-val with every texture index
+# NonUniform, and whose code compiled by lavapipe holds the texture set's address in some lanes and zero in others; the
+# validation layers report nothing, and with the ubershader alone it plays on. Debian 12's lavapipe (Mesa 22.3) has no
+# descriptor indexing, so RT64 binds textures per draw there (rt64-0007, perDrawTextures) with the shaders built for it
+# (rt64 7734fe4): it boots and draws the attract race, 90 s in two runs of two. With the 8192-texture array's shaders in
+# that layout, lavapipe's lowering set a bit for each of the 8192 in a 128-bit set (textures_used) and overwrote the
+# shader, crashing at boot. No Linux GPU has run it.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
