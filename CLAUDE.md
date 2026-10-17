@@ -296,7 +296,9 @@ cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120  
   translation, and a node gets no matrix), and the LOD cutoff and level distances in `func_8009C8F0`. With all of
   them at 4x, paused frames at about 35 spots on tracks 1-8 and in split screen are identical to the pixel, and at
   1/4x the bridge and sky drop out: what the limits drop is already out of view. The hooks that scale each one, with
-  a setting to switch them, are in tag `v0.1.12-drawdist1`.
+  a setting to switch them, are in tag `v0.1.12-drawdist1`. The "clipped" trees a player filmed with that build (the
+  forested hill across the bay from Track 1's start) are the hill model's own straight ridge, sliding over the tree
+  texture as the camera moves; a recording of the original game on an N64 shows the same edge.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
 - Merging or batching RT64's draws to cut the 240p floor (`start_gpu_profiler`'s table in `src/main.cpp`). Only ~5% of
   draws repeat the one before exactly; merging every run that shares a pipeline (wrong textures, timing only) halves the
