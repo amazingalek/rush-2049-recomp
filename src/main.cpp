@@ -67,7 +67,7 @@
 #include "SDL_syswm.h"
 #endif
 
-const std::string version_string = "0.1.8";
+const std::string version_string = "0.1.9";
 
 template<typename... Ts>
 void exit_error(const char* str, Ts ...args) {
@@ -448,6 +448,7 @@ std::vector<recomp::GameEntry> supported_games = {
 // --boot (development): start the game on the launcher's first frame, as its "Start Game" option does, so
 // bring-up runs don't need someone at the window. Needs the ROM already stored (src/rom_finder.cpp).
 static bool autoboot = false;
+static bool show_console = false;
 
 void on_launcher_update(recompui::LauncherMenu*) {
     static bool done = false;
@@ -597,6 +598,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--boot") == 0) {
             autoboot = true;
         }
+        if (strcmp(argv[i], "--show-console") == 0) {
+            show_console = true;
+        }
         if (strcmp(argv[i], "--stacks") == 0) {
             rush2049::start_stack_sampler(5, true);
         }
@@ -659,16 +663,11 @@ int main(int argc, char** argv) {
     }
 
 #ifdef _WIN32
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--show-console") == 0) {
-            if (GetConsoleWindow() == nullptr) {
-                AllocConsole();
-                freopen("CONIN$", "r", stdin);
-                freopen("CONOUT$", "w", stderr);
-                freopen("CONOUT$", "w", stdout);
-            }
-            break;
-        }
+    if (show_console && GetConsoleWindow() == nullptr) {
+        AllocConsole();
+        freopen("CONIN$", "r", stdin);
+        freopen("CONOUT$", "w", stderr);
+        freopen("CONOUT$", "w", stdout);
     }
 
     SetConsoleOutputCP(CP_UTF8);
@@ -686,9 +685,12 @@ int main(int argc, char** argv) {
     recompui::programconfig::set_program_id(rush2049::program_id);
 
 #ifndef __EMSCRIPTEN__
-    // Started from Explorer the log would go nowhere, so it goes to rush2049.log beside the settings and saves.
-    rush2049::start_log_file(recompui::file::get_app_folder_path(),
-        (std::string{ rush2049::program_name } + " " + version_string).c_str());
+    // Started from Explorer, a desktop launcher or Steam nobody sees the log, so it goes to rush2049.log beside the
+    // settings and saves. --show-console keeps it in the console, terminal or redirect.
+    if (!show_console) {
+        rush2049::start_log_file(recompui::file::get_app_folder_path(),
+            (std::string{ rush2049::program_name } + " " + version_string).c_str());
+    }
 #endif
 
     SDL_InitSubSystem(SDL_INIT_AUDIO);
