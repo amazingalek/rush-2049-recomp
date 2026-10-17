@@ -14,27 +14,51 @@ float env_scale(const char* name) {
 }
 float reach = env_scale("RUSH_REACH");
 int matrix_divisor = 1;
-int stretched, matrices;
+int stretched, matrices, lod_tested, lod_dropped, lod_near, dropped_log;
 auto last = std::chrono::steady_clock::now();
+auto start = last;
 
+float reach_now() {
+    static float flip = env_scale("RUSH_REACH_FLIP");  // seconds after start: from then on, 1x on even seconds
+    if (flip == 1.0f) {
+        return reach;
+    }
+    auto s = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
+    if (s < flip) {
+        return reach;
+    }
+    return ((int)s % 2 == 0) ? 1.0f : reach;
+}
 void report() {
     auto now = std::chrono::steady_clock::now();
     if (now - last < std::chrono::seconds(1)) {
         return;
     }
     last = now;
-    fprintf(stderr, "[dd] matrices %d stretched %d\n", matrices, stretched);
+    fprintf(stderr, "[dd] matrices %d stretched %d lod %d dropped %d (within 2x %d)\n", matrices, stretched,
+            lod_tested, lod_dropped, lod_near);
     fflush(stderr);
-    matrices = stretched = 0;
+    matrices = stretched = lod_tested = lod_dropped = lod_near = 0;
 }
 }
 
-extern "C" float rush2049_draw_distance_lod(float limit, float) {
-    return limit * reach;
+extern "C" float rush2049_draw_distance_lod(float limit, float distance) {
+    lod_tested++;
+    if (distance > limit) {
+        lod_dropped++;
+        if (distance < limit * 2) {
+            lod_near++;
+        }
+        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(36) && dropped_log < 400) {
+            dropped_log++;
+            fprintf(stderr, "[dd] drop limit %.0f distance %.0f\n", limit, distance);
+        }
+    }
+    return limit * reach_now();
 }
 
 extern "C" float rush2049_draw_distance_far(float far) {
-    return far * reach;
+    return far * reach_now();
 }
 
 extern "C" void rush2049_far_matrix_begin(recomp_context* ctx) {
@@ -42,7 +66,7 @@ extern "C" void rush2049_far_matrix_begin(recomp_context* ctx) {
     matrices++;
     report();
     float d = std::fmax(std::fabs(ctx->f0.fl), std::fmax(std::fabs(ctx->f2.fl), std::fabs(ctx->f12.fl)));
-    if (d < 2048.0f || d >= 2048.0f * reach) {
+    if (d < 2048.0f || d >= 2048.0f * reach_now()) {
         return;
     }
     while (d >= 2048.0f * matrix_divisor) {
