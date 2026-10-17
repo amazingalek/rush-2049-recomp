@@ -3,7 +3,7 @@
 # patches/<name>.patch, then this game's own changes, runtime-patches/<name>-*.patch in order of name. The projects
 # are the rows of N64Recomp-browser's patches/patches.txt, which says where each one is (rt64/src/contrib/plume,
 # N64ModernRuntime/N64Recomp), and the submodules pin the upstream commits named there, the ones those patches were
-# made on (CLAUDE.md, "The web target"). Patches already applied are skipped, and so is a project that isn't checked
+# made on (CLAUDE.md, "How it fits together"). Patches already applied are skipped, and so is a project that isn't checked
 # out. Run after cloning or updating submodules, and again after pulling new patches.
 # Which patches are applied is found on a scratch copy of the files they touch: they are reversed there newest first,
 # so a patch whose lines a later one changed reverses once that one is off, and each one that reverses was applied.
