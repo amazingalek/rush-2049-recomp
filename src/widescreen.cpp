@@ -30,8 +30,9 @@
 // menu, a picture in strips) are anchored together, by where the whole line sits; letter by letter, a word reaching
 // across a third of the view would come apart.
 // The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
-// score boxes are fill rectangles in the HUD's list; each fill + sync pair is rewritten in place as RT64's extended
-// fill rectangle, anchored the same way.
+// score boxes and the pause menu's panels and their border lines are fill rectangles in the HUD's list; each fill +
+// sync pair is rewritten in place as RT64's extended fill rectangle, anchored the same way, and fills that touch are a
+// box, anchored by where the whole box sits.
 //
 // Menus. Their background is a 4:3 picture drawn as texture rectangles, and the menu sits on it, so the menu stays
 // where it is and the picture is extended: with "Menu Aspect Ratio" at Expand, each strip of it at the screen's left
@@ -180,8 +181,9 @@ int split_rect_origin(int x0, int x1) {
 }
 
 // Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
-// view it fills, or edge by edge when it's outside the views (the borders between them).
-void anchor_fill_rect(uint8_t* rdram, uint32_t p) {
+// view it fills, or edge by edge when it's outside the views (the borders between them). A part of a box (box_x0 to
+// box_x1, a panel and its border lines) anchors by where the box sits, unless the box spans its view.
+void anchor_fill_rect(uint8_t* rdram, uint32_t p, int box_x0 = -1, int box_x1 = -1) {
     uint32_t w0 = read_word(rdram, p);
     uint32_t w1 = read_word(rdram, p + 4);
     int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
@@ -189,9 +191,12 @@ void anchor_fill_rect(uint8_t* rdram, uint32_t p) {
     int x0 = ulx / 4, x1 = lrx / 4 + 1;
     int left, right;
     if (const View* v = view_holding(x0, x1)) {
-        if (x1 - x0 >= (v->x1 - v->x0) * 9 / 10) {
+        int wide = (v->x1 - v->x0) * 9 / 10;
+        if (x1 - x0 >= wide) {
             left = v->left;
             right = v->right;
+        } else if (box_x0 >= 0 && box_x1 - box_x0 < wide && view_holding(box_x0, box_x1) == v) {
+            left = right = view_origin(*v, (box_x0 + box_x1) / 2.0);
         } else {
             left = right = view_origin(*v, (x0 + x1) / 2.0);
         }
@@ -476,7 +481,16 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
         }
     }
 
-    // The HUD's fills (the 4-player score boxes), in the lists it calls, as far as func_80087110 has written.
+    // The HUD's fills (the 4-player score boxes, the pause menu's panels and their border lines), in the lists it calls,
+    // as far as func_80087110 has written. Fills that touch make a box, anchored as one.
+    struct Fill {
+        uint32_t p;
+        int x0, x1, y0, y1;
+        int box;
+    };
+    constexpr int max_fills = 64;
+    Fill fills[max_fills];
+    int fill_count = 0;
     for (int i = 0; i < scan.hud_call_count && hud_list_lo != 0; i++) {
         uint32_t p = scan.hud_calls[i];
         for (int n = 0; n < 8000; n++, p += 8) {
@@ -488,11 +502,39 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
                 p = (read_word(rdram, p + 4) | 0x80000000) - 8;
                 continue;
             }
-            if (p >= hud_list_lo && p + 16 <= hud_list_hi && fill_rect_pair(rdram, p)) {
-                anchor_fill_rect(rdram, p);
+            if (p >= hud_list_lo && p + 16 <= hud_list_hi && fill_rect_pair(rdram, p) && fill_count < max_fills &&
+                std::none_of(fills, fills + fill_count, [&](const Fill& f) { return f.p == p; })) {
+                uint32_t w1 = read_word(rdram, p + 4);
+                fills[fill_count] = { p, (int)((w1 >> 12) & 0xFFF) / 4, (int)((w0 >> 12) & 0xFFF) / 4 + 1,
+                                      (int)(w1 & 0xFFF) / 4, (int)(w0 & 0xFFF) / 4 + 1, fill_count };
+                fill_count++;
                 p += 8;
             }
         }
+    }
+    auto box_of = [&](int i) {
+        while (fills[i].box != i) {
+            i = fills[i].box;
+        }
+        return i;
+    };
+    for (int i = 0; i < fill_count; i++) {
+        for (int j = 0; j < i; j++) {
+            const Fill &a = fills[i], &b = fills[j];
+            if (a.x0 <= b.x1 + 1 && b.x0 <= a.x1 + 1 && a.y0 <= b.y1 + 1 && b.y0 <= a.y1 + 1) {
+                fills[box_of(i)].box = box_of(j);
+            }
+        }
+    }
+    for (int i = 0; i < fill_count; i++) {
+        int box = box_of(i), box_x0 = screen_width, box_x1 = 0;
+        for (int j = 0; j < fill_count; j++) {
+            if (box_of(j) == box) {
+                box_x0 = std::min(box_x0, fills[j].x0);
+                box_x1 = std::max(box_x1, fills[j].x1);
+            }
+        }
+        anchor_fill_rect(rdram, fills[i].p, box_x0, box_x1);
     }
 
     // The coins: anchored like the HUD beside them, in their own view.
