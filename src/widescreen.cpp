@@ -181,22 +181,27 @@ int split_rect_origin(int x0, int x1) {
 }
 
 // Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
-// view it fills, or edge by edge when it's outside the views (the borders between them). A part of a box (box_x0 to
-// box_x1, a panel and its border lines) anchors by where the box sits, unless the box spans its view.
-void anchor_fill_rect(uint8_t* rdram, uint32_t p, int box_x0 = -1, int box_x1 = -1) {
+// view it fills, or edge by edge when it's outside the views (the borders between them). A part of a box (a panel and
+// its border lines, box_cx its centre) anchors like the box's centre in the view holding it.
+void anchor_fill_rect(uint8_t* rdram, uint32_t p, double box_cx = -1) {
     uint32_t w0 = read_word(rdram, p);
     uint32_t w1 = read_word(rdram, p + 4);
     int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
     int ulx = (w1 >> 12) & 0xFFF, uly = w1 & 0xFFF;
     int x0 = ulx / 4, x1 = lrx / 4 + 1;
     int left, right;
-    if (const View* v = view_holding(x0, x1)) {
-        int wide = (v->x1 - v->x0) * 9 / 10;
-        if (x1 - x0 >= wide) {
+    const View* box_view = nullptr;
+    for (int i = 0; i < split_view_count && box_cx >= 0 && !box_view; i++) {
+        if (box_cx >= split_views[i].x0 && box_cx <= split_views[i].x1) {
+            box_view = &split_views[i];
+        }
+    }
+    if (box_view) {
+        left = right = view_origin(*box_view, box_cx);
+    } else if (const View* v = view_holding(x0, x1)) {
+        if (x1 - x0 >= (v->x1 - v->x0) * 9 / 10) {
             left = v->left;
             right = v->right;
-        } else if (box_x0 >= 0 && box_x1 - box_x0 < wide && view_holding(box_x0, box_x1) == v) {
-            left = right = view_origin(*v, (box_x0 + box_x1) / 2.0);
         } else {
             left = right = view_origin(*v, (x0 + x1) / 2.0);
         }
@@ -482,7 +487,8 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
     }
 
     // The HUD's fills (the 4-player score boxes, the pause menu's panels and their border lines), in the lists it calls,
-    // as far as func_80087110 has written. Fills that touch make a box, anchored as one.
+    // as far as func_80087110 has written. Fills that touch make a box, anchored as one; a fill across a view or the
+    // screen (the pause menu darkens the whole screen) stretches with it, and is part of no box.
     struct Fill {
         uint32_t p;
         int x0, x1, y0, y1;
@@ -518,23 +524,29 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
         }
         return i;
     };
+    auto spans = [&](const Fill& f) {
+        const View* v = view_holding(f.x0, f.x1);
+        return f.x1 - f.x0 >= (v ? v->x1 - v->x0 : screen_width) * 9 / 10;
+    };
     for (int i = 0; i < fill_count; i++) {
         for (int j = 0; j < i; j++) {
             const Fill &a = fills[i], &b = fills[j];
-            if (a.x0 <= b.x1 + 1 && b.x0 <= a.x1 + 1 && a.y0 <= b.y1 + 1 && b.y0 <= a.y1 + 1) {
+            if (!spans(a) && !spans(b) && a.x0 <= b.x1 + 1 && b.x0 <= a.x1 + 1 && a.y0 <= b.y1 + 1 &&
+                b.y0 <= a.y1 + 1) {
                 fills[box_of(i)].box = box_of(j);
             }
         }
     }
     for (int i = 0; i < fill_count; i++) {
-        int box = box_of(i), box_x0 = screen_width, box_x1 = 0;
+        int box = box_of(i), parts = 0, box_x0 = screen_width, box_x1 = 0;
         for (int j = 0; j < fill_count; j++) {
             if (box_of(j) == box) {
+                parts++;
                 box_x0 = std::min(box_x0, fills[j].x0);
                 box_x1 = std::max(box_x1, fills[j].x1);
             }
         }
-        anchor_fill_rect(rdram, fills[i].p, box_x0, box_x1);
+        anchor_fill_rect(rdram, fills[i].p, parts > 1 ? (box_x0 + box_x1) / 2.0 : -1);
     }
 
     // The coins: anchored like the HUD beside them, in their own view.
