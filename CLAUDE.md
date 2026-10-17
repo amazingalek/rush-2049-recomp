@@ -62,6 +62,8 @@ explains code goes beside that code.
   BanjoRecomp, Zelda64Recomp or Donkey-Kong-64-Recompiled: their CONTRIBUTING.md asks for no LLM-written code
   (plume's, no AI-made contribution and no AI talking to its maintainers). The web forks stay forks.
 - Code from a repo without a license is never copied: facts learned from one only.
+- Work is prioritised by what it breaks: high for a crash, med for an issue that affects every game (the shared web
+  support), low for an issue that affects one game, this one included.
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
   code and stops short of linking. Anything that changes behaviour needs a run of the game before it lands. Pure code
   (resampler, limiters, the MusyX side mix) has tests in `tests/` that CI runs; new pure code gets one.
