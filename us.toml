@@ -358,14 +358,18 @@ func = "func_80094FE8"
 before_vram = 0x8009504C
 text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
 
-# Draw Distance (src/draw_distance.cpp). func_800AB18C(camera, position) sets a race camera's far plane (+0x3C) and
-# the game's cull distance (0x80151AA0) from per-player-count tables every frame.
+# Draw Distance (src/draw_distance.cpp), experiment.
 [[patches.hook]]
-func = "func_800AB18C"
-before_vram = 0x800AB18C
-text = "    rush2049_draw_distance_begin(rdram, ctx);"
+func = "func_8009C8F0"
+before_vram = 0x8009CB48
+text = "    ctx->f8.fl = rush2049_draw_distance_lod(ctx->f8.fl, ctx->f10.fl);"
 
 [[patches.hook]]
-func = "func_800AB18C"
-before_vram = 0x800AB520
-text = "    rush2049_draw_distance_end(rdram);"
+func = "func_8009F058"
+before_vram = 0x8009F484
+text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
+
+[[patches.hook]]
+func = "func_8009F058"
+before_vram = 0x8009F4E8
+text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"

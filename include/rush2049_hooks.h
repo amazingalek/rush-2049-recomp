@@ -40,8 +40,8 @@ void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 
 /* Draw Distance (src/draw_distance.cpp): at the start and end of func_800AB18C, which sets a camera's far plane
    and the cull distance. */
-void rush2049_draw_distance_begin(uint8_t* rdram, recomp_context* ctx);
-void rush2049_draw_distance_end(uint8_t* rdram);
+float rush2049_draw_distance_lod(float limit, float distance);
+float rush2049_draw_distance_far(float far);
 
 /* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
 void rush2049_spin_yield(uint8_t* rdram);

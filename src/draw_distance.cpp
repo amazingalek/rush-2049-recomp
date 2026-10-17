@@ -1,36 +1,53 @@
 // Draw Distance (experiment).
 
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 
 #include "rush2049_hooks.h"
 
 namespace {
-uint32_t camera_index;
-bool tables_read;
-
-float& game_float(uint8_t* rdram, uint32_t vram) {
-    return *reinterpret_cast<float*>(rdram + (vram - 0x80000000));
+float scale(const char* name) {
+    const char* e = std::getenv(name);
+    return e ? (float)std::atof(e) : 1.0f;
 }
+float lod_scale = scale("RUSH_LOD_SCALE");
+float far_scale = scale("RUSH_FAR_SCALE");
+int calls, culled, far_calls;
+float max_drawn, min_culled = 1e30f, max_limit;
+auto last = std::chrono::steady_clock::now();
 
-float scale() {
-    static float s = [] {
-        const char* e = std::getenv("RUSH_DRAW_SCALE");
-        return e ? (float)std::atof(e) : 1.0f;
-    }();
-    return s;
-}
-}
-
-extern "C" void rush2049_draw_distance_begin(uint8_t* rdram, recomp_context* ctx) {
-    camera_index = (uint32_t)ctx->r4;
-    tables_read = rdram[(0x8013F1D8 ^ 3) - 0x80000000] != 0;
-}
-
-extern "C" void rush2049_draw_distance_end(uint8_t* rdram) {
-    if (!tables_read || scale() == 1.0f) {
+void report() {
+    auto now = std::chrono::steady_clock::now();
+    if (now - last < std::chrono::seconds(1)) {
         return;
     }
-    uint32_t camera = 0x8017A510 + camera_index * 0x48;
-    game_float(rdram, camera + 0x3C) *= scale();
-    game_float(rdram, 0x80151AA0) *= scale();
+    last = now;
+    fprintf(stderr, "[dd] lod calls %d culled %d max drawn %.0f min culled %.0f max limit %.0f, far calls %d\n", calls,
+        culled, max_drawn, min_culled, max_limit, far_calls);
+    fflush(stderr);
+    calls = culled = far_calls = 0;
+    max_drawn = max_limit = 0;
+    min_culled = 1e30f;
+}
+}
+
+extern "C" float rush2049_draw_distance_lod(float limit, float distance) {
+    limit *= lod_scale;
+    calls++;
+    if (limit < distance) {
+        culled++;
+        if (distance < min_culled) min_culled = distance;
+    } else if (distance > max_drawn) {
+        max_drawn = distance;
+    }
+    if (limit > max_limit) max_limit = limit;
+    report();
+    return limit;
+}
+
+extern "C" float rush2049_draw_distance_far(float far) {
+    far_calls++;
+    report();
+    return far * far_scale;
 }
