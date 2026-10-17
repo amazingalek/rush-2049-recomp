@@ -299,6 +299,9 @@ cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120  
   a setting to switch them, are in tag `v0.1.12-drawdist1`. The "clipped" trees a player filmed with that build (the
   forested hill across the bay from Track 1's start) are the hill model's own straight ridge, sliding over the tree
   texture as the camera moves; a recording of the original game on an N64 shows the same edge.
+- Fixing the street lamp drawn behind the sailboats' sails at Track 1's start. One scenery display list draws the
+  lamps (a textured quad each) and then the boats, all in render mode C8104A50 (Z compare, no Z update), so a sail
+  drawn after a lamp passes its depth test and covers the pole. That is the game's own order, and an N64 does the same.
 - Caching texture hashes while TMEM is untouched: only 8% of hashes repeat without a TMEM change.
 - Merging or batching RT64's draws to cut the 240p floor (`start_gpu_profiler`'s table in `src/main.cpp`). Only ~5% of
   draws repeat the one before exactly; merging every run that shares a pipeline (wrong textures, timing only) halves the
