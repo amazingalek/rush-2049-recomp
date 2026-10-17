@@ -357,3 +357,15 @@ text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
 func = "func_80094FE8"
 before_vram = 0x8009504C
 text = "    ctx->r2 = rush2049_rumble_pak_in(ctx->r2);"
+
+# Draw Distance (src/draw_distance.cpp). func_800AB18C(camera, position) sets a race camera's far plane (+0x3C) and
+# the game's cull distance (0x80151AA0) from per-player-count tables every frame.
+[[patches.hook]]
+func = "func_800AB18C"
+before_vram = 0x800AB18C
+text = "    rush2049_draw_distance_begin(rdram, ctx);"
+
+[[patches.hook]]
+func = "func_800AB18C"
+before_vram = 0x800AB520
+text = "    rush2049_draw_distance_end(rdram);"
