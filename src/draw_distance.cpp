@@ -1,20 +1,20 @@
 // Draw Distance (experiment).
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
 #include "rush2049_hooks.h"
 
 namespace {
-float scale(const char* name) {
+float env_scale(const char* name) {
     const char* e = std::getenv(name);
     return e ? (float)std::atof(e) : 1.0f;
 }
-float lod_scale = scale("RUSH_LOD_SCALE");
-float far_scale = scale("RUSH_FAR_SCALE");
-int calls, culled, far_calls;
-float max_drawn, min_culled = 1e30f, max_limit;
+float reach = env_scale("RUSH_REACH");
+int matrix_divisor = 1;
+int stretched, matrices;
 auto last = std::chrono::steady_clock::now();
 
 void report() {
@@ -23,31 +23,53 @@ void report() {
         return;
     }
     last = now;
-    fprintf(stderr, "[dd] lod calls %d culled %d max drawn %.0f min culled %.0f max limit %.0f, far calls %d\n", calls,
-        culled, max_drawn, min_culled, max_limit, far_calls);
+    fprintf(stderr, "[dd] matrices %d stretched %d\n", matrices, stretched);
     fflush(stderr);
-    calls = culled = far_calls = 0;
-    max_drawn = max_limit = 0;
-    min_culled = 1e30f;
+    matrices = stretched = 0;
 }
 }
 
-extern "C" float rush2049_draw_distance_lod(float limit, float distance) {
-    limit *= lod_scale;
-    calls++;
-    if (limit < distance) {
-        culled++;
-        if (distance < min_culled) min_culled = distance;
-    } else if (distance > max_drawn) {
-        max_drawn = distance;
-    }
-    if (limit > max_limit) max_limit = limit;
-    report();
-    return limit;
+extern "C" float rush2049_draw_distance_lod(float limit, float) {
+    return limit * reach;
 }
 
 extern "C" float rush2049_draw_distance_far(float far) {
-    far_calls++;
+    return far * reach;
+}
+
+extern "C" void rush2049_far_matrix_begin(recomp_context* ctx) {
+    matrix_divisor = 1;
+    matrices++;
     report();
-    return far * far_scale;
+    float d = std::fmax(std::fabs(ctx->f0.fl), std::fmax(std::fabs(ctx->f2.fl), std::fabs(ctx->f12.fl)));
+    if (d < 2048.0f || d >= 2048.0f * reach) {
+        return;
+    }
+    while (d >= 2048.0f * matrix_divisor) {
+        matrix_divisor *= 2;
+    }
+    float scale = 1.0f / matrix_divisor;
+    ctx->f0.fl *= scale;
+    ctx->f2.fl *= scale;
+    ctx->f12.fl *= scale;
+    stretched++;
+}
+
+extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
+    if (matrix_divisor == 1) {
+        return;
+    }
+    uint32_t* words = reinterpret_cast<uint32_t*>(rdram + ((uint32_t)matrix - 0x80000000));
+    for (int i = 0; i < 16; i++) {
+        if (i >= 12 && i <= 14) {
+            continue;  // the translation, divided before it was written
+        }
+        uint32_t& whole = words[i / 2];
+        uint32_t& frac = words[8 + i / 2];
+        int shift = (i & 1) ? 0 : 16;
+        int32_t value = (int32_t)((((whole >> shift) & 0xFFFF) << 16) | ((frac >> shift) & 0xFFFF));
+        value /= matrix_divisor;
+        whole = (whole & ~(0xFFFFu << shift)) | (((uint32_t)value >> 16) << shift);
+        frac = (frac & ~(0xFFFFu << shift)) | (((uint32_t)value & 0xFFFF) << shift);
+    }
 }

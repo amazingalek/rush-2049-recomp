@@ -373,3 +373,28 @@ text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
 func = "func_8009F058"
 before_vram = 0x8009F4E8
 text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
+
+[[patches.hook]]
+func = "func_8009DD88"
+before_vram = 0x8009E504
+text = "    ctx->f16.fl = rush2049_draw_distance_far(ctx->f16.fl);"
+
+[[patches.hook]]
+func = "func_8009D99C"
+before_vram = 0x8009DA04
+text = "    rush2049_far_matrix_begin(ctx);"
+
+[[patches.hook]]
+func = "func_8009D99C"
+before_vram = 0x8009DC48
+text = "    rush2049_far_matrix_end(rdram, ctx->r7);"
+
+[[patches.hook]]
+func = "func_8009D45C"
+before_vram = 0x8009D4C4
+text = "    rush2049_far_matrix_begin(ctx);"
+
+[[patches.hook]]
+func = "func_8009D45C"
+before_vram = 0x8009D700
+text = "    rush2049_far_matrix_end(rdram, ctx->r6);"

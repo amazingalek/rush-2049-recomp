@@ -42,6 +42,8 @@ void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
    and the cull distance. */
 float rush2049_draw_distance_lod(float limit, float distance);
 float rush2049_draw_distance_far(float far);
+void rush2049_far_matrix_begin(recomp_context* ctx);
+void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix);
 
 /* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
 void rush2049_spin_yield(uint8_t* rdram);
