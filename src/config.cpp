@@ -121,6 +121,33 @@ namespace {
     };
     const std::string hires_title_option = "hires_title";
 
+    // src/draw_distance.cpp says what each limit is.
+    enum class DrawDistance {
+        Original,
+        Far,
+        Farthest,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> draw_distance_options = {
+        {DrawDistance::Original, "Original", "Original"},
+        {DrawDistance::Far, "Far", "4x"},
+        {DrawDistance::Farthest, "Farthest", "16x"},
+    };
+    const std::string draw_distance_option = "draw_distance";
+
+    enum class LevelOfDetail {
+        Original,
+        High,
+        Highest,
+        OptionCount
+    };
+    const std::vector<recomp::config::ConfigOptionEnumOption> level_of_detail_options = {
+        {LevelOfDetail::Original, "Original", "Original"},
+        {LevelOfDetail::High, "High", "High"},
+        {LevelOfDetail::Highest, "Highest", "Highest"},
+    };
+    const std::string level_of_detail_option = "level_of_detail";
+
     enum class SplitScreenRatio {
         Expand,
         Original,
@@ -405,6 +432,39 @@ void rush2049::init_config() {
     graphics.add_option_change_callback(hires_title_option,
         [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
             rush2049::set_hires_title(static_cast<HiresTitle>(std::get<uint32_t>(cur_value)) == HiresTitle::On);
+        });
+
+    graphics.add_enum_option(
+        draw_distance_option,
+        "Draw Distance",
+        "How far away scenery is still drawn, as a multiple of the original distance. Farther scenery, like a building "
+        "far down the road, appears sooner instead of popping in. Most of what the original leaves out is hidden "
+        "behind something nearer anyway, so the difference shows only in places.",
+        draw_distance_options,
+        DrawDistance::Far
+    );
+    // Called on load too, and while the menu previews a change.
+    graphics.add_option_change_callback(draw_distance_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            static constexpr float scale[] = { 1.0f, 4.0f, 16.0f };
+            rush2049::set_draw_distance(scale[std::get<uint32_t>(cur_value)]);
+        });
+
+    graphics.add_enum_option(
+        level_of_detail_option,
+        "Level of Detail",
+        "How far away models keep their detailed versions before the game swaps in simpler ones. The original "
+        "simplifies them close to the car: curves go blocky and small details like traffic lights disappear."
+        "<br/>"
+        "<b>High:</b> four times the original distances. <b>Highest:</b> always the most detailed version.",
+        level_of_detail_options,
+        LevelOfDetail::High
+    );
+    // Called on load too, and while the menu previews a change.
+    graphics.add_option_change_callback(level_of_detail_option,
+        [](recomp::config::ConfigValueVariant cur_value, recomp::config::ConfigValueVariant, recomp::config::OptionChangeContext) {
+            static constexpr float scale[] = { 1.0f, 4.0f, 1e30f };
+            rush2049::set_level_of_detail(scale[std::get<uint32_t>(cur_value)]);
         });
 
     graphics.add_enum_option(
