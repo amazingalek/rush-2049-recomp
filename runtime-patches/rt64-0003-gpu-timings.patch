@@ -199,14 +199,14 @@ diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
 index e08b02c..5edfe0e 100644
 --- a/src/hle/rt64_present_queue.h
 +++ b/src/hle/rt64_present_queue.h
-@@ -6,6 +6,7 @@
- 
- #include <deque>
- 
-+#include "common/rt64_gpu_timings.h"
+@@ -9,6 +9,7 @@
  #include "common/rt64_profiling_timer.h"
  #include "gui/rt64_inspector.h"
  #include "render/rt64_vi_renderer.h"
++#include "common/rt64_gpu_timings.h"
+ 
+ #include "rt64_application_window.h"
+ #include "rt64_present.h"
 @@ -52,6 +53,8 @@ namespace RT64 {
          std::unique_ptr<RenderCommandSemaphore> acquiredSemaphore;
          std::vector<std::unique_ptr<RenderCommandSemaphore>> drawSemaphores;
