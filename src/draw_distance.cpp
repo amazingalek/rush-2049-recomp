@@ -24,6 +24,12 @@
 // Not a limit: the forested hill across the bay from Track 1's start is a few flat boards painted with trees, all drawn
 // in every frame, 16000-31000 units out. Each board's top edge is one straight line across the painted trees, and as
 // the near boards slide over the far ones the treetops seem to come and go. A recording of an N64 shows the same.
+//
+// No zones either: nothing hides scenery by where the car is on the track. Besides these limits func_8009DD88 skips a
+// node only by its per-camera hidden bit (0x100 << camera in its flags, func_8009DD18: hidden unless a child is
+// visible) and its disable bit (bit 31). The game sets and clears them with func_8008AE8C and func_8008B0D8, and in
+// five minutes of attract races every such call was on a car's parts (wheels, its body in the in-car view) or the
+// pool of sparks and smoke func_8008EA10 places around the cars: about 300 nodes, none of them scenery.
 
 #include <atomic>
 #include <cmath>
@@ -104,38 +110,4 @@ extern "C" void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix) {
         whole = (whole & ~(0xFFFFu << shift)) | (((uint32_t)value >> 16) << shift);
         frac = (frac & ~(0xFFFFu << shift)) | (((uint32_t)value & 0xFFFF) << shift);
     }
-}
-
-// debug (not for main): every outside call that hides or shows a node, logged when that node's state from it changes
-#include <chrono>
-#include <cstdio>
-extern "C" void rush2049_dd_node_flag(uint8_t* rdram, recomp_context* ctx, int show) {
-    static uint8_t last[4096];
-    static auto start = std::chrono::steady_clock::now();
-    uint32_t ra = (uint32_t)ctx->r31;
-    if (ra >= 0x8008AE8C && ra < 0x8008B26C) {
-        return;
-    }
-    int index = (int16_t)(ctx->r4 & 0xFFFF);
-    if (index < 0 || index >= 4096) {
-        return;
-    }
-    uint8_t state = (uint8_t)(1 + show + 2 * ((uint32_t)ctx->r5 & 3) + 8 * ((uint32_t)ctx->r6 & 15));
-    if (last[index] == state) {
-        return;
-    }
-    last[index] = state;
-    auto f = [&](uint32_t a) { return *reinterpret_cast<float*>(rdram + (a - 0x80000000)); };
-    auto w = [&](uint32_t a) { return *reinterpret_cast<uint32_t*>(rdram + (a - 0x80000000)); };
-    uint32_t node = 0x8012E700 + index * 0x44;
-    uint32_t p = w(node + 8);
-    float d = -1;
-    if (p >= 0x80000000 && p < 0x80800000) {
-        float dx = f(p + 0x24) - f(0x80150B70 + 0x24), dz = f(p + 0x2C) - f(0x80150B70 + 0x2C);
-        d = std::sqrt(dx * dx + dz * dz);
-    }
-    double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    fprintf(stderr, "[nf] %.2f %s node %d mode %d mask %X from %08X flags %08X dist %.0f cam %.0f %.0f\n", t,
-            show ? "show" : "hide", index, (int)(uint32_t)ctx->r5, (unsigned)(uint32_t)ctx->r6, ra, w(node), d,
-            f(0x80150B70 + 0x24), f(0x80150B70 + 0x2C));
 }

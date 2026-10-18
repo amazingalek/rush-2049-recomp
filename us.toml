@@ -421,13 +421,3 @@ text = "    rush2049_far_matrix_begin(ctx);"
 func = "func_8009D45C"
 before_vram = 0x8009D700
 text = "    rush2049_far_matrix_end(rdram, ctx->r6);"
-
-[[patches.hook]]
-func = "func_8008AE8C"
-before_vram = 0x8008AE8C
-text = "    rush2049_dd_node_flag(rdram, ctx, 0);"
-
-[[patches.hook]]
-func = "func_8008B0D8"
-before_vram = 0x8008B0D8
-text = "    rush2049_dd_node_flag(rdram, ctx, 1);"
