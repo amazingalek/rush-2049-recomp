@@ -66,7 +66,8 @@ explains code goes beside that code.
   N64Recomp-browser's of the same kind.
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
   code and stops short of linking. Anything that changes behaviour needs a run of the game before it lands. Pure code
-  (resampler, limiters, the MusyX side mix) has tests in `tests/` that CI runs; new pure code gets one.
+  (resampler, limiters, the MusyX side mix, Draw Distance's matrix scaling) has tests in `tests/` that CI runs; new
+  pure code gets one.
 
 ## How it fits together
 
