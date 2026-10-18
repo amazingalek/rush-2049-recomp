@@ -1,7 +1,8 @@
 // Draw Distance's node matrix hooks (src/draw_distance.cpp) checks, run by CI: at Original nothing changes; a node
 // within the setting's reach has its offset divided by a power of two that brings it under the game's 2048 test, and
 // every element of its s15.16 matrix but the translation divided by the same number; a node past the reach is left to
-// the game's own test.
+// the game's own test. The far builder's depth clamp reaches 1600 times the setting, and an offset it leaves 2048 or more
+// out is divided down with the rotation's scale and w.
 
 #include <cstdio>
 #include <cstring>
@@ -52,6 +53,27 @@ void build(uint8_t* rdram, float x, float y, float z, const int32_t (&m)[16], fl
     rush2049_far_matrix_end(rdram, (gpr)(int32_t)matrix_addr);
 }
 
+// The far builder's clamp test (f8 < f0, 1600 < distance) as the hooked code sees it.
+bool far_clamped(float d) {
+    return 1600.0f < rush2049_far_clamp_distance(d);
+}
+
+// Runs the fit hook on an offset (x, y, z) with the rotation's scale f16 and w f18; returns the five after it.
+void fit(float x, float y, float z, float scale, float w, float out[5]) {
+    recomp_context ctx{};
+    ctx.f2.fl = x;
+    ctx.f12.fl = y;
+    ctx.f14.fl = z;
+    ctx.f16.fl = scale;
+    ctx.f18.fl = w;
+    rush2049_far_clamp_fit(&ctx);
+    out[0] = ctx.f2.fl;
+    out[1] = ctx.f12.fl;
+    out[2] = ctx.f14.fl;
+    out[3] = ctx.f16.fl;
+    out[4] = ctx.f18.fl;
+}
+
 } // namespace
 
 int main() {
@@ -97,6 +119,26 @@ int main() {
     build(rdram.data(), 0.0f, 0.0f, -30000.0f, m, offset);
     check(offset[2] == -1875.0f && read_element(rdram.data(), 15) == m[15] / 16, "16x: a 30000 offset is divided by 16",
         offset[2]);
+
+    float f[5];
+    rush2049::set_draw_distance(1.0f);
+    check(far_clamped(1601.0f) && !far_clamped(1600.0f), "Original: the depth clamp is at 1600",
+        rush2049_far_clamp_distance(1601.0f));
+    fit(-1600.0f, 50.0f, 0.0f, 0.5f, 1.0f, f);
+    check(f[0] == -1600.0f && f[3] == 0.5f && f[4] == 1.0f, "Original: a clamped node is untouched", f[0]);
+
+    rush2049::set_draw_distance(4.0f);
+    check(!far_clamped(6400.0f) && far_clamped(6401.0f), "4x: the depth clamp is at 6400",
+        rush2049_far_clamp_distance(6401.0f));
+    fit(5000.0f, 100.0f, -3000.0f, 1.0f, 2.0f, f);
+    check(f[0] == 1250.0f && f[1] == 25.0f && f[2] == -750.0f && f[3] == 0.25f && f[4] == 0.5f,
+        "4x: a 5000 offset is divided by 4 with the scale and w", f[0]);
+    fit(2047.0f, 0.0f, 0.0f, 1.0f, 1.0f, f);
+    check(f[0] == 2047.0f && f[3] == 1.0f, "4x: an offset s15.16 holds is untouched", f[0]);
+
+    rush2049::set_draw_distance(16.0f);
+    fit(0.0f, 0.0f, -25600.0f, 0.8f, 1.0f, f);
+    check(f[2] == -1600.0f && f[3] == 0.05f && f[4] == 0.0625f, "16x: a 25600 offset is divided by 16", f[2]);
 
     printf(failures ? "%d failed\n" : "all passed\n", failures);
     return failures ? 1 : 0;

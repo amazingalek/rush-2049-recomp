@@ -421,3 +421,17 @@ text = "    rush2049_far_matrix_begin(ctx);"
 func = "func_8009D45C"
 before_vram = 0x8009D700
 text = "    rush2049_far_matrix_end(rdram, ctx->r6);"
+
+# The far node matrix builder clamps a node's distance from the camera (f0) to 1600 (f8, f10): past it, the offset (f2,
+# f12, f14) and the rotation are multiplied by 1600 over the distance (f16). Dividing the distance by the Draw Distance
+# scale makes the clamp 1600 times it; once the offset is final, one that s15.16 can't hold is divided down with the
+# rotation (f16) and w (f18).
+[[patches.hook]]
+func = "func_8009D708"
+before_vram = 0x8009D78C
+text = "    ctx->f0.fl = rush2049_far_clamp_distance(ctx->f0.fl);"
+
+[[patches.hook]]
+func = "func_8009D708"
+before_vram = 0x8009D7D4
+text = "    rush2049_far_clamp_fit(ctx);"

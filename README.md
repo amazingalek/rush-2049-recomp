@@ -45,8 +45,10 @@ option has an Original value that runs the game as it shipped.
   refresh, so what you press shows on screen one frame (17 ms) sooner at 60 fps.
 - **Widescreen**: 3D widens to the window's aspect ratio, the race HUD moves out to the edges, two- and
   four-player split screen fills the window, and the menu background is carried out into the side bars.
-- **Draw distance and detail**: distant scenery is drawn from four times as far, so less of it pops in, and models
-  keep their detailed versions four times as far out, so curves stay round and small details stay in view.
+- **Draw distance and detail**: distant scenery is drawn from four times as far, so less of it pops in, the flat
+  backdrops of far hills and buildings stay at their own distance instead of cutting into the scenery in front of
+  them, and models keep their detailed versions four times as far out, so curves stay round and small details stay
+  in view.
 - **Enhanced audio**: MusyX music and sound effects are mixed at 44.1 kHz with a better interpolator instead of the
   game's 22.05 kHz mix, loud peaks are softly limited instead of clipping, and playback no longer skips or drops
   out when the audio output falls behind.
