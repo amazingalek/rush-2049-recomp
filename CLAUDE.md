@@ -62,8 +62,11 @@ explains code goes beside that code.
   (plume's, no AI-made contribution and no AI talking to its maintainers). The web forks stay forks.
 - Code from a repo without a license is never copied: facts learned from one only.
 - Work here is prioritised by what it breaks: high for a crash, high or med for a GitHub issue (high when it stops
-  someone playing), low for a small improvement. This recomp is the project's own, so its work generally comes before
-  N64Recomp-browser's of the same kind.
+  someone playing), low for a small improvement. Work that comes without a priority gets one from whoever first can
+  tell what it breaks (often its title already says), before anything else they do on it. A priority found wrong is
+  changed at once by whoever finds it, in the same work, not at its end: a crash turning up, an issue found to stop
+  someone playing, or a reported bug that turns out to be a small improvement. This recomp is the project's own, so
+  its work generally comes before N64Recomp-browser's of the same kind.
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
   code and stops short of linking. Anything that changes behaviour needs a run of the game before it lands. Pure code
   (resampler, limiters, the MusyX side mix, Draw Distance's matrix scaling) has tests in `tests/` that CI runs; new
