@@ -69,7 +69,8 @@ explains code goes beside that code.
   its work generally comes before N64Recomp-browser's of the same kind.
 - CI (`.github/workflows/ci.yml`) cannot run the game: it has no ROM, so it builds everything but the recompiled
   code and stops short of linking. Anything that changes behaviour needs a run of the game before it lands. Pure code
-  (resampler, limiters, the MusyX side mix) has tests in `tests/` that CI runs; new pure code gets one.
+  (resampler, limiters, the MusyX side mix, Draw Distance's matrix scaling) has tests in `tests/` that CI runs; new
+  pure code gets one.
 
 ## How it fits together
 
@@ -292,14 +293,6 @@ cd <dir> && MSYS_NO_PATHCONV=1 node Rush2049Headless.js /rom.z64 --seconds 120  
 - AI upsampling (AudioSR) of the MusyX mix: inaudible in a headphone A/B. The mix is close to mono (L/R correlate
   0.99).
 - A headphone fold of the surround channel: the game only offers Stereo and Mono, and the channel reads 0.
-- A draw-distance option. The game's limits are the far plane (camera +0x3C times 16, 32000 units in a race), the
-  node matrix builders' 2048-unit test on each axis (`func_8009D99C`, `func_8009D45C`: past it s15.16 can't hold the
-  translation, and a node gets no matrix), and the LOD cutoff and level distances in `func_8009C8F0`. With all of
-  them at 4x, paused frames at about 35 spots on tracks 1-8 and in split screen are identical to the pixel, and at
-  1/4x the bridge and sky drop out: what the limits drop is already out of view. The hooks that scale each one, with
-  a setting to switch them, are in tag `v0.1.12-drawdist1`. The "clipped" trees a player filmed with that build (the
-  forested hill across the bay from Track 1's start) are the hill model's own straight ridge, sliding over the tree
-  texture as the camera moves; a recording of the original game on an N64 shows the same edge.
 - Fixing the street lamp drawn behind the sailboats' sails at Track 1's start. One scenery display list draws the
   lamps (a textured quad each) and then the boats, all in render mode C8104A50 (Z compare, no Z update), so a sail
   drawn after a lamp passes its depth test and covers the pole. That is the game's own order, and an N64 does the same.
