@@ -381,16 +381,23 @@ before_vram = 0x8009CBCC
 text = "    ctx->f10.fl = rush2049_draw_distance_level(ctx->f10.fl);"
 
 # The far plane: f8 is the camera's far distance (camera +0x3C) as it goes into the projection, here and for the
-# second projection below. Runs once per camera a frame.
+# second projection below, and f4 its near distance (camera +0x38) already times f24. Runs once per camera a frame.
 [[patches.hook]]
 func = "func_8009F058"
 before_vram = 0x8009F484
-text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
+text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl, ctx->f4.fl / ctx->f24.fl);"
 
 [[patches.hook]]
 func = "func_8009F058"
 before_vram = 0x8009F4E8
-text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl);"
+text = "    ctx->f8.fl = rush2049_draw_distance_far(ctx->f8.fl, ctx->f4.fl / ctx->f24.fl);"
+
+# The prim depth (a0, a 15-bit screen depth) the game works out for text and icons it draws at a depth of its own,
+# moved the way the far plane above moved every vertex's.
+[[patches.hook]]
+func = "func_8008A644"
+before_vram = 0x8008A644
+text = "    ctx->r4 = rush2049_draw_distance_prim_depth(ctx->r4);"
 
 # The cull distance (0x80151AA0, f16): nodes farther than it are skipped, but only while it is under 2000, which
 # the game sets for split screen.
