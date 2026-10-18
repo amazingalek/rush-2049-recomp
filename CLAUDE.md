@@ -115,8 +115,6 @@ rt64-0005              every slot of the texture set holds a live texture: the b
                        and an evicted texture's, which eviction marks changed (a tile whose texture missed the cache
                        read slot 0, never written or left on a deleted texture)
 rt64-0006              a fill rect's clear clamped to its target (a rect ending on the scissor's edge is a pixel wider)
-rt64-0007              a draw's texture is marked used when its workload is prepared, not only when it is drawn (eviction
-                       ran ahead and a queued draw read another texture: a menu letter flickering to a wrong glyph)
 ```
 
 The game sets two options of the forks' on its desktop build too (CMakeLists.txt), both on with Emscripten:
