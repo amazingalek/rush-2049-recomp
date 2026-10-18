@@ -2,8 +2,9 @@
 // within the setting's reach has its offset divided by a power of two that brings it under the game's 2048 test, and
 // every element of its s15.16 matrix but the translation divided by the same number; a node past the reach is left to
 // the game's own test. The far builder's depth clamp reaches 1600 times the setting, and an offset it leaves 2048 or more
-// out is divided down with the rotation's scale and w.
+// out is divided down with the rotation's scale and w. A prim depth moves as the far plane moves a vertex's depth.
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -139,6 +140,20 @@ int main() {
     rush2049::set_draw_distance(16.0f);
     fit(0.0f, 0.0f, -25600.0f, 0.8f, 1.0f, f);
     check(f[2] == -1600.0f && f[3] == 0.05f && f[4] == 0.0625f, "16x: a 25600 offset is divided by 16", f[2]);
+
+    // A prim depth worked out for the game's projection (near 2.5, far 2000) lands where the projection Draw Distance
+    // builds puts a vertex at the same distance.
+    auto depth = [](float near, float far, float z) { return far / (far - near) * (1.0f - near / z) * 0x7FFF; };
+    rush2049::set_draw_distance(1.0f);
+    check(rush2049_draw_distance_far(2000.0f, 2.5f) == 2000.0f &&
+        rush2049_draw_distance_prim_depth(0x7E2A) == 0x7E2A, "Original: a prim depth is untouched",
+        (float)rush2049_draw_distance_prim_depth(0x7E2A));
+    rush2049::set_draw_distance(4.0f);
+    rush2049_draw_distance_far(2000.0f, 2.5f);
+    float moved = (float)rush2049_draw_distance_prim_depth((gpr)std::lround(depth(2.5f, 2000.0f, 150.0f)));
+    check(std::fabs(moved - depth(2.5f, 8000.0f, 150.0f)) <= 1.0f, "4x: a prim depth moves with the far plane", moved);
+    check(rush2049_draw_distance_prim_depth(0xFFFF) == 0xFFFF, "4x: a depth past 15 bits is left alone",
+        (float)rush2049_draw_distance_prim_depth(0xFFFF));
 
     printf(failures ? "%d failed\n" : "all passed\n", failures);
     return failures ? 1 : 0;

@@ -4,6 +4,13 @@
 //   Far plane      the far plane (camera +0x3C, times 16 in world units: 32000 in a race) as func_8009F058 builds the
 //       projection, and the cull distance (0x80151AA0) func_8009DD88 tests nodes against, which the game only sets
 //       below its 2000 sentinel for split screen.
+//       The game draws some text and icons at a depth it works out itself, not from a vertex: func_8008A644 sets the
+//       RDP's prim depth to a 15-bit screen depth, from a distance (func_800B65B4) or a table of distances and depths
+//       (func_800F6928), worked out for its own projection. A menu draws each label just in front of its button that
+//       way, and the race HUD its text. A perspective projection's depth is F/(F-n) * (1 - n/z), so a far plane s times
+//       farther moves every depth by one factor, (1 - n/F) / (1 - n/sF), about 0.999 at 4x: enough to put the buttons in
+//       front of their labels, which then go missing (the profile and Controls screens, most of a run) or flicker. So
+//       each prim depth is multiplied by that factor, from the near and far planes of the projection built last.
 //   Matrix limit   the 2048-unit test of the node matrix builders (func_8009D99C, func_8009D45C): a node whose offset
 //       from the camera is 2048 or more on any axis gets no matrix and isn't drawn, as s15.16 can't hold the
 //       translation (2048 * 16 = 32768). Here a farther node's offset is divided by a power of two before the test,
@@ -56,6 +63,9 @@ std::atomic<float> detail_scale{ 1.0f };
 // What func_8009D99C or func_8009D45C divided the node's offset by, from the start of the call to its end.
 int matrix_divisor = 1;
 
+// What the last projection's far plane moved a depth by.
+float prim_depth_scale = 1.0f;
+
 float distance() {
     return distance_scale.load(std::memory_order_relaxed);
 }
@@ -78,8 +88,18 @@ extern "C" float rush2049_draw_distance_level(float switch_distance) {
     return switch_distance * detail_scale.load(std::memory_order_relaxed);
 }
 
-extern "C" float rush2049_draw_distance_far(float far) {
-    return far * distance();
+extern "C" float rush2049_draw_distance_far(float far, float near) {
+    float s = distance();
+    prim_depth_scale = (1.0f - near / far) / (1.0f - near / (far * s));
+    return far * s;
+}
+
+extern "C" gpr rush2049_draw_distance_prim_depth(gpr z) {
+    uint32_t depth = (uint32_t)z & 0xFFFF;
+    if (depth > 0x7FFF) {
+        return z;
+    }
+    return (gpr)std::lround(depth * prim_depth_scale);
 }
 
 extern "C" float rush2049_draw_distance_cull(float cull) {
