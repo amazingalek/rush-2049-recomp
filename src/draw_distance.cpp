@@ -10,13 +10,14 @@
 //       and the rest of the matrix, w included, by the same number after it is written: a homogeneous matrix divided
 //       through puts every vertex in the same place on screen, so nothing is added to the display list.
 //   Depth clamp    the 1600-unit clamp of the far node matrix builder (func_8009D708), which the node walker uses for
-//       distant flat scenery (node flag 0x400000): a node farther from the camera than 1600 has its offset and its size
-//       both multiplied by 1600 over its distance. It stays where it was on screen, but its depth is that of a node 1600
-//       out, so it covers anything between 1600 and where it really is: the boards painted with buildings and hills
-//       across Track 1's bay cut into the hill and the buildings in front of them, and as the camera comes closer they
-//       seem to keep their distance until they come within 1600 and stop. The clamp is scaled like the far plane, and a
-//       node it leaves 2048 or more out is fitted into s15.16 the way the matrix limit's is, but by dividing the scale
-//       the game already multiplies the matrix by, w included.
+//       distant flat scenery (node flag 0x400000), such as the boards painted with trees and buildings across Track 1's
+//       bay: past 1600 from the camera, a node's offset and its size are both multiplied by 1600 over its distance. It
+//       stays where it was on screen, but its depth is that of a node 1600 out, so it covers whatever lies between 1600
+//       and where it really is, and two clamped boards lose their order. As the camera comes closer such a board keeps
+//       that depth until it is within 1600, and then comes closer with it. The clamp keeps the boards inside the far
+//       plane (Track 1's reach 2115, past its 2000). It is scaled like the far plane, and a node it leaves 2048 or more
+//       out on an axis is fitted into s15.16 the way the matrix limit's is, by dividing its offset, the scale the game
+//       multiplies the matrix by, and w, before they are written.
 //   LOD cutoff     the LOD cutoff in func_8009C8F0: past its last level's distance times the node's scale a model is
 //       skipped.
 //   LOD detail     the LOD level choice there: the distances inside which a model is drawn at a more detailed level.
@@ -30,8 +31,9 @@
 // frames at about 35 spots on tracks 1-8 and in split screen are the same to the pixel.
 //
 // Not a limit: the forested hill across the bay from Track 1's start is a few flat boards painted with trees, all drawn
-// in every frame, 16000-31000 units out (through the depth clamp). Each board's top edge is one straight line across the painted trees, and as
-// the near boards slide over the far ones the treetops seem to come and go. A recording of an N64 shows the same.
+// in every frame, 16000-31000 units out, the farthest through the depth clamp. Each board's top edge is one straight
+// line across the painted trees, and as the near boards slide over the far ones the treetops seem to come and go. A
+// recording of an N64 shows the same.
 
 #include <atomic>
 #include <cmath>
