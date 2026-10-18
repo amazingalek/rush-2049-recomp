@@ -505,7 +505,7 @@ void on_launcher_init(recompui::LauncherMenu* menu) {
 //            resolve (MSAA 2x)     20      94   3 with MSAA off
 //            UI                     6       6
 //
-// So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: CLAUDE.md, Ruled out),
+// So what doesn't scale with resolution is about 90k of the draws part (not the number of calls: docs/ruled-out.md),
 // the VI pass (it scales with the window instead) and about 50k of compute and uploads.
 static void start_gpu_profiler(int after_seconds, int seconds) {
     std::thread([after_seconds, seconds]() {
