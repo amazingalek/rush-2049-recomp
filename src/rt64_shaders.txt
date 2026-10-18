@@ -3,7 +3,7 @@
 # README): the lines above the first "section" line are the boot, built before the game starts, and each section after
 # it is built when the game first draws with 4 of its shaders, the game waiting for it in Firefox (Chrome builds the
 # whole list behind the game, a section at a time). A description missing here is built behind the game when it is
-# first drawn, and the page remembers it for the next visit (N64Recomp-browser's CLAUDE.md, Prebuilt shader lists).
+# first drawn, and the page remembers it for the next visit (N64Recomp-browser's docs/porting.md, Prebuilt shader lists).
 #
 # Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, in the order it
 # meets them, at the page's default settings. The boot and race are recorded by tools/shader_plan.json with

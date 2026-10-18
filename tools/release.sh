@@ -6,7 +6,7 @@
 #   The tag is v<version_string> from src/main.cpp, so bump that first, and write the release's notes beside it in
 #   releases/v<version>.md: what a player gets, not a list of merged PRs (most are web support and other games'
 #   pages, which the zip doesn't have). Without that file it refuses. Needs a clean tree at origin/main, the
-#   setup from the README's build steps and CLAUDE.md (submodules, runtime patches, extract.py's roms/, the
+#   setup from the README's build steps and docs/building.md (submodules, runtime patches, extract.py's roms/, the
 #   .venv, the toolchain) and gh signed in. --dry-run builds and packs but publishes nothing and skips the checks on
 #   the tree and the tag.
 # The Linux build runs through tools/remote_build.sh (a copy named release-linux on $BUILD_HOST, which gets roms/ too)

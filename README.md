@@ -315,7 +315,7 @@ cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush20
 - `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
 - `tools/`: ROM extraction, symbol generation, the build-and-boot loop, the release script and the CI checks.
 - `releases/`: each release's notes, as published on the Releases page.
-- `CLAUDE.md`: notes for the AI sessions that work on this. How things work is in comments beside the code.
+- `CLAUDE.md` and `docs/`: notes for the AI sessions that work on this. How things work is in comments beside the code.
 
 ## Ground rules
 
