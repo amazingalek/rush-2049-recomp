@@ -40,13 +40,15 @@ void rush2049_dump_task(uint8_t* rdram, uint32_t task_addr);
 
 /* Draw Distance and Level of Detail (src/draw_distance.cpp, us.toml): the LOD cutoff and level choice in func_8009C8F0,
    the far plane in func_8009F058, the split-screen cull distance in func_8009DD88, and the 2048-unit test of the node
-   matrix builders func_8009D99C and func_8009D45C. */
+   matrix builders func_8009D99C and func_8009D45C, and the 1600-unit depth clamp of the far one, func_8009D708. */
 float rush2049_draw_distance_lod(float limit);
 float rush2049_draw_distance_level(float switch_distance);
 float rush2049_draw_distance_far(float far);
 float rush2049_draw_distance_cull(float cull);
 void rush2049_far_matrix_begin(recomp_context* ctx);
 void rush2049_far_matrix_end(uint8_t* rdram, gpr matrix);
+float rush2049_far_clamp_distance(float d);
+void rush2049_far_clamp_fit(recomp_context* ctx);
 
 /* In busy-wait loops (us.toml): let the next ready game thread run, whatever its priority (src/spin_yield.cpp). */
 void rush2049_spin_yield(uint8_t* rdram);

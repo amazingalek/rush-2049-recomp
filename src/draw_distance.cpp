@@ -1,6 +1,6 @@
 // Draw Distance and Level of Detail (Graphics tab, config.cpp): the game's distance limits as multiples of its own.
 //
-// The limits, all hooked in us.toml. Draw Distance scales the first three, Level of Detail the last:
+// The limits, all hooked in us.toml. Draw Distance scales the first four, Level of Detail the last:
 //   Far plane      the far plane (camera +0x3C, times 16 in world units: 32000 in a race) as func_8009F058 builds the
 //       projection, and the cull distance (0x80151AA0) func_8009DD88 tests nodes against, which the game only sets
 //       below its 2000 sentinel for split screen.
@@ -9,6 +9,14 @@
 //       translation (2048 * 16 = 32768). Here a farther node's offset is divided by a power of two before the test,
 //       and the rest of the matrix, w included, by the same number after it is written: a homogeneous matrix divided
 //       through puts every vertex in the same place on screen, so nothing is added to the display list.
+//   Depth clamp    the 1600-unit clamp of the far node matrix builder (func_8009D708), which the node walker uses for
+//       distant flat scenery (node flag 0x400000): a node farther from the camera than 1600 has its offset and its size
+//       both multiplied by 1600 over its distance. It stays where it was on screen, but its depth is that of a node 1600
+//       out, so it covers anything between 1600 and where it really is: the boards painted with buildings and hills
+//       across Track 1's bay cut into the hill and the buildings in front of them, and as the camera comes closer they
+//       seem to keep their distance until they come within 1600 and stop. The clamp is scaled like the far plane, and a
+//       node it leaves 2048 or more out is fitted into s15.16 the way the matrix limit's is, but by dividing the scale
+//       the game already multiplies the matrix by, w included.
 //   LOD cutoff     the LOD cutoff in func_8009C8F0: past its last level's distance times the node's scale a model is
 //       skipped.
 //   LOD detail     the LOD level choice there: the distances inside which a model is drawn at a more detailed level.
@@ -22,7 +30,7 @@
 // frames at about 35 spots on tracks 1-8 and in split screen are the same to the pixel.
 //
 // Not a limit: the forested hill across the bay from Track 1's start is a few flat boards painted with trees, all drawn
-// in every frame, 16000-31000 units out. Each board's top edge is one straight line across the painted trees, and as
+// in every frame, 16000-31000 units out (through the depth clamp). Each board's top edge is one straight line across the painted trees, and as
 // the near boards slide over the far ones the treetops seem to come and go. A recording of an N64 shows the same.
 
 #include <atomic>
@@ -83,6 +91,27 @@ extern "C" void rush2049_far_matrix_begin(recomp_context* ctx) {
     ctx->f0.fl *= s;
     ctx->f2.fl *= s;
     ctx->f12.fl *= s;
+}
+
+extern "C" float rush2049_far_clamp_distance(float d) {
+    return d / distance();
+}
+
+extern "C" void rush2049_far_clamp_fit(recomp_context* ctx) {
+    float d = std::fmax(std::fabs(ctx->f2.fl), std::fmax(std::fabs(ctx->f12.fl), std::fabs(ctx->f14.fl)));
+    if (d < 2048.0f) {
+        return;
+    }
+    int divisor = 2;
+    while (d >= 2048.0f * divisor) {
+        divisor *= 2;
+    }
+    float s = 1.0f / divisor;
+    ctx->f2.fl *= s;
+    ctx->f12.fl *= s;
+    ctx->f14.fl *= s;
+    ctx->f16.fl *= s;
+    ctx->f18.fl *= s;
 }
 
 // The matrix is N64 s15.16: the 16 whole parts in the first 32 bytes, then the 16 fractions, two to a word. The
