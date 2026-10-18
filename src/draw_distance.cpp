@@ -14,12 +14,16 @@
 //   LOD detail     the LOD level choice there: the distances inside which a model is drawn at a more detailed level.
 //       Highest makes them unreachable, so every model is drawn at its most detailed level.
 //
-// A node's origin is what the limits test, and a large one (a building, a stretch of road) can sit far past them while
-// its near end is in view: that end pops in when the origin comes within reach. On Track 1 the building behind the
-// walkway over the road past the start pops in that way at Original and is there from the start line at 4x, and the
-// curved ramp before the tunnel is drawn at its coarse level until close at Original. At most other places the
-// limits drop only what is out of view anyway (behind buildings, hills or the camera): with every limit at 4x, paused
+// A node's origin is what the limits test, and a large one (a building, a stretch of road) can sit past them while its
+// near end is in view: that end pops in when the origin comes within reach. A player found two such places on Track 1:
+// a building behind the walkway over the road past the first turn, which the matrix limit at 4x shows a little sooner,
+// and the curved road before the tunnel, drawn at a coarse level until close at Original and round at High. Most of
+// what the limits drop is out of view anyway (behind buildings, hills or the camera): with every limit at 4x, paused
 // frames at about 35 spots on tracks 1-8 and in split screen are the same to the pixel.
+//
+// Not a limit: the forested hill across the bay from Track 1's start is a few flat boards painted with trees, all drawn
+// in every frame, 16000-31000 units out. Each board's top edge is one straight line across the painted trees, and as
+// the near boards slide over the far ones the treetops seem to come and go. A recording of an N64 shows the same.
 
 #include <atomic>
 #include <cmath>
