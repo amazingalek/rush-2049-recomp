@@ -34,6 +34,12 @@
 // in every frame, 16000-31000 units out, the farthest through the depth clamp. Each board's top edge is one straight
 // line across the painted trees, and as the near boards slide over the far ones the treetops seem to come and go. A
 // recording of an N64 shows the same.
+//
+// No zones either: nothing hides scenery by where the car is on the track. Besides these limits func_8009DD88 skips a
+// node only by its per-camera hidden bit (0x100 << camera in its flags, func_8009DD18: hidden unless a child is
+// visible) and its disable bit (bit 31). The game sets and clears them with func_8008AE8C and func_8008B0D8, and in
+// five minutes of attract races every such call was on a car's parts (wheels, its body in the in-car view) or the
+// pool of sparks and smoke func_8008EA10 places around the cars: about 300 nodes, none of them scenery.
 
 #include <atomic>
 #include <cmath>
