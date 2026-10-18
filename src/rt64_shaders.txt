@@ -5,20 +5,21 @@
 # whole list behind the game, a section at a time). A description missing here is built behind the game when it is
 # first drawn, and the page remembers it for the next visit (N64Recomp-browser's CLAUDE.md, Prebuilt shader lists).
 #
-# Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, in the order it meets
-# them, at the page's default settings. The boot and race are recorded by tools/shader_plan.json with
+# Recorded from the page opened with ?record-shaders, which prints every description RT64 meets, in the order it
+# meets them, at the page's default settings. The boot and race are recorded by tools/shader_plan.json with
 # N64Recomp-browser's tools/record_shaders.mjs (its "attract" and "race" sections merged here into one): the boot is
 # the Midway logo, the title and every menu up to the car select (Records, Options, Audio, Video, each mode's track
-# select); race is the attract races and a 1P race on track 1, then the descriptions an earlier recording met in a
-# third attract race. modes is the rest of that earlier recording, played by hand: 1P races with Backward, Mirror, Fog
-# and Wind on, a crash and the pause menu, 2P Practice, 2P and 4P Battle, 1P and 4P Stunt. Not yet: Ghost Race, the
-# results screens, the other stunt arenas, 3 players. Flags follow settings (filtering, HDR, MSAA, upscaling), so a
-# change to one of those defaults means recording again.
+# select); race is the attract races, a 1P race on track 1, and one on track 2 driven ~6 minutes (a weave, an abort
+# now and then), then the descriptions an earlier recording met in a third attract race. modes is the rest of that
+# earlier recording, played by hand: 1P races with Backward, Mirror, Fog and Wind on, a crash and the pause menu, 2P
+# Practice, 2P and 4P Battle, 1P and 4P Stunt. Not yet: Ghost Race, the results screens, tracks 3-6, the other stunt
+# arenas, 3 players. Flags follow settings (filtering, HDR, MSAA, upscaling), so a change to one of those defaults
+# means recording again.
 #
 # To record again, drive the page opened with ?record-shaders by tools/shader_plan.json (its header says how) with
 # N64Recomp-browser's tools/record_shaders.mjs (--players <n> through Module.arguments for split screen), and add the
-# new "rt64 shader:" lines here. The 105 descriptions and the launcher's pipelines come to 5.6-6.0 MB of Chrome's 6 MB
-# shader cache, so check the figure when the list grows.
+# new "rt64 shader:" lines here. The 105 descriptions first recorded and the launcher's pipelines came to 5.6-6.0 MB
+# of Chrome's 6 MB shader cache, so check the figure now that it holds 107.
 #
 # Why it is built first, and in sections, measured on an RTX 2070. With the whole list as one section, Firefox 157 (a
 # busy host) waited 27.9-30.2 s at the bar, then drew the attract races and a 1P race at 39-56 frames a second in a
@@ -112,6 +113,8 @@ c8112230 00982cef fc127fff fffff238 0a22220e
 c8113278 00992cef fc26a004 1ffc93f8 1806008e
 c8112230 00982cef fc50fe04 3ffdf3f8 0a22220e
 c8104a50 00982caf fc127fff fffff238 0bba440e
+00504a74 00800cef fcffffff fffdf6fb 0800000b
+c8104a70 00982cef fc127e03 ff0ff3ff 0913dc0e
 section modes
 00504240 00800cef fc11fe23 fffff3f9 04cb540b
 00504240 00800cef fcffffff fffdf6fb 0800000b
