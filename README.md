@@ -45,6 +45,8 @@ option has an Original value that runs the game as it shipped.
   refresh, so what you press shows on screen one frame (17 ms) sooner at 60 fps.
 - **Widescreen**: 3D widens to the window's aspect ratio, the race HUD moves out to the edges, two- and
   four-player split screen fills the window, and the menu background is carried out into the side bars.
+- **Draw distance and detail**: distant scenery is drawn from four times as far, so less of it pops in, and models
+  keep their detailed versions four times as far out, so curves stay round and small details stay in view.
 - **Enhanced audio**: MusyX music and sound effects are mixed at 44.1 kHz with a better interpolator instead of the
   game's 22.05 kHz mix, loud peaks are softly limited instead of clipping, and playback no longer skips or drops
   out when the audio output falls behind.
@@ -80,6 +82,8 @@ closed. For the game exactly as it shipped, set every Original value:
 | Widescreen race HUD | HUD Placement | `graphics.json` `hr_option` | `"Clamp16x9"` | `"Original"` |
 | Widescreen split screen | Split-Screen Aspect Ratio | `graphics.json` `split_screen_ratio` | `"Expand"` (needs Aspect Ratio at Expand and HUD Placement other than Original) | `"Original"` (4:3, pillarboxed) |
 | Widescreen menus | Menu Aspect Ratio | `graphics.json` `menu_ratio` | `"Expand"` (up to about 21:9; needs Aspect Ratio at Expand) | `"Original"` (4:3, pillarboxed) |
+| Draw distance | Draw Distance | `graphics.json` `draw_distance` | `"Far"` (4×; `"Farthest"` is 16×) | `"Original"` |
+| Model detail | Level of Detail | `graphics.json` `level_of_detail` | `"High"` (4× the distances; `"Highest"`: always the most detailed) | `"Original"` |
 | Rendering resolution | Resolution | `graphics.json` `res_option` | `"Auto"` (window size) | `"Original"` (320×240) |
 | Anti-aliasing | MS Anti-Aliasing | `graphics.json` `msaa_option` | `"MSAA2X"` | `"None"` |
 | Hi-res menu and HUD text | Hi-res Font | `graphics.json` `hires_font` | `"On"` | `"Off"` |
