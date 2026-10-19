@@ -17,8 +17,10 @@
 // One bank is the 32 KiB pak (data pages 5-127); 62 banks hold 7748 data pages, about 1.9 MB. The note table has
 // 16 entries whatever the size.
 // Files are saves/controllerpak_<port>.mpk in the app folder. A port without a file gets a freshly formatted pak,
-// written out on the first change. When the game initializes a pak of the other size, its files are moved to a pak
-// of the size picked; a pak whose files would not fit keeps its size.
+// written out on the first change. Each write is whole (rush2049::replace_file, src/save_file.cpp), and a file that is a
+// symlink, as when saves are shared through a synced folder, has the file it points at replaced and stays a link. When
+// the game initializes a pak of the other size, its files are moved to a pak of the size picked; a pak whose files would
+// not fit keeps its size.
 //
 // Ghosts: the game writes a Ghost Race's ghost to the pak only from its SAVE GHOST prompt, and its ghost select offers
 // the ghosts read from the pak beside the one kept in RAM for the session. The game shows that prompt only when byte
@@ -50,6 +52,7 @@
 #include "recomp.h"
 #include "librecomp/game.hpp"
 #include "rush2049_game.h"
+#include "save_file.h"
 
 namespace {
 
@@ -241,23 +244,10 @@ bool resize(Pak& pak, int port, int banks) {
 }
 
 void save(int port) {
-    std::filesystem::path path = pak_path(port);
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    std::filesystem::path temp = path;
-    temp += ".tmp";
-    {
-        const Pak& pak = paks[port & 3];
-        std::ofstream file{ temp, std::ios::binary };
-        file.write(reinterpret_cast<const char*>(pak.data.data()), (std::streamsize)pak.data.size());
-        if (!file.good()) {
-            fprintf(stderr, "[pak] could not write %s\n", temp.string().c_str());
-            return;
-        }
-    }
-    std::filesystem::rename(temp, path, ec);
-    if (ec) {
-        fprintf(stderr, "[pak] could not replace %s: %s\n", path.string().c_str(), ec.message().c_str());
+    const Pak& pak = paks[port & 3];
+    std::string error = rush2049::replace_file(pak_path(port), pak.data.data(), pak.data.size());
+    if (!error.empty()) {
+        fprintf(stderr, "[pak] %s\n", error.c_str());
     }
 }
 

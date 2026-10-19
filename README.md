@@ -73,7 +73,9 @@ option has an Original value that runs the game as it shipped.
 
 Settings are saved as JSON in `%LOCALAPPDATA%\Rush2049Recompiled\` (`~/.config/Rush2049Recompiled/` on Linux), or
 in the working directory when it holds a `portable.txt`, so they can also be edited by hand while the game is
-closed. For the game exactly as it shipped, set every Original value:
+closed. Controller Pak saves are there too, as `saves/controllerpak_<port>.mpk` (the `.mpk` format emulators use); one
+can be a symlink, to share saves through a synced folder, and stays one when the game saves. For the game exactly as it
+shipped, set every Original value:
 
 | Enhancement | Option | Key | Default | Original |
 |---|---|---|---|---|
