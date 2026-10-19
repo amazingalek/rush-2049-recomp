@@ -33,9 +33,10 @@
 // score boxes and the pause menu's panels and their border lines are fill rectangles in the HUD's list; each fill +
 // sync pair is rewritten in place as RT64's extended fill rectangle, anchored the same way, and fills that touch are a
 // box, anchored by where the whole box sits. A line drawn after a box, with its middle in it, is anchored as the box,
-// so a menu's text stays in its panel (and the race HUD the pause menu covers, drawn before it, stays put): the pause menu's NO and the scoreboard's DEATHS sit in the right third of a view, and by where
-// they sit would follow its right edge out of their centred panel. So lines are anchored when the list is submitted,
-// once its boxes are known.
+// so a menu's text stays in its panel: the pause menu's NO, the end of its DEFAULTS and the scoreboard's DEATHS sit
+// in the right third of a view, and by where they sit would follow its right edge out of their centred panel. The
+// race HUD the pause menu covers is drawn before the menu, and keeps its own anchoring. So lines are anchored when the
+// list is submitted, once its boxes are known.
 //
 // Menus. Their background is a 4:3 picture drawn as texture rectangles, and the menu sits on it, so the menu stays
 // where it is and the picture is extended: with "Menu Aspect Ratio" at Expand, each strip of it at the screen's left
