@@ -1,0 +1,56 @@
+diff --git a/recompinput/include/recompinput/players.h b/recompinput/include/recompinput/players.h
+--- a/recompinput/include/recompinput/players.h
++++ b/recompinput/include/recompinput/players.h
+@@ -26,6 +26,7 @@ namespace recompinput {
+         bool get_player_is_assigned(int player_index, bool temp_player = false);
+         bool has_enough_players_assigned();
+         InputDevice get_player_input_device(int player_index, bool temp_player = false);
++        void reconnect_controller(SDL_GameController* controller);
+     }
+ 
+     namespace playerassignment {
+diff --git a/recompinput/src/input_events.cpp b/recompinput/src/input_events.cpp
+--- a/recompinput/src/input_events.cpp
++++ b/recompinput/src/input_events.cpp
+@@ -90,8 +90,10 @@ bool sdl_event_filter(void* userdata, SDL_Event* event) {
+         printf("Controller added: %d\n", controller_event->which);
+         if (controller != nullptr) {
+             printf("  Instance ID: %d\n", SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)));
++            printf("  Name: %s\n", SDL_GameControllerName(controller));
+             printf("  Path: %s\n", SDL_JoystickPath(SDL_GameControllerGetJoystick(controller)));
+             recompinput::add_controller_state(SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)), controller);
++            players::reconnect_controller(controller);
+ 
+             if (SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_GYRO) && SDL_GameControllerHasSensor(controller, SDL_SensorType::SDL_SENSOR_ACCEL)) {
+                 SDL_GameControllerSetSensorEnabled(controller, SDL_SensorType::SDL_SENSOR_GYRO, SDL_TRUE);
+diff --git a/recompinput/src/players.cpp b/recompinput/src/players.cpp
+--- a/recompinput/src/players.cpp
++++ b/recompinput/src/players.cpp
+@@ -129,6 +129,27 @@ InputDevice players::get_player_input_device(int player_index, bool temp_player)
+     }
+ }
+ 
++// A controller that comes back (a Bluetooth drop, a cable pulled and plugged in again) is a new SDL controller with a
++// new instance ID, while its player still holds the disconnected one. The player whose controller is disconnected and
++// has the same identity as the one that came back (the one its profile is kept under) gets the new one, instead of no
++// input until a restart, or in multiplayer mode joining as another player on its first press.
++void players::reconnect_controller(SDL_GameController* controller) {
++    uint64_t hash = profiles::get_guid_from_sdl_controller(controller).hash;
++    for (PlayerArray* player_array : { &PlayerState.players, &PlayerState.temp_players }) {
++        for (size_t i = 0; i < player_array->get_count(); i++) {
++            Player& player = (*player_array)[i];
++            if (player.controller != nullptr && !SDL_GameControllerGetAttached(player.controller) &&
++                profiles::get_guid_from_sdl_controller(player.controller).hash == hash) {
++                if (player_array == &PlayerState.players) {
++                    printf("  Back as player %zu's controller\n", i + 1);
++                }
++                player.controller = controller;
++                break;
++            }
++        }
++    }
++}
++
+ // playerassignment start
+ 
+ bool playerassignment::is_active() {
