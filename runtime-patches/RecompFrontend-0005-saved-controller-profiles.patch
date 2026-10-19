@@ -1,0 +1,70 @@
+diff --git a/recompinput/src/input_events.cpp b/recompinput/src/input_events.cpp
+--- a/recompinput/src/input_events.cpp
++++ b/recompinput/src/input_events.cpp
+@@ -102,7 +102,14 @@
+         }
+         
+         ControllerGUID guid = profiles::get_guid_from_sdl_controller(controller);
+-        if (profiles::get_controller_by_guid(guid) < 0) {
++        bool known_controller = profiles::get_controller_by_guid(guid) >= 0;
++        if (controller != nullptr) {
++            // Whether the controller has a profile kept in controls.json, by the identity it is matched with (the
++            // serial is left out of both).
++            printf("  ID: vendor %04x product %04x version %04x crc16 %04x, %s\n", guid.vendor, guid.product,
++                guid.version, guid.crc16, known_controller ? "known" : "new");
++        }
++        if (!known_controller) {
+             if (players::is_single_player_mode()) {
+                 deferred_controller_profiles[guid.hash] = guid;
+             } else {
+diff --git a/recompinput/src/profiles.cpp b/recompinput/src/profiles.cpp
+--- a/recompinput/src/profiles.cpp
++++ b/recompinput/src/profiles.cpp
+@@ -225,6 +225,18 @@
+         }
+     }
+ 
++    // A controller is matched to its saved profile by this hash, which leaves out the serial: a Bluetooth controller's
++    // serial can come out differently from one session to the next.
++    static uint64_t hash_controller_guid(const ControllerGUID &guid) {
++        XXH3_state_t state;
++        XXH3_64bits_reset(&state);
++        XXH3_64bits_update(&state, &guid.vendor, sizeof(guid.vendor));
++        XXH3_64bits_update(&state, &guid.product, sizeof(guid.product));
++        XXH3_64bits_update(&state, &guid.version, sizeof(guid.version));
++        XXH3_64bits_update(&state, &guid.crc16, sizeof(guid.crc16));
++        return XXH3_64bits_digest(&state);
++    }
++
+     int profiles::add_controller(ControllerGUID guid, int profile_index) {
+         auto it = controller_hash_index_map.find(guid.hash);
+         if (it != controller_hash_index_map.end()) {
+@@ -285,14 +297,7 @@
+         guid.version = version;
+         guid.crc16 = crc16;
+ 
+-        // Compute the hash from the GUID.
+-        XXH3_state_t state;
+-        XXH3_64bits_reset(&state);
+-        XXH3_64bits_update(&state, &guid.vendor, sizeof(guid.vendor));
+-        XXH3_64bits_update(&state, &guid.product, sizeof(guid.product));
+-        XXH3_64bits_update(&state, &guid.version, sizeof(guid.version));
+-        XXH3_64bits_update(&state, &guid.crc16, sizeof(guid.crc16));
+-        guid.hash = XXH3_64bits_digest(&state);
++        guid.hash = hash_controller_guid(guid);
+ 
+         return guid;
+     }
+@@ -570,7 +575,11 @@
+                 if (guid != controller.end() && guid->is_object() && profile != controller.end() && profile->is_string()) {
+                     int profile_index = profiles::get_input_profile_by_key(*profile);
+                     if (profile_index >= 0) {
+-                        profiles::add_controller(*guid, profile_index);
++                        // The file has no hash, and without one every saved controller was kept under hash 0, so
++                        // none was ever matched to a connected controller.
++                        ControllerGUID saved_guid = *guid;
++                        saved_guid.hash = hash_controller_guid(saved_guid);
++                        profiles::add_controller(saved_guid, profile_index);
+                     }
+                 }
+             }
