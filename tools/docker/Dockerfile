@@ -19,3 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends spirv-tools && 
 # The MIPS binutils, which a decompilation a game fork builds its ELF from assembles and links with (Pilotwings 64's
 # build_elf.sh), and rsync, which that script calls.
 RUN apt-get update && apt-get install -y --no-install-recommends binutils-mips-linux-gnu rsync && rm -rf /var/lib/apt/lists/*
+# git over HTTP/1.1. Over HTTP/2, GitHub can answer this image's git (libcurl 8.5.0) a POST to git-upload-pack with
+# 103 Early Hints and then 401, which fails a --filter=blob:none clone, and a lazy blob fetch in one, with "could not
+# read Username" (DKR-R-web's scripts/bootstrap_dependencies.py clones that way). Over HTTP/1.1 the same clone works.
+RUN git config --system http.version HTTP/1.1
