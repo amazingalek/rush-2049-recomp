@@ -32,8 +32,8 @@
 // The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
 // score boxes and the pause menu's panels and their border lines are fill rectangles in the HUD's list; each fill +
 // sync pair is rewritten in place as RT64's extended fill rectangle, anchored the same way, and fills that touch are a
-// box, anchored by where the whole box sits. A line whose middle is in a box is anchored as the box, so a menu's text
-// stays in its panel: the pause menu's NO and the scoreboard's DEATHS sit in the right third of a view, and by where
+// box, anchored by where the whole box sits. A line drawn after a box, with its middle in it, is anchored as the box,
+// so a menu's text stays in its panel (and the race HUD the pause menu covers, drawn before it, stays put): the pause menu's NO and the scoreboard's DEATHS sit in the right third of a view, and by where
 // they sit would follow its right edge out of their centred panel. So lines are anchored when the list is submitted,
 // once its boxes are known.
 //
@@ -110,6 +110,7 @@ int line_count = 0;
 struct Box {
     int x0, x1, y0, y1;
     int origin;
+    uint32_t first;     // its first fill's command; the text drawn after it is the box's
 };
 constexpr int max_boxes = 64;
 Box boxes[max_boxes];
@@ -337,7 +338,8 @@ void close_line() {
     }
 }
 
-// Anchors the lines of the list being submitted: one whose middle is in a box as the box, others by where they sit.
+// Anchors the lines of the list being submitted: one drawn after a box, with its middle in it, as the box, others by
+// where they sit.
 void anchor_lines(uint8_t* rdram) {
     for (int i = 0; i < line_count; i++) {
         const Line& l = lines[i];
@@ -345,7 +347,7 @@ void anchor_lines(uint8_t* rdram) {
         int origin = split_rect_origin(l.x0, l.x1);
         for (int j = 0; j < box_count; j++) {
             const Box& b = boxes[j];
-            if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
+            if (l.dl_start > b.first && cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
                 origin = b.origin;
                 break;
             }
@@ -578,7 +580,7 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
     }
     for (int i = 0; i < fill_count; i++) {
         int box = box_of(i), parts = 0;
-        Box b{ screen_width, 0, screen_height, 0, -1 };
+        Box b{ screen_width, 0, screen_height, 0, -1, fills[i].p };
         for (int j = 0; j < fill_count; j++) {
             if (box_of(j) == box) {
                 parts++;
@@ -586,6 +588,7 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
                 b.x1 = std::max(b.x1, fills[j].x1);
                 b.y0 = std::min(b.y0, fills[j].y0);
                 b.y1 = std::max(b.y1, fills[j].y1);
+                b.first = std::min(b.first, fills[j].p);
             }
         }
         b.origin = anchor_fill_rect(rdram, fills[i].p, parts > 1 ? (b.x0 + b.x1) / 2.0 : -1);
