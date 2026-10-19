@@ -13,7 +13,7 @@ index 6f53c6c..57eb558 100644
  // Time
  std::chrono::high_resolution_clock::time_point get_start();
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
-index 57e50bf..4ae63f2 100644
+index cbcd841..d085e29 100644
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
 @@ -172,6 +172,12 @@ extern "C" void osViSetEvent(RDRAM_ARG PTR(OSMesgQueue) mq_, OSMesg msg, u32 ret
@@ -29,7 +29,16 @@ index 57e50bf..4ae63f2 100644
  
  
  extern std::atomic_bool exited;
-@@ -187,10 +193,19 @@ void vi_thread_func() {
+@@ -252,7 +258,7 @@ namespace {
+         }();
+ 
+         const double end = emscripten_get_now() + std::chrono::duration<double, std::milli>(time_point - std::chrono::high_resolution_clock::now()).count();
+-        const double from = end - 1000.0 / (2 * 60 * ultramodern::get_speed_multiplier());
++        const double from = end - 1000.0 / (2 * vi_rate.load() * ultramodern::get_speed_multiplier());
+         uint32_t serial = vi_frame_serial;
+         for (;;) {
+             const double now = emscripten_get_now();
+@@ -276,10 +282,19 @@ void vi_thread_func() {
      using namespace std::chrono_literals;
  
      int remaining_retraces = 1;
@@ -50,15 +59,19 @@ index 57e50bf..4ae63f2 100644
          //if (next > std::chrono::high_resolution_clock::now()) {
          //    printf("Sleeping for %" PRIu64 " us to get from %" PRIu64 " us to %" PRIu64 " us \n",
          //        (next - std::chrono::high_resolution_clock::now()) / 1us,
-@@ -205,12 +220,13 @@ void vi_thread_func() {
-             next = std::chrono::high_resolution_clock::now();
+@@ -302,9 +317,9 @@ void vi_thread_func() {
          }
+ #endif
          ultramodern::sleep_until(next);
 -        auto time_now = ultramodern::time_since_start();
 +        auto time_now = ultramodern::time_since_start() - vis_epoch;
          // Calculate how many VIs have passed
 -        uint64_t new_total_vis = (time_now * (60 * ultramodern::get_speed_multiplier()) / 1000ms) + 1;
 +        uint64_t new_total_vis = (time_now * rate / 1000ms) + 1;
+ #if defined(__EMSCRIPTEN_PTHREADS__)
+         // A VI that ended on a frame before its time is that VI all the same: counted from the time, it would be the one
+         // before it again, sent a second time at the next frame (VIs came 64-91 a second).
+@@ -315,6 +330,7 @@ void vi_thread_func() {
          if (new_total_vis > total_vis + 1) {
              //printf("Skipped % " PRId64 " frames in VI interupt thread!\n", new_total_vis - total_vis - 1);
          }
@@ -66,7 +79,7 @@ index 57e50bf..4ae63f2 100644
          total_vis = new_total_vis;
  
          // If the game hasn't started yet, set a dummy VI mode and origin.
-@@ -257,14 +273,17 @@ void vi_thread_func() {
+@@ -357,14 +373,17 @@ void vi_thread_func() {
                  uint32_t buffer_bytes = ultramodern::get_last_audio_buffer_bytes();
                  int events = 1;
                  if (buffer_bytes != 0) {
@@ -88,10 +101,10 @@ index 57e50bf..4ae63f2 100644
                      }
                  }
 diff --git a/ultramodern/src/timer.cpp b/ultramodern/src/timer.cpp
-index ee26c45..35559b5 100644
+index df93091..dc82daf 100644
 --- a/ultramodern/src/timer.cpp
 +++ b/ultramodern/src/timer.cpp
-@@ -215,6 +215,17 @@ void ultramodern::sleep_milliseconds(uint32_t millis) {
+@@ -247,6 +247,17 @@ void ultramodern::sleep_milliseconds(uint32_t millis) {
  void ultramodern::sleep_until(const std::chrono::high_resolution_clock::time_point& time_point) {
      auto time_now = std::chrono::high_resolution_clock::now();
      if (time_point > time_now) {
