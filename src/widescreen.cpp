@@ -32,7 +32,10 @@
 // The borders between views are fill rectangles followed by pipe syncs at the start of the frame, and the 4-player
 // score boxes and the pause menu's panels and their border lines are fill rectangles in the HUD's list; each fill +
 // sync pair is rewritten in place as RT64's extended fill rectangle, anchored the same way, and fills that touch are a
-// box, anchored by where the whole box sits.
+// box, anchored by where the whole box sits. A line whose middle is in a box is anchored as the box, so a menu's text
+// stays in its panel: the pause menu's NO and the scoreboard's DEATHS sit in the right third of a view, and by where
+// they sit would follow its right edge out of their centred panel. So lines are anchored when the list is submitted,
+// once its boxes are known.
 //
 // Menus. Their background is a 4:3 picture drawn as texture rectangles, and the menu sits on it, so the menu stays
 // where it is and the picture is extended: with "Menu Aspect Ratio" at Expand, each strip of it at the screen's left
@@ -97,6 +100,20 @@ struct Line {
 };
 Line line{};
 bool line_open = false;
+
+// The lines closed in the list being built, anchored when it's submitted (anchor_lines).
+constexpr int max_lines = 128;
+Line lines[max_lines];
+int line_count = 0;
+
+// The boxes of fills in the HUD's list (widen_split_screen), and the origin each is anchored to.
+struct Box {
+    int x0, x1, y0, y1;
+    int origin;
+};
+constexpr int max_boxes = 64;
+Box boxes[max_boxes];
+int box_count = 0;
 
 uint32_t retrace_count(uint8_t* rdram) {
     return (uint32_t)MEM_W(0x27C, (gpr)(int32_t)sched_addr);
@@ -183,8 +200,9 @@ int split_rect_origin(int x0, int x1) {
 
 // Rewrites the G_FILLRECT + pipe sync pair at p as an extended fill rectangle, anchored like the HUD, or like the
 // view it fills, or edge by edge when it's outside the views (the borders between them). A part of a box (a panel and
-// its border lines, box_cx its centre) anchors like the box's centre in the view holding it.
-void anchor_fill_rect(uint8_t* rdram, uint32_t p, double box_cx = -1) {
+// its border lines, box_cx its centre) anchors like the box's centre in the view holding it. Returns the origin both
+// edges follow, or -1 when they follow different ones.
+int anchor_fill_rect(uint8_t* rdram, uint32_t p, double box_cx = -1) {
     uint32_t w0 = read_word(rdram, p);
     uint32_t w1 = read_word(rdram, p + 4);
     int lrx = (w0 >> 12) & 0xFFF, lry = w0 & 0xFFF;
@@ -214,6 +232,7 @@ void anchor_fill_rect(uint8_t* rdram, uint32_t p, double box_cx = -1) {
     write_word(rdram, p + 4, PARAM(left, 12, 0) | PARAM(right, 12, 12));
     write_word(rdram, p + 8, PARAM(ulx + origin_offset(left), 16, 16) | PARAM(uly, 16, 0));
     write_word(rdram, p + 12, PARAM(lrx + origin_offset(right), 16, 16) | PARAM(lry, 16, 0));
+    return left == right ? left : -1;
 }
 
 bool fill_rect_pair(uint8_t* rdram, uint32_t p) {
@@ -309,12 +328,30 @@ bool carries_line_on(int x0, int y0, int x1, int y1, uint32_t dl) {
            view_holding(line.x0, std::max(x1, line.x1)) == view_holding(line.x0, line.x1);
 }
 
-void close_line(uint8_t* rdram) {
+void close_line() {
     if (line_open) {
         line_open = false;
-        int origin = split_rect_origin(line.x0, line.x1);
+        if (line_count < max_lines) {
+            lines[line_count++] = line;
+        }
+    }
+}
+
+// Anchors the lines of the list being submitted: one whose middle is in a box as the box, others by where they sit.
+void anchor_lines(uint8_t* rdram) {
+    for (int i = 0; i < line_count; i++) {
+        const Line& l = lines[i];
+        double cx = (l.x0 + l.x1) / 2.0, cy = (l.y0 + l.y1) / 2.0;
+        int origin = split_rect_origin(l.x0, l.x1);
+        for (int j = 0; j < box_count; j++) {
+            const Box& b = boxes[j];
+            if (cx >= b.x0 && cx <= b.x1 && cy >= b.y0 && cy <= b.y1) {
+                origin = b.origin;
+                break;
+            }
+        }
         if (origin != G_EX_ORIGIN_NONE) {
-            anchor_rects(rdram, line.dl_start, line.dl_end, origin);
+            anchor_rects(rdram, l.dl_start, l.dl_end, origin);
         }
     }
 }
@@ -408,6 +445,7 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
     }
     std::copy(views, views + count, split_views);
     split_view_count = count;
+    box_count = 0;
 
     if (split_lists == 0) {
         split_lists = alloc_lists(rdram, split_list_bytes * model_list_frames);
@@ -539,15 +577,22 @@ bool widen_split_screen(uint8_t* rdram, const FrameScan& scan) {
         }
     }
     for (int i = 0; i < fill_count; i++) {
-        int box = box_of(i), parts = 0, box_x0 = screen_width, box_x1 = 0;
+        int box = box_of(i), parts = 0;
+        Box b{ screen_width, 0, screen_height, 0, -1 };
         for (int j = 0; j < fill_count; j++) {
             if (box_of(j) == box) {
                 parts++;
-                box_x0 = std::min(box_x0, fills[j].x0);
-                box_x1 = std::max(box_x1, fills[j].x1);
+                b.x0 = std::min(b.x0, fills[j].x0);
+                b.x1 = std::max(b.x1, fills[j].x1);
+                b.y0 = std::min(b.y0, fills[j].y0);
+                b.y1 = std::max(b.y1, fills[j].y1);
             }
         }
-        anchor_fill_rect(rdram, fills[i].p, parts > 1 ? (box_x0 + box_x1) / 2.0 : -1);
+        b.origin = anchor_fill_rect(rdram, fills[i].p, parts > 1 ? (b.x0 + b.x1) / 2.0 : -1);
+        // A box once, at its first fill (box_of's root); a fill across a view or the screen holds no text of its own.
+        if (box == i && !spans(fills[i]) && b.origin >= 0 && box_count < max_boxes) {
+            boxes[box_count++] = b;
+        }
     }
 
     // The coins: anchored like the HUD beside them, in their own view.
@@ -664,7 +709,7 @@ extern "C" void rush2049_hud_rect_begin(uint8_t* rdram, recomp_context* ctx) {
     int y0 = (int)ctx->r5;
     int y1 = (int)ctx->r7;
     if (line_open && !(split_view_count > 0 && carries_line_on(x0, y0, x1, y1, read_word(rdram, dl_ptr_addr)))) {
-        close_line(rdram);
+        close_line();
     }
     if (is_menu_background(x0, y0, x1, y1) && !single_player_race(rdram)) {
         menu_background_drawn = true;
@@ -746,7 +791,7 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
     if (MEM_W(0x00, task) != 1) {  // M_GFXTASK
         return;
     }
-    close_line(rdram);
+    close_line();
     // The list is walked at any HUD Placement and Menu Aspect Ratio, to tell split screen (rewind needs to know), but
     // only changed when the HUD moves or the menus widen.
     bool menus = rush2049::menu_expand();
@@ -845,10 +890,14 @@ extern "C" void rush2049_enable_extended_gbi(uint8_t* rdram, uint32_t task_addr)
         write_word(rdram, scan.first_pipe_sync + 4, rate.values.word1);
     }
     split_screen_last_frame = scan.split_screen;
+    bool widened = hud && scan.split_screen && !menu && rush2049::split_screen_expand() && widen_split_screen(rdram, scan);
+    if (widened) {
+        anchor_lines(rdram);
+    }
+    line_count = 0;
     if (!hud) {
         return;
     }
-    bool widened = scan.split_screen && !menu && rush2049::split_screen_expand() && widen_split_screen(rdram, scan);
     if (!widened) {
         split_view_count = 0;
         hud_list_lo = hud_list_hi = 0;
