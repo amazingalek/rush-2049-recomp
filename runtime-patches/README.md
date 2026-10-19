@@ -11,6 +11,7 @@ RecompFrontend-0001    built-in texture packs (the hi-res font and title)
 RecompFrontend-0002    the Rewind input
 RecompFrontend-0003    multiplayer mode: a controller joins as the next player on its first button press, the keyboard
                        stays with player 1, and a new controller's profile copies the single-player bindings
+RecompFrontend-0004    a controller that disconnects and comes back is its player's again; the log names each controller
 plume-0005             a query pool read of only the queries written (Vulkan calls a read with an unwritten one not ready)
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
 rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
