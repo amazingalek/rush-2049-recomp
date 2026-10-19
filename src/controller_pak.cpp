@@ -247,8 +247,7 @@ void save(int port) {
     const Pak& pak = paks[port & 3];
     std::string error = rush2049::replace_file(pak_path(port), pak.data.data(), pak.data.size());
     if (!error.empty()) {
-        fprintf(stderr, "[pak] %s
-", error.c_str());
+        fprintf(stderr, "[pak] %s\n", error.c_str());
     }
 }
 
