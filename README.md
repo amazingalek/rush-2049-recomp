@@ -73,7 +73,9 @@ option has an Original value that runs the game as it shipped.
 
 Settings are saved as JSON in `%LOCALAPPDATA%\Rush2049Recompiled\` (`~/.config/Rush2049Recompiled/` on Linux), or
 in the working directory when it holds a `portable.txt`, so they can also be edited by hand while the game is
-closed. For the game exactly as it shipped, set every Original value:
+closed. Controller Pak saves are there too, as `saves/controllerpak_<port>.mpk` (the `.mpk` format emulators use); one
+can be a symlink, to share saves through a synced folder, and stays one when the game saves. For the game exactly as it
+shipped, set every Original value:
 
 | Enhancement | Option | Key | Default | Original |
 |---|---|---|---|---|
@@ -225,7 +227,8 @@ a saved profile keeps its bindings until "Reset to defaults".
 button is player 1, the next one player 2, and so on up to 4, and the keyboard drives player 1. To put players in
 another order, or give the keyboard to another player, press Assign Players on the Controls tab, then a button on
 each controller (or a key, for the keyboard) in player order, and confirm. Each controller has bindings of its own
-on the Controls tab, starting from the one-player ones. Players join again each time the game starts. With
+on the Controls tab, starting from the one-player ones. Players join again each time the game starts. A controller that
+disconnects and comes back (a Bluetooth drop, a cable pulled and plugged in again) is the same player again. With
 Controllers (General tab) at One Player, every controller and the keyboard drive player 1 instead.
 
 Started from Steam (on a Steam Deck, always), the game sees Steam's virtual controller instead of yours, and it has
