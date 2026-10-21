@@ -6,8 +6,8 @@ kept in IndexedDB; `N64Recomp-browser/frontend/CMakeLists.txt`'s header says wha
 
 What is the game's own stays here: `headless/`, the `EMSCRIPTEN` branches of `CMakeLists.txt` that make the game a
 page, its prebuilt shader list (`src/rt64_shaders.txt`, recorded by `tools/shader_plan.json`; the list's header says
-how to record it again and what its sections save) and its play plan (`tools/play_plan.json`). The rest is
-N64Recomp-browser's: `docs/porting.md` (WebGPU and the shaders, prebuilt shader lists, Emscripten, what the recompiled
+how to record it again and what its sections save) and its play plans (`tools/play_plan.json`, its regular play of
+2-3 minutes, and `tools/play_plan_extended.json`, for when a longer play is needed). The rest is N64Recomp-browser's: `docs/porting.md` (WebGPU and the shaders, prebuilt shader lists, Emscripten, what the recompiled
 code needed for wasm), `docs/playing.md` (playing and measuring a page), `docs/forks.md` (the fork changes that make
 RT64 and recompui draw through WebGPU) and `docs/findings.md` (what is known about WebGPU in each browser). Every play of
 this game's page is a line in its `plays.jsonl` (game `rush`), never a record here.
