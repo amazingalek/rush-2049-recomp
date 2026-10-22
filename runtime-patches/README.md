@@ -16,7 +16,7 @@ RecompFrontend-0005    a saved controller is matched to the connected one again 
                        its profile's bindings come back each session; the log says if a controller is known or new
 plume-0005             a query pool read of only the queries written (Vulkan calls a read with an unwritten one not ready)
 rt64-0001              viewports with left and right edge origins (split screen); fill-rect fix
-rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass
+rt64-0003              GPU timings for --gpu-profile, split into the parts of each pass (none read on the web)
 rt64-0004              one barrier call around all of a frame's buffer uploads, not one per uploader
 rt64-0005              every slot of the texture set holds a live texture: the blank tile texture in a new set's slots
                        and an evicted texture's, which eviction marks changed (a tile whose texture missed the cache
