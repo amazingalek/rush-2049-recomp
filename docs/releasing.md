@@ -61,6 +61,8 @@ which comes from one of two places (N64Recomp-browser's CLAUDE.md, The pins, and
 Nothing else moves it. The pull request moves `lib/N64Recomp-browser` to the tag (and the submodules, if
 `patches/patches.txt` names new upstream commits), resets each project whose patch changed and reruns
 `tools/apply_runtime_patches.sh` (it stops on one and says how; rebase a game patch that stops applying in the same
-PR), and builds and runs the desktop game. Once it has merged, publish the page and record its runs (above). A change
-only the desktop build compiles (rt64 7734fe4) is checked by a run of the desktop game and republishes no page; a
-web-only change needs no desktop release.
+PR), and builds and runs the desktop game. Once it has merged, whoever merged it ships it in the same work: publishes
+the page and records its runs (above), and cuts a desktop release when the tag changes native code (the generated
+`RecompiledFuncs/`, rt64, the runtime), never leaving either to a card of its own. A change only the desktop build
+compiles (rt64 7734fe4) is checked by a run of the desktop game and republishes no page; a web-only change needs no
+desktop release.
