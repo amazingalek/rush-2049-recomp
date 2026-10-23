@@ -26,7 +26,7 @@ words, never the list of merged PRs (most are web support and other games' pages
 
 ## The page
 
-https://amazingalek.github.io/rush-2049-recomp/ is published like a release, and no CI job does it. It is played before
+https://n64hub.com/rush-2049/ is published like a release, and no CI job does it. It is played before
 it is published and booted from Pages after:
 
 1. Build origin/main with `bash tools/publish_page.sh --dry-run` (from a checkout with `roms/`; it stages `out/page`).
@@ -41,9 +41,10 @@ it is published and booted from Pages after:
    merged.
 
 Both scripts build origin/main through `tools/remote_build.sh`, in a copy named `publish` (kept with its `build-web/`,
-so a republish rebuilds only what changed and the `--dry-run` build is the one published), and force-push the page as
-the only commit on the orphan branch `gh-pages`, which Pages serves. The page's commit names the main it was built from
-(`git log -1 origin/gh-pages`); a page found behind main is played and published by whoever finds it. The first visit
+so a republish rebuilds only what changed and the `--dry-run` build is the one published), and publish the page into
+the folder `rush-2049/` of the hub (n64hub/n64hub.github.io's `gh-pages`) with N64Recomp-browser's
+`tools/publish_page.sh --into`. The hub's last commit names, a line each, the main each folder was built from
+(`rush-2049/: built from main <sha>`); a page found behind main is played and published by whoever finds it. The first visit
 reloads once (`coi_serviceworker.js`); right after a publish that can take a second visit.
 
 ## Moving `lib/N64Recomp-browser`

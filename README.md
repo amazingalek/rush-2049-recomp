@@ -15,18 +15,18 @@ survive a restart. There is a Linux build too, which boots and runs the title sc
 software Vulkan driver (that driver then crashes on a bug of its own), but nobody has played it on a Linux GPU or a
 Steam Deck yet. Split screen with a controller for each player has only been tried with virtual controllers.
 
-**In a browser: [play it here](https://amazingalek.github.io/rush-2049-recomp/)**, with your own ROM. The same game
+**In a browser: [play it here](https://n64hub.com/rush-2049/)**, with your own ROM. The same game
 builds as a web page (see **In a browser** below), with the launcher and menus, sound, keyboard controls, and your
 ROM picked from disk and kept in the browser, never uploaded. It plays the title screen, the menus and races in
 Chrome at close to 60 frames a second, as the desktop build does. Play it in Chrome or Edge: Firefox draws it slowly
 on many computers. The web support
 works for every N64 recomp, not just this one, and lives in a project of its own,
-[N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
-of its own, [BanjoRecomp-web](https://github.com/amazingalek/BanjoRecomp-web) (not made by the Banjo team), and so does
-Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com/amazingalek/Zelda64Recomp-web) (not
+[N64Recomp-browser](https://github.com/n64hub/N64Recomp-browser). Banjo-Kazooie: Recompiled plays in Chrome on it too, in a fork
+of its own, [BanjoRecomp-web](https://github.com/n64hub/BanjoRecomp-web) (not made by the Banjo team), and so does
+Majora's Mask in Zelda 64: Recompiled, in [Zelda64Recomp-web](https://github.com/n64hub/Zelda64Recomp-web) (not
 made by the Zelda 64: Recompiled team), Donkey Kong 64: Recompiled, in
-[Donkey-Kong-64-Recompiled-web](https://github.com/amazingalek/Donkey-Kong-64-Recompiled-web) (not made by its team),
-and Conker's Bad Fur Day: Recompiled, in [CBFD-Recompiled-web](https://github.com/amazingalek/CBFD-Recompiled-web) (not
+[Donkey-Kong-64-Recompiled-web](https://github.com/n64hub/Donkey-Kong-64-Recompiled-web) (not made by its team),
+and Conker's Bad Fur Day: Recompiled, in [CBFD-Recompiled-web](https://github.com/n64hub/CBFD-Recompiled-web) (not
 made by its authors). Those ports are there to build out and test the web support on more games than this one: what
 one of them turns up is fixed in the web support, so every game gets it, this one included.
 
@@ -105,7 +105,7 @@ sample level so its mix doesn't clip, and the Expansion Pak, which the game was 
 ## Getting it running
 
 You need your own copy of the game either way. A release on the [Releases
-page](https://github.com/amazingalek/rush-2049-recomp/releases) is the game without the ROM, for Windows (a zip: unzip
+page](https://github.com/n64hub/rush-2049-recomp/releases) is the game without the ROM, for Windows (a zip: unzip
 it and run `Rush2049Recompiled.exe` from that folder, see **Run** below) and for Linux on x86-64 (a `.tar.gz`: extract
 it and run `Rush2049Recompiled` in that folder). The Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12 or
 later), a Vulkan driver, and GTK 3 and FreeType, which desktop distributions have; it brings its own SDL2. Otherwise build it from source.
@@ -145,7 +145,7 @@ otherwise pick it with Load ROM. It opens no console window and writes its log t
 settings are in (above: beside the exe with a `portable.txt`), keeping the run before as `rush2049.old.log`; to watch
 the log as it plays, run it with `--show-console` instead.
 
-**If it crashes**, the log ends with where it crashed: open an [issue](https://github.com/amazingalek/rush-2049-recomp/issues)
+**If it crashes**, the log ends with where it crashed: open an [issue](https://github.com/n64hub/rush-2049-recomp/issues)
 with `rush2049.log` attached (or `rush2049.old.log`, if you have started the game again since) and what you were doing.
 **If it hangs** on Linux, end it (Exit Game in Steam, or `kill` with its process id, not `kill -9`): the log then
 ends with what every thread was doing. Send it before starting the game again, or send `rush2049.old.log`. On Linux
@@ -154,7 +154,7 @@ does the game write no `rush2049.log` and print the log there instead (on Window
 
 ## In a browser
 
-The page is at **https://amazingalek.github.io/rush-2049-recomp/**. Play it in **Chrome or Edge** 113 or newer, on Windows, macOS or
+The page is at **https://n64hub.com/rush-2049/**. Play it in **Chrome or Edge** 113 or newer, on Windows, macOS or
 ChromeOS. Firefox 141 or newer on Windows runs it too, but draws it slowly on many computers, a laptop's integrated
 graphics above all, and the page recommends Chrome or Edge when it opens there. Safari hasn't been tried. Open it, click **Load ROM** and pick your `.z64`: the page checks it as the desktop launcher
 does and keeps a copy in the browser's own storage (IndexedDB) for that site, so the next visit starts without
@@ -312,7 +312,7 @@ cd mod_template && ../build/RecompModTool mod.toml build   # writes build/rush20
 - `patches/`: the patches library mods build against; `mod_template/`: the example mod.
 - `lib/`: the submodules. RT64, N64ModernRuntime and RecompFrontend are upstream's, with the browser support patched
   in from `N64Recomp-browser`, which is what turns a recomp into a page; see
-  [N64Recomp-browser](https://github.com/amazingalek/N64Recomp-browser). `runtime-patches/`: this game's fixes on top of them.
+  [N64Recomp-browser](https://github.com/n64hub/N64Recomp-browser). `runtime-patches/`: this game's fixes on top of them.
 - `headless/`: a build without the frontend: the browser test page, or with no graphics at all.
 - `assets/`: the menus' fonts, icons and stylesheet, and the hi-res title's patch, shipped beside the executable.
 - `syms/`: the symbol files N64Recomp and mods use; `names.toml` holds the function names worked out so far.
