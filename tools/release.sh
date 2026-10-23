@@ -7,7 +7,7 @@
 #   releases/v<version>.md: what a player gets, not a list of merged PRs (most are web support and other games'
 #   pages, which the zip doesn't have). Without that file it refuses. Needs a clean tree at origin/main, the
 #   setup from the README's build steps and docs/building.md (submodules, runtime patches, extract.py's roms/, the
-#   .venv, the toolchain) and gh signed in. --dry-run builds and packs but publishes nothing and skips the checks on
+#   toolchain: tools/env.sh's, or one already on PATH with MIPS_CC and MIPS_LD set) and gh signed in. --dry-run builds and packs but publishes nothing and skips the checks on
 #   the tree and the tag.
 # The Linux build runs through tools/remote_build.sh (a copy named release-linux on $BUILD_HOST, which gets roms/ too)
 # in tools/docker/Dockerfile.linux, Ubuntu 22.04, so it needs glibc 2.35 or newer. It carries the libSDL2 it was built
@@ -60,7 +60,7 @@ cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl \
     -DCMAKE_C_FLAGS_RELEASE="-O2 -Ob2 -DNDEBUG -Z7" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -Ob2 -DNDEBUG -Z7" \
     -DCMAKE_EXE_LINKER_FLAGS_RELEASE="-INCREMENTAL:NO -DEBUG -OPT:REF -OPT:ICF" \
-    -DPATCHES_C_COMPILER="$MIPS_CC" -DPATCHES_LD="$MIPS_LD" > "$build.log" 2>&1 || { tail -20 "$build.log"; exit 1; }
+    -DPATCHES_C_COMPILER="${MIPS_CC:-clang}" -DPATCHES_LD="${MIPS_LD:-ld.lld}" > "$build.log" 2>&1 || { tail -20 "$build.log"; exit 1; }
 ninja -C "$build" Rush2049Recompiled > "$build/build.log" 2>&1 ||
     { grep -E " error|FAILED|undefined" "$build/build.log" | head -20; exit 1; }
 
@@ -70,7 +70,8 @@ rm -rf "$stage" "out/$name.zip"
 mkdir -p "$stage"
 cp "$build"/{Rush2049Recompiled.exe,Rush2049Recompiled.pdb,SDL2.dll,dxil.dll,dxcompiler.dll} recompcontrollerdb.txt COPYING "$stage"/
 cp -r assets "$stage"/
-(cd out && ../.venv/Scripts/python -I -m zipfile -c "$name.zip" "$name")
+# CMake's own zip, so packing needs nothing the build doesn't.
+(cd out && cmake -E tar cf "$name.zip" --format=zip "$name")
 echo "out/$name.zip ($(du -h "out/$name.zip" | cut -f1))"
 
 # Linux: HEAD (with any uncommitted changes, for a dry run) built from scratch in the copy's build-release.

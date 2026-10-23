@@ -4,6 +4,10 @@
 # only used by the web build (lib/N64Recomp-browser/frontend/build_speed.cmake).
 N64TC="${LOCALAPPDATA:-$HOME/AppData/Local}/Programs/n64-toolchain"
 N64TC="$(cygpath -u "$N64TC")"
+# Without it the environment stays as it is: a toolchain already on PATH (clang-cl, CMake, Ninja, make, the MSVC
+# libraries in INCLUDE and LIB) with MIPS_CC and MIPS_LD set, such as a WSL clang: MIPS_CC="wsl clang" (patches/
+# builds with paths relative to it, which WSL maps).
+[ -d "$N64TC" ] || return 0
 _msvc="$N64TC/portable-msvc/msvc"
 _vc="$_msvc/VC/Tools/MSVC/14.44.35207"
 _sdk="$_msvc/Windows Kits/10"
