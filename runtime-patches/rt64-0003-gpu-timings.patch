@@ -135,7 +135,7 @@ index 0000000..e02dc54
 +    }
 +};
 diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
-index 1bcf109..ee3c843 100644
+index ad46c52..16f052b 100644
 --- a/src/hle/rt64_present_queue.cpp
 +++ b/src/hle/rt64_present_queue.cpp
 @@ -4,6 +4,8 @@
@@ -220,7 +220,7 @@ index 7b7d896..fb8fe5c 100644
          ProfilingTimer presentProfiler = ProfilingTimer(120);
          Timestamp presentTimestamp;
 diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
-index 394bba9..db96a79 100644
+index cb271f4..b14355d 100644
 --- a/src/hle/rt64_workload_queue.cpp
 +++ b/src/hle/rt64_workload_queue.cpp
 @@ -4,6 +4,7 @@
@@ -240,7 +240,7 @@ index 394bba9..db96a79 100644
  
          projectionProcessor.setup(ext.workloadGraphicsWorker);
          transformProcessor.setup(ext.workloadGraphicsWorker);
-@@ -715,10 +716,13 @@ namespace RT64 {
+@@ -740,10 +741,13 @@ namespace RT64 {
  
              workerMutex.lock();
              ext.workloadGraphicsWorker->commandList->begin();
@@ -256,7 +256,7 @@ index 394bba9..db96a79 100644
              
              // Record all framebuffer pairs.
              uint32_t framebufferIndex = 0;
-@@ -805,7 +809,13 @@ namespace RT64 {
+@@ -830,7 +834,13 @@ namespace RT64 {
                          }
                      }
                      
@@ -270,7 +270,7 @@ index 394bba9..db96a79 100644
  
                      // Transition the render targets in case the present queue will show them so it doesn't have to perform transitions.
                      if (colorTarget != nullptr && depthTarget != nullptr) {
-@@ -827,6 +837,8 @@ namespace RT64 {
+@@ -852,6 +862,8 @@ namespace RT64 {
                          overrideTarget->resolveFromTarget(ext.workloadGraphicsWorker, colorTarget, ext.shaderLibrary);
                      }
  
@@ -279,7 +279,7 @@ index 394bba9..db96a79 100644
                      const uint64_t writeTimestamp = fbManager.nextWriteTimestamp();
                      FixedRect depthFbRect;
                      if (colorFb != nullptr) {
-@@ -853,7 +865,7 @@ namespace RT64 {
+@@ -878,7 +890,7 @@ namespace RT64 {
                      fbPair.endFbOperations, targetManager, fixedResScale, f, workload.submissionFrame);
              }
  
@@ -288,7 +288,7 @@ index 394bba9..db96a79 100644
              ext.workloadGraphicsWorker->commandList->end();
              framebufferRenderer->waitForUploaders();
              ext.workloadGraphicsWorker->execute();
-@@ -864,9 +876,16 @@ namespace RT64 {
+@@ -894,9 +906,16 @@ namespace RT64 {
  #       if !defined(__EMSCRIPTEN__)
              // Not on WebGPU, which has no timestamps (plume's queries there do nothing and read zeros), and where behind
              // plume's device thread each of the two calls waits for a round trip to the page's thread after every workload.
@@ -309,7 +309,7 @@ index 394bba9..db96a79 100644
  
              // Indicate to the texture cache it's safe to delete the textures if no locks are active.
 diff --git a/src/hle/rt64_workload_queue.h b/src/hle/rt64_workload_queue.h
-index 6fdaddb..8b709ad 100644
+index 2cebca9..8ffa08b 100644
 --- a/src/hle/rt64_workload_queue.h
 +++ b/src/hle/rt64_workload_queue.h
 @@ -7,6 +7,7 @@
@@ -320,9 +320,9 @@ index 6fdaddb..8b709ad 100644
  #include "common/rt64_profiling_timer.h"
  #include "common/rt64_user_configuration.h"
  #include "render/rt64_framebuffer_renderer.h"
-@@ -107,6 +108,7 @@ namespace RT64 {
-         std::unique_ptr<VertexProcessor> vertexProcessor;
-         std::unique_ptr<RenderTarget> dummyDepthTarget;
+@@ -110,6 +111,7 @@ namespace RT64 {
+         DummyDepthTargets dummyDepthTargets;
+ #   endif
          std::unique_ptr<RenderQueryPool> queryPool;
 +        GPUPartTimer partTimer;
          FramebufferChangePool scratchFbChangePool;
