@@ -1,8 +1,8 @@
 diff --git a/ultramodern/include/ultramodern/ultramodern.hpp b/ultramodern/include/ultramodern/ultramodern.hpp
-index 46aea61..6f53c6c 100644
+index da24a61..a46df1c 100644
 --- a/ultramodern/include/ultramodern/ultramodern.hpp
 +++ b/ultramodern/include/ultramodern/ultramodern.hpp
-@@ -121,6 +121,9 @@ void init_audio();
+@@ -122,6 +122,9 @@ void init_audio();
  void set_audio_frequency(uint32_t freq);
  void queue_audio_buffer(RDRAM_ARG PTR(s16) audio_data, uint32_t byte_count);
  uint32_t get_remaining_audio_bytes();
@@ -13,7 +13,7 @@ index 46aea61..6f53c6c 100644
  struct audio_callbacks_t {
      using queue_samples_t = void(int16_t*, size_t);
 diff --git a/ultramodern/src/audio.cpp b/ultramodern/src/audio.cpp
-index 3198be0..87ade88 100644
+index 212234e..927f31d 100644
 --- a/ultramodern/src/audio.cpp
 +++ b/ultramodern/src/audio.cpp
 @@ -1,5 +1,6 @@
@@ -21,9 +21,9 @@ index 3198be0..87ade88 100644
  #include "ultramodern/ultramodern.hpp"
 +#include <atomic>
  #include <cassert>
+ #include <cstdio>
  
- static uint32_t sample_rate = 48000;
-@@ -22,9 +23,20 @@ void ultramodern::set_audio_frequency(uint32_t freq) {
+@@ -23,9 +24,20 @@ void ultramodern::set_audio_frequency(uint32_t freq) {
      sample_rate = freq;
  }
  
@@ -42,13 +42,13 @@ index 3198be0..87ade88 100644
      assert((byte_count & 1) == 0);
 +    last_buffer_bytes.store(byte_count);
  
-     // Calculate the number of samples from the number of bytes.
-     uint32_t sample_count = byte_count / sizeof(int16_t);
+     // A game may give its buffer's uncached address (KSEG1, from 0xA0000000), which TO_PTR would put 512 MB past
+     // RDRAM: it's read through the cached one (KSEG0) for the same memory. A buffer that doesn't lie in RDRAM's 8 MB
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
-index 2f1cfb5..57e50bf 100644
+index 343d069..5e9d7d5 100644
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
-@@ -244,8 +244,30 @@ void vi_thread_func() {
+@@ -396,8 +396,30 @@ void vi_thread_func() {
                  remaining_retraces = cur_state->retrace_count;
              }
              if (events_context.ai.mq != NULLPTR) {
