@@ -5,8 +5,8 @@
 > don't take AI-written code.
 
 A native PC port of the N64 version of *San Francisco Rush 2049*, made by static recompilation
-([N64Recomp](https://github.com/N64Recomp/N64Recomp) + [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime)
-+ [RT64](https://github.com/rt64/rt64)): the game's own MIPS code translated to C and run natively, with RT64
+([N64Recomp](https://github.com/N64Recomp/N64Recomp) + [N64ModernRuntime](https://github.com/N64Recomp/N64ModernRuntime) +
+[RT64](https://github.com/rt64/rt64)): the game's own MIPS code translated to C and run natively, with RT64
 drawing it. It is not an emulator and it contains no game data: you supply your own ROM.
 
 **Status: playable** on Windows. Menus, Single Race, Circuit, Ghost Race, Stunt and Battle run at full speed, all
